@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Routes, Route, NavLink, useLocation } from 'react-router-dom';
+import logoSvg from '/favicon.svg';
 import {
   AppShell,
   Group,
@@ -63,7 +64,7 @@ function AuthenticatedApp() {
       <AppShell.Header>
         <Group h="100%" px="md" justify="space-between">
           <Group gap="xs">
-            <Image src="/favicon.svg" w={28} h={28} />
+            <Image src={logoSvg} w={28} h={28} />
             <Title order={4}>Specter Finances</Title>
           </Group>
           <Group gap="xs">
@@ -167,7 +168,7 @@ export default function App() {
     return (
       <Center h="100vh">
         <Stack align="center" gap="md">
-          <Image src="/favicon.svg" w={64} h={64} />
+          <Image src={logoSvg} w={64} h={64} />
           <Title order={1}>Specter Finances</Title>
           <Text c="dimmed">Shared expense tracker</Text>
           <Button variant="outline" size="lg" onClick={signIn}>
