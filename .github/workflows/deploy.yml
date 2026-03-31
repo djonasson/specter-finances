@@ -22,18 +22,15 @@ jobs:
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: app/package-lock.json
       - run: npm ci
-        working-directory: app
       - run: npm run build
-        working-directory: app
         env:
           VITE_GOOGLE_CLIENT_ID: ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
           VITE_SPREADSHEET_ID: ${{ secrets.VITE_SPREADSHEET_ID }}
           VITE_SHEET_NAME: ${{ secrets.VITE_SHEET_NAME }}
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: app/dist
+          path: dist
 
   deploy:
     needs: build
