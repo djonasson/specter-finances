@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Specter Finances</title>
+    <script>
+      // SPA redirect for GitHub Pages.
+      // Stores the path in sessionStorage and redirects to index.html,
+      // which picks it up and restores the route via history.replaceState.
+      sessionStorage.redirect = location.href;
+      location.replace(location.pathname.split('/').slice(0, 2).join('/') + '/');
+    </script>
+  </head>
+  <body></body>
+</html>
