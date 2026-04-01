@@ -80,6 +80,14 @@ function AuthenticatedApp() {
     [add, navigate],
   );
 
+  const removeWithNotify = useCallback(
+    async (rowIndex: number) => {
+      await remove(rowIndex);
+      setSuccessMsg('Expense deleted');
+    },
+    [remove],
+  );
+
   return (
     <AppShell header={{ height: 56 }} padding="md">
       <AppShell.Header>
@@ -140,7 +148,7 @@ function AuthenticatedApp() {
                   expenses={expenses}
                   loading={loading}
                   onUpdate={update}
-                  onDelete={remove}
+                  onDelete={removeWithNotify}
                   onRefresh={load}
                 />
               </>
