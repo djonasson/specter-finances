@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { Routes, Route, NavLink, useLocation } from 'react-router-dom';
+import { useCallback, useEffect, useState } from 'react';
+import { Routes, Route, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import logoSvg from '/favicon.svg';
 import {
   AppShell,
@@ -15,8 +15,10 @@ import {
   ActionIcon,
   UnstyledButton,
   Box,
+  Notification,
+  Transition,
 } from '@mantine/core';
-import { IconAlertCircle, IconSettings, IconLayoutDashboard, IconPlus, IconList } from '@tabler/icons-react';
+import { IconAlertCircle, IconCheck, IconSettings, IconLayoutDashboard, IconPlus, IconList } from '@tabler/icons-react';
 import { useAuth } from './hooks/AuthContext';
 import { useExpensesContext } from './hooks/ExpensesContext';
 import { ExpenseForm } from './components/ExpenseForm';
@@ -54,11 +56,29 @@ function AuthenticatedApp() {
   const { signOut } = useAuth();
   const { expenses, loading, error, load, add, update, remove } = useExpensesContext();
   const [settingsOpened, setSettingsOpened] = useState(false);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const location = useLocation();
+  const navigate = useNavigate();
 
   useEffect(() => {
     load();
   }, [load, location.pathname]);
+
+  // Auto-dismiss success message
+  useEffect(() => {
+    if (!successMsg) return;
+    const t = setTimeout(() => setSuccessMsg(null), 3000);
+    return () => clearTimeout(t);
+  }, [successMsg]);
+
+  const addAndRedirect = useCallback(
+    async (form: Parameters<typeof add>[0]) => {
+      await add(form);
+      navigate('/list');
+      setSuccessMsg('Expense added');
+    },
+    [add, navigate],
+  );
 
   return (
     <AppShell header={{ height: 56 }} padding="md">
@@ -107,7 +127,7 @@ function AuthenticatedApp() {
             element={
               <>
                 <Title order={2} mb="md">Add Expense</Title>
-                <ExpenseForm onSubmit={add} />
+                <ExpenseForm onSubmit={addAndRedirect} />
               </>
             }
           />
@@ -147,6 +167,26 @@ function AuthenticatedApp() {
         <BottomNavItem to="/add" icon={<IconPlus size={22} />} label="Add" />
         <BottomNavItem to="/list" icon={<IconList size={22} />} label="List" />
       </Box>
+
+      <Transition mounted={!!successMsg} transition="slide-down" duration={200}>
+        {(styles) => (
+          <Notification
+            icon={<IconCheck size={18} />}
+            color="teal"
+            title={successMsg}
+            onClose={() => setSuccessMsg(null)}
+            style={{
+              ...styles,
+              position: 'fixed',
+              top: 68,
+              left: '50%',
+              transform: `${styles.transform ?? ''} translateX(-50%)`,
+              zIndex: 200,
+              minWidth: 250,
+            }}
+          />
+        )}
+      </Transition>
 
       <BackgroundEffect />
       <ThemeSettings opened={settingsOpened} onClose={() => setSettingsOpened(false)} />
