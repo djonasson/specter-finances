@@ -8,6 +8,19 @@ import '@mantine/core/styles.css'
 import '@mantine/dates/styles.css'
 import './index.css'
 import App from './App.tsx'
+import { registerSW } from 'virtual:pwa-register'
+
+// Check for SW updates every 60s; reload immediately when a new version is ready
+registerSW({
+  onNeedRefresh() {
+    window.location.reload();
+  },
+  onRegisteredSW(_url, registration) {
+    if (registration) {
+      setInterval(() => registration.update(), 60_000);
+    }
+  },
+});
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
