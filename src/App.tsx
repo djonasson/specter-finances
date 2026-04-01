@@ -54,10 +54,11 @@ function AuthenticatedApp() {
   const { signOut } = useAuth();
   const { expenses, loading, error, load, add, update, remove } = useExpensesContext();
   const [settingsOpened, setSettingsOpened] = useState(false);
+  const location = useLocation();
 
   useEffect(() => {
     load();
-  }, [load]);
+  }, [load, location.pathname]);
 
   return (
     <AppShell header={{ height: 56 }} padding="md">

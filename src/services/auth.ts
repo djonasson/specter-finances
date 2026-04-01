@@ -2,6 +2,7 @@ const SCOPES = 'https://www.googleapis.com/auth/spreadsheets';
 const TOKEN_KEY = 'sf_access_token';
 const EXPIRY_KEY = 'sf_token_expiry';
 
+let clientId: string | null = null;
 let tokenClient: google.accounts.oauth2.TokenClient | null = null;
 let accessToken: string | null = null;
 let onAuthChange: ((authenticated: boolean) => void) | null = null;
@@ -39,7 +40,8 @@ function clearStoredToken() {
   accessToken = null;
 }
 
-export function initAuth(clientId: string): Promise<void> {
+export function initAuth(id: string): Promise<void> {
+  clientId = id;
   if (initPromise) return initPromise;
 
   initPromise = new Promise((resolve) => {
@@ -50,7 +52,7 @@ export function initAuth(clientId: string): Promise<void> {
     script.src = 'https://accounts.google.com/gsi/client';
     script.onload = () => {
       tokenClient = google.accounts.oauth2.initTokenClient({
-        client_id: clientId,
+        client_id: id,
         scope: SCOPES,
         callback: (response) => {
           if (response.access_token) {
@@ -78,6 +80,40 @@ export function initAuth(clientId: string): Promise<void> {
 export function signIn() {
   if (!tokenClient) throw new Error('Auth not initialized');
   tokenClient.requestAccessToken();
+}
+
+/**
+ * Silently request a fresh access token (no user prompt).
+ * Resolves with the new token. If silent refresh fails (e.g. Google
+ * session expired), signs the user out so they see the login screen.
+ */
+export function refreshToken(): Promise<string> {
+  if (!clientId) return Promise.reject(new Error('Auth not initialized'));
+  return new Promise((resolve, reject) => {
+    const silentClient = google.accounts.oauth2.initTokenClient({
+      client_id: clientId!,
+      scope: SCOPES,
+      callback: (response) => {
+        if (response.access_token) {
+          const expiresIn = response.expires_in || 3600;
+          storeToken(response.access_token, expiresIn);
+          onAuthChange?.(true);
+          resolve(response.access_token);
+        } else {
+          clearStoredToken();
+          onAuthChange?.(false);
+          reject(new Error('Session expired — please sign in again'));
+        }
+      },
+      error_callback: () => {
+        clearStoredToken();
+        onAuthChange?.(false);
+        reject(new Error('Session expired — please sign in again'));
+      },
+      prompt: '',
+    });
+    silentClient.requestAccessToken({ prompt: '' });
+  });
 }
 
 export function signOut() {

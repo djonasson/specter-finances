@@ -13,7 +13,7 @@ interface ImportMeta {
 // Google Identity Services types
 declare namespace google.accounts.oauth2 {
   interface TokenClient {
-    requestAccessToken(): void;
+    requestAccessToken(overrides?: { prompt?: string }): void;
   }
 
   interface TokenResponse {
@@ -22,11 +22,15 @@ declare namespace google.accounts.oauth2 {
     error?: string;
   }
 
-  function initTokenClient(config: {
+  interface TokenClientConfig {
     client_id: string;
     scope: string;
     callback: (response: TokenResponse) => void;
-  }): TokenClient;
+    error_callback?: (error: { type: string; message?: string }) => void;
+    prompt?: string;
+  }
+
+  function initTokenClient(config: TokenClientConfig): TokenClient;
 
   function revoke(token: string, callback: () => void): void;
 }

@@ -1,4 +1,4 @@
-import { getAccessToken } from './auth';
+import { getAccessToken, refreshToken } from './auth';
 import { normalizeDate, normalizeAmount, formatAmount, parseAmount } from './parsing';
 import type { Expense, ExpenseFormData } from '../types/expense';
 
@@ -14,10 +14,10 @@ function getConfig() {
 }
 
 async function sheetsRequest(path: string, options: RequestInit = {}) {
-  const token = getAccessToken();
+  let token = getAccessToken();
   if (!token) throw new Error('Not authenticated');
 
-  const res = await fetch(`${SHEETS_API}${path}`, {
+  let res = await fetch(`${SHEETS_API}${path}`, {
     ...options,
     headers: {
       Authorization: `Bearer ${token}`,
@@ -25,6 +25,18 @@ async function sheetsRequest(path: string, options: RequestInit = {}) {
       ...options.headers,
     },
   });
+
+  if (res.status === 401) {
+    token = await refreshToken();
+    res = await fetch(`${SHEETS_API}${path}`, {
+      ...options,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        ...options.headers,
+      },
+    });
+  }
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
