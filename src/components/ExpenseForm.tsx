@@ -5,40 +5,13 @@ import { DateInput } from '@mantine/dates';
 import { IconAlertCircle } from '@tabler/icons-react';
 import { CATEGORIES } from '../types/expense';
 import type { ExpenseFormData } from '../types/expense';
+import { today, toDate, fromDate, toNum, fromNum } from '../services/utils';
 
 interface Props {
   onSubmit: (data: ExpenseFormData) => Promise<void>;
   initial?: ExpenseFormData;
   submitLabel?: string;
   onCancel?: () => void;
-}
-
-function today(): string {
-  return new Date().toISOString().split('T')[0];
-}
-
-function toDate(str: string): Date | null {
-  if (!str) return null;
-  return new Date(str + 'T00:00:00');
-}
-
-function fromDate(d: Date | null): string {
-  if (!d) return '';
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
-
-function toNum(s: string): number | '' {
-  if (!s) return '';
-  const n = parseFloat(s);
-  return isNaN(n) ? '' : n;
-}
-
-function fromNum(n: number | ''): string {
-  if (n === '' || n === undefined) return '';
-  return String(n);
 }
 
 const emptyForm: ExpenseFormData = {

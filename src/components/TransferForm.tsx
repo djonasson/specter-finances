@@ -4,29 +4,13 @@ import { DateInput } from '@mantine/dates';
 import { IconAlertCircle } from '@tabler/icons-react';
 import { PEOPLE } from '../types/transfer';
 import type { Person, TransferFormData } from '../types/transfer';
+import { today, toDate, fromDate } from '../services/utils';
 
 interface Props {
   onSubmit: (data: TransferFormData) => Promise<void>;
   initial?: TransferFormData;
   submitLabel?: string;
   onCancel?: () => void;
-}
-
-function today(): string {
-  return new Date().toISOString().split('T')[0];
-}
-
-function toDate(str: string): Date | null {
-  if (!str) return null;
-  return new Date(str + 'T00:00:00');
-}
-
-function fromDate(d: Date | null): string {
-  if (!d) return '';
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
 }
 
 const emptyForm: TransferFormData = {

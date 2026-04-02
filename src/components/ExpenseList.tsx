@@ -13,7 +13,7 @@ import {
 } from '@mantine/core';
 import { IconSearch, IconEdit, IconTrash } from '@tabler/icons-react';
 import type { Expense, ExpenseFormData } from '../types/expense';
-import { parseAmount } from '../services/sheets';
+import { expenseToFormData } from '../services/utils';
 import { ExpenseForm } from './ExpenseForm';
 import { CategoryIcon } from './CategoryIcon';
 
@@ -65,14 +65,7 @@ export function ExpenseList({ expenses, loading, onUpdate, onDelete, onRefresh }
     }
   };
 
-  const toFormData = (e: Expense): ExpenseFormData => ({
-    date: e.date,
-    amountDaniel: parseAmount(e.amountDaniel),
-    amountManuela: parseAmount(e.amountManuela),
-    item: e.item,
-    category: e.category || 'Various',
-    notes: e.notes,
-  });
+  const toFormData = expenseToFormData;
 
   const toggleExpand = (rowIndex: number) => {
     setExpandedRow((prev) => (prev === rowIndex ? null : rowIndex));

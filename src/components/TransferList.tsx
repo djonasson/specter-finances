@@ -11,8 +11,8 @@ import {
   Stack,
 } from '@mantine/core';
 import { IconSearch, IconEdit, IconTrash } from '@tabler/icons-react';
-import type { Transfer, TransferFormData, Person } from '../types/transfer';
-import { parseAmount } from '../services/sheets';
+import type { Transfer, TransferFormData } from '../types/transfer';
+import { transferFrom, transferAmount, transferToFormData } from '../services/utils';
 import { TransferForm } from './TransferForm';
 
 interface Props {
@@ -26,23 +26,6 @@ interface Props {
 const PAGE_SIZE = 50;
 const TABULAR = { fontVariantNumeric: 'tabular-nums' } as const;
 const NOWRAP = { whiteSpace: 'nowrap' } as const;
-
-function transferFrom(t: Transfer): Person {
-  return t.amountDaniel ? 'Daniel' : 'Manuela';
-}
-
-function transferAmount(t: Transfer): string {
-  return t.amountDaniel || t.amountManuela;
-}
-
-function toFormData(t: Transfer): TransferFormData {
-  const from = transferFrom(t);
-  return {
-    date: t.date,
-    from,
-    amount: parseAmount(from === 'Daniel' ? t.amountDaniel : t.amountManuela),
-  };
-}
 
 export function TransferList({ transfers, loading, onUpdate, onDelete, onRefresh }: Props) {
   const [editingRow, setEditingRow] = useState<number | null>(null);
@@ -114,7 +97,7 @@ export function TransferList({ transfers, loading, onUpdate, onDelete, onRefresh
                 <Table.Tr key={t.rowIndex}>
                   <Table.Td colSpan={4} bg="var(--mantine-color-default-hover)">
                     <TransferForm
-                      initial={toFormData(t)}
+                      initial={transferToFormData(t)}
                       submitLabel="Save"
                       onSubmit={async (data) => {
                         await onUpdate(t.rowIndex, data);

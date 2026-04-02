@@ -25,8 +25,16 @@ import {
 import { Bar, Pie } from 'react-chartjs-2';
 import type { Expense } from '../types/expense';
 import type { Transfer } from '../types/transfer';
-import { parseAmount } from '../services/sheets';
 import { CategoryIcon } from './CategoryIcon';
+import {
+  getAvailableYears,
+  fromDate,
+  fmt,
+  filterByDate,
+  aggregateExpenses,
+  calculateBalance,
+} from '../services/utils';
+import type { FilterMode } from '../services/utils';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, ArcElement, ChartTitle, Tooltip, Legend);
 
@@ -35,44 +43,10 @@ interface Props {
   transfers: Transfer[];
 }
 
-type FilterMode = 'all' | 'last12' | 'year' | 'custom';
-
-function toNumber(formatted: string): number {
-  const raw = parseAmount(formatted);
-  return raw ? parseFloat(raw) : 0;
-}
-
-function getAvailableYears(expenses: Expense[]): number[] {
-  const years = new Set<number>();
-  for (const e of expenses) {
-    const y = parseInt(e.date.slice(0, 4), 10);
-    if (!isNaN(y)) years.add(y);
-  }
-  return Array.from(years).sort((a, b) => b - a);
-}
-
-function monthsAgo(n: number): string {
-  const d = new Date();
-  d.setMonth(d.getMonth() - n);
-  return d.toISOString().split('T')[0];
-}
-
-function toDateStr(d: Date | null): string {
-  if (!d) return '';
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
-
 const COLORS = [
   '#4e79a7', '#f28e2b', '#e15759', '#76b7b2', '#59a14f', '#edc948',
   '#b07aa1', '#ff9da7', '#9c755f', '#bab0ac',
 ];
-
-function fmt(n: number): string {
-  return n.toLocaleString('en-US', { minimumFractionDigits: 2 });
-}
 
 export function Dashboard({ expenses, transfers }: Props) {
   const [mode, setMode] = useState<FilterMode>('last12');
@@ -82,85 +56,25 @@ export function Dashboard({ expenses, transfers }: Props) {
 
   const availableYears = useMemo(() => getAvailableYears(expenses), [expenses]);
 
-  const filtered = useMemo(() => {
-    switch (mode) {
-      case 'all':
-        return expenses;
-      case 'last12': {
-        const cutoff = monthsAgo(12);
-        return expenses.filter((e) => e.date >= cutoff);
-      }
-      case 'year':
-        return expenses.filter((e) => e.date.startsWith(selectedYear));
-      case 'custom': {
-        const from = toDateStr(customFrom);
-        const to = toDateStr(customTo);
-        return expenses.filter((e) => {
-          if (from && e.date < from) return false;
-          if (to && e.date > to) return false;
-          return true;
-        });
-      }
-    }
-  }, [expenses, mode, selectedYear, customFrom, customTo]);
+  const filterParams = useMemo(() => ({
+    mode,
+    selectedYear,
+    customFrom: fromDate(customFrom),
+    customTo: fromDate(customTo),
+  }), [mode, selectedYear, customFrom, customTo]);
 
-  const filteredTransfers = useMemo(() => {
-    switch (mode) {
-      case 'all':
-        return transfers;
-      case 'last12': {
-        const cutoff = monthsAgo(12);
-        return transfers.filter((t) => t.date >= cutoff);
-      }
-      case 'year':
-        return transfers.filter((t) => t.date.startsWith(selectedYear));
-      case 'custom': {
-        const from = toDateStr(customFrom);
-        const to = toDateStr(customTo);
-        return transfers.filter((t) => {
-          if (from && t.date < from) return false;
-          if (to && t.date > to) return false;
-          return true;
-        });
-      }
-    }
-  }, [transfers, mode, selectedYear, customFrom, customTo]);
+  const filtered = useMemo(
+    () => filterByDate(expenses, filterParams),
+    [expenses, filterParams],
+  );
 
-  let totalDaniel = 0;
-  let totalManuela = 0;
-  const byCategory: Record<string, { daniel: number; manuela: number }> = {};
-  const byMonth: Record<string, { daniel: number; manuela: number }> = {};
+  const filteredTransfers = useMemo(
+    () => filterByDate(transfers, filterParams),
+    [transfers, filterParams],
+  );
 
-  for (const e of filtered) {
-    const d = toNumber(e.amountDaniel);
-    const m = toNumber(e.amountManuela);
-    totalDaniel += d;
-    totalManuela += m;
-
-    const cat = e.category || 'Other';
-    if (!byCategory[cat]) byCategory[cat] = { daniel: 0, manuela: 0 };
-    byCategory[cat].daniel += d;
-    byCategory[cat].manuela += m;
-
-    const month = e.date.slice(0, 7);
-    if (month) {
-      if (!byMonth[month]) byMonth[month] = { daniel: 0, manuela: 0 };
-      byMonth[month].daniel += d;
-      byMonth[month].manuela += m;
-    }
-  }
-
-  let transferDaniel = 0;
-  let transferManuela = 0;
-  for (const t of filteredTransfers) {
-    transferDaniel += toNumber(t.amountDaniel);
-    transferManuela += toNumber(t.amountManuela);
-  }
-  // Adjusted delta: spending difference minus transfer difference
-  // If Daniel spent more but also transferred money, his surplus shrinks
-  const adjustedDeltaDaniel = (totalDaniel - totalManuela) - (transferDaniel - transferManuela);
-  const adjustedDeltaManuela = -adjustedDeltaDaniel || 0;
-  const netTransfer = transferDaniel - transferManuela;
+  const { totalDaniel, totalManuela, byCategory, byMonth } = aggregateExpenses(filtered);
+  const { adjustedDeltaDaniel, adjustedDeltaManuela, netTransfer } = calculateBalance(filtered, filteredTransfers);
 
   const categoryLabels = Object.keys(byCategory).sort();
   const categoryTotals = categoryLabels.map(
