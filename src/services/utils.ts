@@ -163,7 +163,9 @@ export function calculateBalance(expenses: Expense[], transfers: Transfer[]): Ba
     transferManuela += toNumber(t.amountManuela);
   }
 
-  const adjustedDeltaDaniel = (totalDaniel - totalManuela) - (transferDaniel - transferManuela);
+  // Expenses are shared (50/50), so the raw delta is 2× the per-person owed amount.
+  // Transfers are direct payments at face value, so they must be doubled to match the display scale.
+  const adjustedDeltaDaniel = (totalDaniel - totalManuela) + 2 * (transferDaniel - transferManuela);
   const adjustedDeltaManuela = -adjustedDeltaDaniel || 0;
   const netTransfer = transferDaniel - transferManuela;
 

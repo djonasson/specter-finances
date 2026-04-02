@@ -423,38 +423,51 @@ describe('calculateBalance', () => {
     expect(result.adjustedDeltaManuela).toBe(-200);
   });
 
-  it('transfer from Daniel reduces his surplus', () => {
+  // The transfer column means "this person SENT money to the other".
+  // Sending money increases the sender's effective contribution.
+  // Formula: adjustedDelta = (spentD - spentM) + (transferD - transferM)
+
+  // Expenses are shared 50/50, so the raw spending delta is 2× the per-person owed amount.
+  // Transfers are direct payments at face value → doubled in the display scale.
+
+  it('transfer from person who spent less (settling up) reduces delta by 2x', () => {
+    // Daniel spent €200 more. Manuela settles up by transferring €50 to Daniel.
     const expenses = [makeExpense({ amountDaniel: '€300.00', amountManuela: '€100.00' })];
-    const transfers = [makeTransfer({ amountDaniel: '€50.00' })];
+    const transfers = [makeTransfer({ amountManuela: '€50.00' })];
     const result = calculateBalance(expenses, transfers);
-    expect(result.adjustedDeltaDaniel).toBe(150);
-    expect(result.adjustedDeltaManuela).toBe(-150);
-    expect(result.netTransfer).toBe(50);
+    // 200 + 2*(0-50) = 100
+    expect(result.adjustedDeltaDaniel).toBe(100);
+    expect(result.adjustedDeltaManuela).toBe(-100);
   });
 
-  it('transfer from Manuela increases Daniel surplus', () => {
+  it('transfer from person who spent more increases delta by 2x', () => {
+    // Daniel spent €200 more AND gives Manuela €80 cash.
     const expenses = [makeExpense({ amountDaniel: '€300.00', amountManuela: '€100.00' })];
-    const transfers = [makeTransfer({ amountManuela: '€80.00' })];
+    const transfers = [makeTransfer({ amountDaniel: '€80.00' })];
     const result = calculateBalance(expenses, transfers);
-    // Spending delta: 200. Transfer delta: 0-80 = -80. Adjusted: 200-(-80) = 280
-    expect(result.adjustedDeltaDaniel).toBe(280);
-    expect(result.adjustedDeltaManuela).toBe(-280);
+    // 200 + 2*(80-0) = 360
+    expect(result.adjustedDeltaDaniel).toBe(360);
+    expect(result.adjustedDeltaManuela).toBe(-360);
   });
 
-  it('transfer fully balances spending', () => {
-    const expenses = [makeExpense({ amountDaniel: '€200.00', amountManuela: '€100.00' })];
-    const transfers = [makeTransfer({ amountDaniel: '€100.00' })];
+  it('exact settlement zeroes the delta', () => {
+    // spentD=300, spentM=100. Delta=200. Settlement=100. Manuela transfers €100.
+    // 200 + 2*(0-100) = 0
+    const expenses = [makeExpense({ amountDaniel: '€300.00', amountManuela: '€100.00' })];
+    const transfers = [makeTransfer({ amountManuela: '€100.00' })];
     const result = calculateBalance(expenses, transfers);
     expect(result.adjustedDeltaDaniel).toBe(0);
     expect(result.adjustedDeltaManuela).toBe(0);
   });
 
   it('transfer can overshoot, flipping the delta', () => {
-    const expenses = [makeExpense({ amountDaniel: '€200.00', amountManuela: '€100.00' })];
-    const transfers = [makeTransfer({ amountDaniel: '€150.00' })];
+    // Spending delta €200, settlement €100. Manuela transfers €150 (overpays by €50).
+    const expenses = [makeExpense({ amountDaniel: '€300.00', amountManuela: '€100.00' })];
+    const transfers = [makeTransfer({ amountManuela: '€150.00' })];
     const result = calculateBalance(expenses, transfers);
-    expect(result.adjustedDeltaDaniel).toBe(-50);
-    expect(result.adjustedDeltaManuela).toBe(50);
+    // 200 + 2*(0-150) = -100
+    expect(result.adjustedDeltaDaniel).toBe(-100);
+    expect(result.adjustedDeltaManuela).toBe(100);
   });
 
   it('multiple expenses and multiple transfers', () => {
@@ -464,15 +477,15 @@ describe('calculateBalance', () => {
       makeExpense({ amountDaniel: '€200.00', amountManuela: '€75.00' }),
     ];
     const transfers = [
-      makeTransfer({ amountDaniel: '€30.00' }),
-      makeTransfer({ amountManuela: '€20.00' }),
+      makeTransfer({ amountDaniel: '€30.00' }),   // Daniel sends €30
+      makeTransfer({ amountManuela: '€20.00' }),   // Manuela sends €20
     ];
     const result = calculateBalance(expenses, transfers);
     expect(result.totalDaniel).toBe(300);
     expect(result.totalManuela).toBe(125);
-    // Spending delta: 175. Transfer delta: 30-20 = 10. Adjusted: 165
-    expect(result.adjustedDeltaDaniel).toBe(165);
-    expect(result.adjustedDeltaManuela).toBe(-165);
+    // Spending delta: 175. Transfer: 2*(30-20) = +20. Adjusted: 195
+    expect(result.adjustedDeltaDaniel).toBe(195);
+    expect(result.adjustedDeltaManuela).toBe(-195);
     expect(result.netTransfer).toBe(10);
   });
 
@@ -483,20 +496,22 @@ describe('calculateBalance', () => {
     expect(result.adjustedDeltaManuela).toBe(250);
   });
 
-  it('Manuela spending more with her own transfer', () => {
+  it('Manuela spending more, Daniel settles up with transfer', () => {
+    // Manuela spent €250 more. Daniel transfers €100 to settle up.
     const expenses = [makeExpense({ amountDaniel: '€50.00', amountManuela: '€300.00' })];
-    const transfers = [makeTransfer({ amountManuela: '€100.00' })];
+    const transfers = [makeTransfer({ amountDaniel: '€100.00' })];
     const result = calculateBalance(expenses, transfers);
-    // Spending delta: -250. Transfer delta: -100. Adjusted: -250-(-100) = -150
-    expect(result.adjustedDeltaDaniel).toBe(-150);
-    expect(result.adjustedDeltaManuela).toBe(150);
+    // -250 + 2*(100-0) = -50
+    expect(result.adjustedDeltaDaniel).toBe(-50);
+    expect(result.adjustedDeltaManuela).toBe(50);
   });
 
-  it('only transfers, no expenses', () => {
+  it('only transfers, no expenses — sender is ahead by 2x', () => {
     const transfers = [makeTransfer({ amountDaniel: '€100.00' })];
     const result = calculateBalance([], transfers);
-    expect(result.adjustedDeltaDaniel).toBe(-100);
-    expect(result.adjustedDeltaManuela).toBe(100);
+    // 0 + 2*(100-0) = 200
+    expect(result.adjustedDeltaDaniel).toBe(200);
+    expect(result.adjustedDeltaManuela).toBe(-200);
     expect(result.netTransfer).toBe(100);
   });
 
@@ -536,6 +551,17 @@ describe('calculateBalance', () => {
     expect(result.adjustedDeltaDaniel).toBe(0);
     expect(result.adjustedDeltaManuela).toBe(0);
     expect(result.netTransfer).toBe(0);
+  });
+
+  it('user scenario: €6,086.38 delta, Manuela transfers €300', () => {
+    const expenses = [
+      makeExpense({ amountDaniel: '€8,043.19', amountManuela: '€1,956.81' }),
+    ];
+    const transfers = [makeTransfer({ amountManuela: '€300.00' })];
+    const result = calculateBalance(expenses, transfers);
+    // 6086.38 + 2*(0-300) = 5486.38
+    expect(result.adjustedDeltaDaniel).toBeCloseTo(5486.38, 2);
+    expect(result.adjustedDeltaManuela).toBeCloseTo(-5486.38, 2);
   });
 
   it('with no transfers, delta equals raw spending difference', () => {
