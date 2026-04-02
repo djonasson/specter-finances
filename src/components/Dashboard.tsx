@@ -49,7 +49,7 @@ const COLORS = [
 ];
 
 export function Dashboard({ expenses, transfers }: Props) {
-  const [mode, setMode] = useState<FilterMode>('last12');
+  const [mode, setMode] = useState<FilterMode>('all');
   const [selectedYear, setSelectedYear] = useState(() => String(new Date().getFullYear()));
   const [customFrom, setCustomFrom] = useState<Date | null>(null);
   const [customTo, setCustomTo] = useState<Date | null>(null);
