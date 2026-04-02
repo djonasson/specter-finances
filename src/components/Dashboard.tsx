@@ -24,6 +24,7 @@ import {
 } from 'chart.js';
 import { Bar, Pie } from 'react-chartjs-2';
 import type { Expense } from '../types/expense';
+import type { Transfer } from '../types/transfer';
 import { parseAmount } from '../services/sheets';
 import { CategoryIcon } from './CategoryIcon';
 
@@ -31,6 +32,7 @@ ChartJS.register(CategoryScale, LinearScale, BarElement, ArcElement, ChartTitle,
 
 interface Props {
   expenses: Expense[];
+  transfers: Transfer[];
 }
 
 type FilterMode = 'all' | 'last12' | 'year' | 'custom';
@@ -72,7 +74,7 @@ function fmt(n: number): string {
   return n.toLocaleString('en-US', { minimumFractionDigits: 2 });
 }
 
-export function Dashboard({ expenses }: Props) {
+export function Dashboard({ expenses, transfers }: Props) {
   const [mode, setMode] = useState<FilterMode>('last12');
   const [selectedYear, setSelectedYear] = useState(() => String(new Date().getFullYear()));
   const [customFrom, setCustomFrom] = useState<Date | null>(null);
@@ -102,6 +104,28 @@ export function Dashboard({ expenses }: Props) {
     }
   }, [expenses, mode, selectedYear, customFrom, customTo]);
 
+  const filteredTransfers = useMemo(() => {
+    switch (mode) {
+      case 'all':
+        return transfers;
+      case 'last12': {
+        const cutoff = monthsAgo(12);
+        return transfers.filter((t) => t.date >= cutoff);
+      }
+      case 'year':
+        return transfers.filter((t) => t.date.startsWith(selectedYear));
+      case 'custom': {
+        const from = toDateStr(customFrom);
+        const to = toDateStr(customTo);
+        return transfers.filter((t) => {
+          if (from && t.date < from) return false;
+          if (to && t.date > to) return false;
+          return true;
+        });
+      }
+    }
+  }, [transfers, mode, selectedYear, customFrom, customTo]);
+
   let totalDaniel = 0;
   let totalManuela = 0;
   const byCategory: Record<string, { daniel: number; manuela: number }> = {};
@@ -125,6 +149,18 @@ export function Dashboard({ expenses }: Props) {
       byMonth[month].manuela += m;
     }
   }
+
+  let transferDaniel = 0;
+  let transferManuela = 0;
+  for (const t of filteredTransfers) {
+    transferDaniel += toNumber(t.amountDaniel);
+    transferManuela += toNumber(t.amountManuela);
+  }
+  // Adjusted delta: spending difference minus transfer difference
+  // If Daniel spent more but also transferred money, his surplus shrinks
+  const adjustedDeltaDaniel = (totalDaniel - totalManuela) - (transferDaniel - transferManuela);
+  const adjustedDeltaManuela = -adjustedDeltaDaniel || 0;
+  const netTransfer = transferDaniel - transferManuela;
 
   const categoryLabels = Object.keys(byCategory).sort();
   const categoryTotals = categoryLabels.map(
@@ -280,8 +316,8 @@ export function Dashboard({ expenses }: Props) {
                 <Table.Td>Daniel</Table.Td>
                 <Table.Td ta="right" style={{ fontVariantNumeric: 'tabular-nums' }}>€{fmt(totalDaniel)}</Table.Td>
                 <Table.Td ta="right">
-                  <Text span c={totalDaniel >= totalManuela ? 'green' : 'red'} style={{ fontVariantNumeric: 'tabular-nums' }}>
-                    {totalDaniel >= totalManuela ? '+' : ''}€{fmt(totalDaniel - totalManuela)}
+                  <Text span c={adjustedDeltaDaniel >= 0 ? 'green' : 'red'} style={{ fontVariantNumeric: 'tabular-nums' }}>
+                    {adjustedDeltaDaniel >= 0 ? '+' : ''}€{fmt(adjustedDeltaDaniel)}
                   </Text>
                 </Table.Td>
               </Table.Tr>
@@ -289,8 +325,8 @@ export function Dashboard({ expenses }: Props) {
                 <Table.Td>Manuela</Table.Td>
                 <Table.Td ta="right" style={{ fontVariantNumeric: 'tabular-nums' }}>€{fmt(totalManuela)}</Table.Td>
                 <Table.Td ta="right">
-                  <Text span c={totalManuela >= totalDaniel ? 'green' : 'red'} style={{ fontVariantNumeric: 'tabular-nums' }}>
-                    {totalManuela >= totalDaniel ? '+' : ''}€{fmt(totalManuela - totalDaniel)}
+                  <Text span c={adjustedDeltaManuela >= 0 ? 'green' : 'red'} style={{ fontVariantNumeric: 'tabular-nums' }}>
+                    {adjustedDeltaManuela >= 0 ? '+' : ''}€{fmt(adjustedDeltaManuela)}
                   </Text>
                 </Table.Td>
               </Table.Tr>
@@ -299,6 +335,15 @@ export function Dashboard({ expenses }: Props) {
                 <Table.Td ta="right" fw={600} style={{ fontVariantNumeric: 'tabular-nums' }}>€{fmt(totalDaniel + totalManuela)}</Table.Td>
                 <Table.Td />
               </Table.Tr>
+              {netTransfer !== 0 && (
+                <Table.Tr>
+                  <Table.Td colSpan={3}>
+                    <Text size="sm" c="dimmed" ta="center">
+                      Transfers: {netTransfer > 0 ? 'Daniel → Manuela' : 'Manuela → Daniel'} €{fmt(Math.abs(netTransfer))}
+                    </Text>
+                  </Table.Td>
+                </Table.Tr>
+              )}
             </Table.Tbody>
           </Table>
         </Card>

@@ -1,6 +1,7 @@
 import { getAccessToken, refreshToken } from './auth';
 import { normalizeDate, normalizeAmount, formatAmount, parseAmount } from './parsing';
 import type { Expense, ExpenseFormData } from '../types/expense';
+import type { Transfer, TransferFormData } from '../types/transfer';
 
 export { parseAmount };
 
@@ -123,9 +124,9 @@ export async function updateExpense(
   );
 }
 
-/** Delete an expense row by clearing it and then removing it via batchUpdate */
-export async function deleteExpense(rowIndex: number): Promise<void> {
-  const { spreadsheetId, sheetName } = getConfig();
+/** Delete a row via batchUpdate deleteDimension */
+async function deleteRow(sheetName: string, rowIndex: number): Promise<void> {
+  const { spreadsheetId } = getConfig();
 
   const spreadsheet = await sheetsRequest(`/${spreadsheetId}?fields=sheets.properties`);
   const sheet = spreadsheet.sheets.find(
@@ -151,4 +152,73 @@ export async function deleteExpense(rowIndex: number): Promise<void> {
       ],
     }),
   });
+}
+
+/** Delete an expense row */
+export async function deleteExpense(rowIndex: number): Promise<void> {
+  const { sheetName } = getConfig();
+  await deleteRow(sheetName, rowIndex);
+}
+
+// ── Transfers ──────────────────────────────────────────────
+
+const TRANSFERS_SHEET = 'Transfers';
+
+function transferRow(form: TransferFormData): string[] {
+  const danielAmt = form.from === 'Daniel' ? formatAmount(form.amount) : '';
+  const manuelaAmt = form.from === 'Manuela' ? formatAmount(form.amount) : '';
+  return [form.date, danielAmt, manuelaAmt];
+}
+
+/** Fetch all transfer rows from the Transfers sheet */
+export async function fetchTransfers(): Promise<Transfer[]> {
+  const { spreadsheetId } = getConfig();
+  const range = encodeURIComponent(`${TRANSFERS_SHEET}!A2:C`);
+  const data = await sheetsRequest(
+    `/${spreadsheetId}/values/${range}?valueRenderOption=UNFORMATTED_VALUE`
+  );
+
+  const rows: unknown[][] = data.values || [];
+  return rows.map((row, i) => ({
+    rowIndex: i + 2,
+    date: normalizeDate(row[0]),
+    amountDaniel: normalizeAmount(row[1]),
+    amountManuela: normalizeAmount(row[2]),
+  }));
+}
+
+/** Append a new transfer row */
+export async function addTransfer(form: TransferFormData): Promise<void> {
+  const { spreadsheetId } = getConfig();
+  const range = encodeURIComponent(`${TRANSFERS_SHEET}!A:C`);
+
+  await sheetsRequest(
+    `/${spreadsheetId}/values/${range}:append?valueInputOption=USER_ENTERED`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ values: [transferRow(form)] }),
+    }
+  );
+}
+
+/** Update an existing transfer row */
+export async function updateTransfer(
+  rowIndex: number,
+  form: TransferFormData
+): Promise<void> {
+  const { spreadsheetId } = getConfig();
+  const range = encodeURIComponent(`${TRANSFERS_SHEET}!A${rowIndex}:C${rowIndex}`);
+
+  await sheetsRequest(
+    `/${spreadsheetId}/values/${range}?valueInputOption=USER_ENTERED`,
+    {
+      method: 'PUT',
+      body: JSON.stringify({ values: [transferRow(form)] }),
+    }
+  );
+}
+
+/** Delete a transfer row */
+export async function deleteTransfer(rowIndex: number): Promise<void> {
+  await deleteRow(TRANSFERS_SHEET, rowIndex);
 }

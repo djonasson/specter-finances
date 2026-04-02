@@ -17,12 +17,15 @@ import {
   Box,
   Notification,
   Transition,
+  Tabs,
 } from '@mantine/core';
-import { IconAlertCircle, IconCheck, IconSettings, IconLayoutDashboard, IconPlus, IconList } from '@tabler/icons-react';
+import { IconAlertCircle, IconCheck, IconSettings, IconLayoutDashboard, IconPlus, IconList, IconArrowsExchange } from '@tabler/icons-react';
 import { useAuth } from './hooks/AuthContext';
 import { useExpensesContext } from './hooks/ExpensesContext';
 import { ExpenseForm } from './components/ExpenseForm';
 import { ExpenseList } from './components/ExpenseList';
+import { TransferForm } from './components/TransferForm';
+import { TransferList } from './components/TransferList';
 import { Dashboard } from './components/Dashboard';
 import { ThemeToggle } from './components/ThemeToggle';
 import { ThemeSettings } from './components/ThemeSettings';
@@ -54,7 +57,11 @@ function BottomNavItem({ to, icon, label }: { to: string; icon: React.ReactNode;
 
 function AuthenticatedApp() {
   const { signOut } = useAuth();
-  const { expenses, loading, error, load, add, update, remove } = useExpensesContext();
+  const {
+    expenses, loading, error, load, add, update, remove,
+    transfers, transfersLoading, transfersError, loadTransfers,
+    addTransfer, updateTransfer, removeTransfer,
+  } = useExpensesContext();
   const [settingsOpened, setSettingsOpened] = useState(false);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const location = useLocation();
@@ -62,7 +69,8 @@ function AuthenticatedApp() {
 
   useEffect(() => {
     load();
-  }, [load, location.pathname]);
+    loadTransfers();
+  }, [load, loadTransfers, location.pathname]);
 
   // Auto-dismiss success message
   useEffect(() => {
@@ -88,6 +96,23 @@ function AuthenticatedApp() {
     [remove],
   );
 
+  const addTransferAndRedirect = useCallback(
+    async (form: Parameters<typeof addTransfer>[0]) => {
+      await addTransfer(form);
+      navigate('/transfers');
+      setSuccessMsg('Transfer added');
+    },
+    [addTransfer, navigate],
+  );
+
+  const removeTransferWithNotify = useCallback(
+    async (rowIndex: number) => {
+      await removeTransfer(rowIndex);
+      setSuccessMsg('Transfer deleted');
+    },
+    [removeTransfer],
+  );
+
   return (
     <AppShell header={{ height: 56 }} padding="md">
       <AppShell.Header>
@@ -110,9 +135,9 @@ function AuthenticatedApp() {
       </AppShell.Header>
 
       <AppShell.Main>
-        {error && (
+        {(error || transfersError) && (
           <Alert color="red" icon={<IconAlertCircle size={16} />} mb="md">
-            {error}
+            {error || transfersError}
           </Alert>
         )}
 
@@ -122,10 +147,10 @@ function AuthenticatedApp() {
             element={
               <>
                 <Title order={2} mb="md">Dashboard</Title>
-                {loading ? (
+                {loading || transfersLoading ? (
                   <Center py="xl"><Loader /></Center>
                 ) : (
-                  <Dashboard expenses={expenses} />
+                  <Dashboard expenses={expenses} transfers={transfers} />
                 )}
               </>
             }
@@ -134,8 +159,19 @@ function AuthenticatedApp() {
             path="/add"
             element={
               <>
-                <Title order={2} mb="md">Add Expense</Title>
-                <ExpenseForm onSubmit={addAndRedirect} />
+                <Title order={2} mb="md">Add</Title>
+                <Tabs defaultValue="expense">
+                  <Tabs.List>
+                    <Tabs.Tab value="expense">Expense</Tabs.Tab>
+                    <Tabs.Tab value="transfer">Transfer</Tabs.Tab>
+                  </Tabs.List>
+                  <Tabs.Panel value="expense" pt="md">
+                    <ExpenseForm onSubmit={addAndRedirect} />
+                  </Tabs.Panel>
+                  <Tabs.Panel value="transfer" pt="md">
+                    <TransferForm onSubmit={addTransferAndRedirect} />
+                  </Tabs.Panel>
+                </Tabs>
               </>
             }
           />
@@ -150,6 +186,21 @@ function AuthenticatedApp() {
                   onUpdate={update}
                   onDelete={removeWithNotify}
                   onRefresh={load}
+                />
+              </>
+            }
+          />
+          <Route
+            path="/transfers"
+            element={
+              <>
+                <Title order={2} mb="md">Transfers</Title>
+                <TransferList
+                  transfers={transfers}
+                  loading={transfersLoading}
+                  onUpdate={updateTransfer}
+                  onDelete={removeTransferWithNotify}
+                  onRefresh={loadTransfers}
                 />
               </>
             }
@@ -173,7 +224,8 @@ function AuthenticatedApp() {
       >
         <BottomNavItem to="/" icon={<IconLayoutDashboard size={22} />} label="Dashboard" />
         <BottomNavItem to="/add" icon={<IconPlus size={22} />} label="Add" />
-        <BottomNavItem to="/list" icon={<IconList size={22} />} label="List" />
+        <BottomNavItem to="/list" icon={<IconList size={22} />} label="Expenses" />
+        <BottomNavItem to="/transfers" icon={<IconArrowsExchange size={22} />} label="Transfers" />
       </Box>
 
       <Transition mounted={!!successMsg} transition="slide-down" duration={200}>
