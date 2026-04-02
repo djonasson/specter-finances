@@ -10,8 +10,10 @@ import {
   Table,
   Text,
   Stack,
+  UnstyledButton,
 } from '@mantine/core';
 import { DateInput } from '@mantine/dates';
+import { IconArrowUp, IconArrowDown, IconArrowsSort } from '@tabler/icons-react';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -53,6 +55,24 @@ export function Dashboard({ expenses, transfers }: Props) {
   const [selectedYear, setSelectedYear] = useState(() => String(new Date().getFullYear()));
   const [customFrom, setCustomFrom] = useState<Date | null>(null);
   const [customTo, setCustomTo] = useState<Date | null>(null);
+
+  type SortCol = 'category' | 'daniel' | 'manuela' | 'total';
+  const [sortCol, setSortCol] = useState<SortCol>('total');
+  const [sortAsc, setSortAsc] = useState(false);
+
+  const toggleSort = (col: SortCol) => {
+    if (sortCol === col) {
+      setSortAsc((a) => !a);
+    } else {
+      setSortCol(col);
+      setSortAsc(col === 'category'); // alphabetical ascending by default, amounts descending
+    }
+  };
+
+  const sortIcon = (col: SortCol) =>
+    sortCol === col
+      ? sortAsc ? <IconArrowUp size={14} /> : <IconArrowDown size={14} />
+      : <IconArrowsSort size={14} style={{ opacity: 0.3 }} />;
 
   const availableYears = useMemo(() => getAvailableYears(expenses), [expenses]);
 
@@ -283,14 +303,47 @@ export function Dashboard({ expenses, transfers }: Props) {
           <Table>
             <Table.Thead>
               <Table.Tr>
-                <Table.Th>Category</Table.Th>
-                <Table.Th ta="right">Daniel</Table.Th>
-                <Table.Th ta="right">Manuela</Table.Th>
-                <Table.Th ta="right">Total</Table.Th>
+                <Table.Th>
+                  <UnstyledButton onClick={() => toggleSort('category')} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    Category {sortIcon('category')}
+                  </UnstyledButton>
+                </Table.Th>
+                <Table.Th ta="right">
+                  <UnstyledButton onClick={() => toggleSort('daniel')} style={{ display: 'flex', alignItems: 'center', gap: 4, marginLeft: 'auto' }}>
+                    Daniel {sortIcon('daniel')}
+                  </UnstyledButton>
+                </Table.Th>
+                <Table.Th ta="right">
+                  <UnstyledButton onClick={() => toggleSort('manuela')} style={{ display: 'flex', alignItems: 'center', gap: 4, marginLeft: 'auto' }}>
+                    Manuela {sortIcon('manuela')}
+                  </UnstyledButton>
+                </Table.Th>
+                <Table.Th ta="right">
+                  <UnstyledButton onClick={() => toggleSort('total')} style={{ display: 'flex', alignItems: 'center', gap: 4, marginLeft: 'auto' }}>
+                    Total {sortIcon('total')}
+                  </UnstyledButton>
+                </Table.Th>
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
-              {categoryLabels.map((cat) => (
+              {[...categoryLabels].sort((a, b) => {
+                let cmp: number;
+                switch (sortCol) {
+                  case 'category':
+                    cmp = a.localeCompare(b);
+                    break;
+                  case 'daniel':
+                    cmp = byCategory[a].daniel - byCategory[b].daniel;
+                    break;
+                  case 'manuela':
+                    cmp = byCategory[a].manuela - byCategory[b].manuela;
+                    break;
+                  case 'total':
+                    cmp = (byCategory[a].daniel + byCategory[a].manuela) - (byCategory[b].daniel + byCategory[b].manuela);
+                    break;
+                }
+                return sortAsc ? cmp : -cmp;
+              }).map((cat) => (
                 <Table.Tr key={cat}>
                   <Table.Td>
                     <Group gap={4} wrap="nowrap">
