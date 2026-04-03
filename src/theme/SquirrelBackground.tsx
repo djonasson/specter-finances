@@ -576,7 +576,8 @@ export function SquirrelBackground() {
       const sizeFactor = parentSize / 40; // ~1 for medium, ~2 for mega
       const count = Math.floor((2 + Math.random() * 3) * sizeFactor);
       for (let i = 0; i < count; i++) {
-        const w = 6 + Math.random() * (parentSize * 0.4);
+        // Cap chunk size below the shatter threshold so they don't chain-react
+        const w = 6 + Math.random() * Math.min(parentSize * 0.4, 28);
         const melt = 80 + Math.random() * 200;
         const speed = (2 + Math.random() * 5) * Math.min(sizeFactor, 1.5);
         const launchAngle = -Math.PI * (0.1 + Math.random() * 0.7);
