@@ -115,7 +115,18 @@ interface Acorn {
   rotSpeed: number;
 }
 
-type Mood = 'neutral' | 'happy' | 'annoyed';
+interface IceBlock {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  meltTimer: number; // frames until fully melted
+  maxMelt: number;
+  falling: boolean;
+  fallSpeed: number;
+}
+
+type Mood = 'neutral' | 'happy' | 'annoyed' | 'anxious' | 'flattened';
 
 interface Squirrel {
   x: number;
@@ -169,6 +180,11 @@ function drawSquirrel(ctx: CanvasRenderingContext2D, x: number, y: number, facin
   ctx.save();
   ctx.translate(x, y);
   if (!facingRight) ctx.scale(-1, 1);
+  if (mood === 'flattened') {
+    // Squash vertically, stretch horizontally
+    ctx.scale(1.8, 0.3);
+    ctx.translate(0, 20); // shift down so feet stay on ground
+  }
   const fur = isDark ? '#A0764A' : '#8B5E3C';
   const furDark = isDark ? '#7A5630' : '#6B4428';
   const belly = isDark ? '#D4B896' : '#C4A882';
@@ -232,6 +248,15 @@ function drawSquirrel(ctx: CanvasRenderingContext2D, x: number, y: number, facin
     p.lineTo(-8, -8);
     p.closePath();
     drawStripedTail(p);
+  } else if (mood === 'anxious') {
+    // Stiff, bristled tail — trembles slightly
+    const t = Math.sin(frame * 0.6) * 2;
+    const p = new Path2D();
+    p.moveTo(-12, -4);
+    p.bezierCurveTo(-22 + t, -24, -28 + t, -40, -16 + t, -48);
+    p.bezierCurveTo(-8 + t, -50, -5, -30, -9, -10);
+    p.closePath();
+    drawStripedTail(p);
   } else {
     const p = new Path2D();
     p.moveTo(-12, -4);
@@ -256,8 +281,8 @@ function drawSquirrel(ctx: CanvasRenderingContext2D, x: number, y: number, facin
   ctx.beginPath();
   ctx.arc(12, -12, 8, 0, Math.PI * 2);
   ctx.fill();
-  // Ears — flatten when annoyed
-  if (mood === 'annoyed') {
+  // Ears — flatten when annoyed/anxious/flattened
+  if (mood === 'annoyed' || mood === 'anxious' || mood === 'flattened') {
     ctx.beginPath();
     ctx.ellipse(9, -19, 4, 2.5, -0.6, 0, Math.PI * 2);
     ctx.fill();
@@ -324,6 +349,39 @@ function drawSquirrel(ctx: CanvasRenderingContext2D, x: number, y: number, facin
     ctx.moveTo(12, -18);
     ctx.lineTo(17, -17);
     ctx.stroke();
+  } else if (mood === 'flattened') {
+    // Dazed: X eyes
+    ctx.strokeStyle = '#111';
+    ctx.lineWidth = 1.5;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(13, -16);
+    ctx.lineTo(17, -12);
+    ctx.moveTo(17, -16);
+    ctx.lineTo(13, -12);
+    ctx.stroke();
+  } else if (mood === 'anxious') {
+    // Wide trembling eye
+    const tremble = Math.sin(frame * 0.8) * 0.5;
+    ctx.fillStyle = '#111';
+    ctx.beginPath();
+    ctx.arc(15 + tremble, -14, 2.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.arc(15.5 + tremble, -14.5, 1, 0, Math.PI * 2);
+    ctx.fill();
+    // Worry lines above eye
+    ctx.strokeStyle = fur;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(13, -18);
+    ctx.lineTo(17, -18.5);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(13, -19.5);
+    ctx.lineTo(17, -20);
+    ctx.stroke();
   } else {
     ctx.fillStyle = '#111';
     ctx.beginPath();
@@ -355,6 +413,27 @@ function drawSquirrel(ctx: CanvasRenderingContext2D, x: number, y: number, facin
     ctx.beginPath();
     ctx.moveTo(10, 4);
     ctx.lineTo(16, 0);
+    ctx.stroke();
+  } else if (mood === 'anxious') {
+    // Hands up in panic, trembling
+    const t = Math.sin(frame * 1.2) * 1;
+    ctx.beginPath();
+    ctx.moveTo(6, -2);
+    ctx.lineTo(14 + t, -8 + t);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(8, 2);
+    ctx.lineTo(16 + t, -4 + t);
+    ctx.stroke();
+  } else if (mood === 'flattened') {
+    // Arms splayed out
+    ctx.beginPath();
+    ctx.moveTo(6, 2);
+    ctx.lineTo(20, 6);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(-6, 2);
+    ctx.lineTo(-18, 6);
     ctx.stroke();
   } else {
     ctx.beginPath();
@@ -442,6 +521,87 @@ function drawSpeechBubble(ctx: CanvasRenderingContext2D, x: number, y: number, t
   ctx.restore();
 }
 
+function drawIceBlock(ctx: CanvasRenderingContext2D, ice: IceBlock, isDark: boolean) {
+  const meltProgress = 1 - ice.meltTimer / ice.maxMelt;
+  const shrink = meltProgress * 0.6;
+  const w = ice.width * (1 - shrink);
+  const h = ice.height * (1 - shrink);
+  const cx = ice.x;
+  const by = ice.y; // bottom of ice
+
+  ctx.save();
+  ctx.globalAlpha = 0.4 + 0.6 * (1 - meltProgress);
+
+  // Irregular ice shape (jagged polygon)
+  ctx.fillStyle = isDark ? 'rgba(140,210,240,0.7)' : 'rgba(180,230,250,0.8)';
+  ctx.beginPath();
+  ctx.moveTo(cx - w * 0.45, by);
+  ctx.lineTo(cx - w * 0.5, by - h * 0.3);
+  ctx.lineTo(cx - w * 0.35, by - h * 0.7);
+  ctx.lineTo(cx - w * 0.15, by - h * 0.95);
+  ctx.lineTo(cx + w * 0.1, by - h);
+  ctx.lineTo(cx + w * 0.35, by - h * 0.85);
+  ctx.lineTo(cx + w * 0.5, by - h * 0.5);
+  ctx.lineTo(cx + w * 0.45, by - h * 0.15);
+  ctx.lineTo(cx + w * 0.4, by);
+  ctx.closePath();
+  ctx.fill();
+
+  // Inner facets (lighter shards)
+  ctx.fillStyle = 'rgba(255,255,255,0.3)';
+  ctx.beginPath();
+  ctx.moveTo(cx - w * 0.2, by - h * 0.2);
+  ctx.lineTo(cx - w * 0.15, by - h * 0.7);
+  ctx.lineTo(cx + w * 0.05, by - h * 0.5);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle = 'rgba(255,255,255,0.2)';
+  ctx.beginPath();
+  ctx.moveTo(cx + w * 0.1, by - h * 0.3);
+  ctx.lineTo(cx + w * 0.3, by - h * 0.7);
+  ctx.lineTo(cx + w * 0.35, by - h * 0.4);
+  ctx.closePath();
+  ctx.fill();
+
+  // Glossy highlight
+  ctx.fillStyle = 'rgba(255,255,255,0.4)';
+  ctx.beginPath();
+  ctx.ellipse(cx - w * 0.15, by - h * 0.6, w * 0.08, h * 0.2, -0.3, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Edge outline
+  ctx.strokeStyle = isDark ? 'rgba(100,190,220,0.5)' : 'rgba(130,200,230,0.6)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(cx - w * 0.45, by);
+  ctx.lineTo(cx - w * 0.5, by - h * 0.3);
+  ctx.lineTo(cx - w * 0.35, by - h * 0.7);
+  ctx.lineTo(cx - w * 0.15, by - h * 0.95);
+  ctx.lineTo(cx + w * 0.1, by - h);
+  ctx.lineTo(cx + w * 0.35, by - h * 0.85);
+  ctx.lineTo(cx + w * 0.5, by - h * 0.5);
+  ctx.lineTo(cx + w * 0.45, by - h * 0.15);
+  ctx.lineTo(cx + w * 0.4, by);
+  ctx.closePath();
+  ctx.stroke();
+
+  // Drips when melting
+  if (meltProgress > 0.2) {
+    ctx.fillStyle = isDark ? 'rgba(140,210,240,0.4)' : 'rgba(180,230,250,0.5)';
+    const dripCount = Math.floor(meltProgress * 4);
+    for (let i = 0; i < dripCount; i++) {
+      const dx = cx + (i - dripCount / 2) * w * 0.2;
+      const dy = by + meltProgress * 5 * (i + 1);
+      ctx.beginPath();
+      ctx.ellipse(dx, dy, 1.5, 3, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  ctx.restore();
+}
+
 function SquirrelCanvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const isDark = useComputedColorScheme('light') === 'dark';
@@ -451,6 +611,8 @@ function SquirrelCanvas() {
     const ctx = canvas.getContext('2d')!;
     let animationId: number;
     let acorns: Acorn[] = [];
+    let iceBlocks: IceBlock[] = [];
+    let iceSpawnTimer = 300; // frames until next ice block
     let frame = 0;
     const squirrel: Squirrel = { x: 0, y: 0, targetAcorn: -1, vx: 0, vy: 0, mood: 'neutral', moodTimer: 0 };
 
@@ -515,6 +677,84 @@ function SquirrelCanvas() {
       }
       frame++;
 
+      // Ice block spawning
+      iceSpawnTimer--;
+      if (iceSpawnTimer <= 0) {
+        const w = 15 + Math.random() * 35;
+        const melt = 200 + Math.random() * 200;
+        iceBlocks.push({
+          x: 80 + Math.random() * (canvas.width - 160),
+          y: -40,
+          width: w,
+          height: w * (0.6 + Math.random() * 0.6),
+          meltTimer: melt,
+          maxMelt: melt,
+          falling: true,
+          fallSpeed: 6 + Math.random() * 4,
+        });
+        iceSpawnTimer = 400 + Math.random() * 400; // next one in 10-20 seconds
+      }
+
+      // Update & draw ice blocks
+      for (let i = iceBlocks.length - 1; i >= 0; i--) {
+        const ice = iceBlocks[i];
+        if (ice.falling) {
+          ice.y += ice.fallSpeed;
+          // Check if ice lands on squirrel
+          if (ice.y >= squirrel.y - 10 && Math.abs(ice.x - squirrel.x) < ice.width / 2 + 10) {
+            ice.y = squirrel.y + 20;
+            ice.falling = false;
+            if (ice.width > 30) {
+              // Big ice: flatten the squirrel
+              squirrel.mood = 'flattened';
+              squirrel.moodTimer = 100;
+              squirrel.vx = 0;
+            } else {
+              // Small ice: bounce off, squirrel flinches
+              squirrel.mood = 'annoyed';
+              squirrel.moodTimer = 40;
+              squirrel.vx += (squirrel.x < ice.x ? -2 : 2);
+            }
+          } else if (ice.y >= squirrel.y + 20) {
+            ice.y = squirrel.y + 20;
+            ice.falling = false;
+          }
+        } else {
+          ice.meltTimer--;
+          if (ice.meltTimer <= 0) {
+            iceBlocks.splice(i, 1);
+            continue;
+          }
+        }
+        drawIceBlock(ctx, ice, isDark);
+      }
+
+      // Check if squirrel is blocked by ice
+      let blocked = false;
+      for (const ice of iceBlocks) {
+        if (ice.falling) continue;
+        const iceLeft = ice.x - ice.width / 2;
+        const iceRight = ice.x + ice.width / 2;
+        // Check if ice is between squirrel and target direction
+        if (squirrel.x < iceRight + 15 && squirrel.x > iceLeft - 15 &&
+            Math.abs(squirrel.y - ice.y + ice.height / 2) < ice.height) {
+          blocked = true;
+          // Push squirrel away from ice
+          if (squirrel.x < ice.x) {
+            squirrel.x = iceLeft - 15;
+          } else {
+            squirrel.x = iceRight + 15;
+          }
+          squirrel.vx *= 0.3;
+          break;
+        }
+      }
+
+      if (blocked && squirrel.mood !== 'happy' && squirrel.mood !== 'annoyed') {
+        squirrel.mood = 'anxious';
+        squirrel.moodTimer = 20;
+      }
+
       // Squirrel AI: chase the lowest acorn (highest y = closest to ground)
       let nearest = -1;
       let lowestY = -Infinity;
@@ -530,9 +770,11 @@ function SquirrelCanvas() {
         const a = acorns[nearest];
         const tx = a.x + Math.sin(a.wobble) * 20;
         const dx = tx - squirrel.x;
-        squirrel.vx += dx * 0.003;
-        squirrel.vx *= 0.94;
-        squirrel.x += squirrel.vx;
+        if (squirrel.mood !== 'flattened') {
+          squirrel.vx += dx * 0.003;
+          squirrel.vx *= 0.94;
+          squirrel.x += squirrel.vx;
+        }
 
         // "Catch" — squirrel reaches the acorn
         const catchDx = tx - squirrel.x;
@@ -551,9 +793,9 @@ function SquirrelCanvas() {
 
       // Speech bubble
       if (squirrel.mood !== 'neutral' && squirrel.moodTimer > 0) {
-        const maxTimer = squirrel.mood === 'happy' ? 80 : 60;
+        const maxTimer = squirrel.mood === 'happy' ? 80 : squirrel.mood === 'flattened' ? 100 : squirrel.mood === 'anxious' ? 20 : 60;
         const progress = squirrel.moodTimer / maxTimer;
-        const text = squirrel.mood === 'happy' ? 'Tszi!' : 'Mavaffa!';
+        const text = squirrel.mood === 'happy' ? 'Tszi!' : squirrel.mood === 'flattened' ? '...' : squirrel.mood === 'anxious' ? '!!!' : 'Mavaffa!';
         drawSpeechBubble(ctx, squirrel.x, squirrel.y, text, progress, isDark);
       }
     }
