@@ -515,20 +515,13 @@ function SquirrelCanvas() {
       }
       frame++;
 
-      // Squirrel AI: chase nearest acorn on the ground level
+      // Squirrel AI: chase the lowest acorn (highest y = closest to ground)
       let nearest = -1;
-      let nearDist = Infinity;
+      let lowestY = -Infinity;
       for (let i = 0; i < acorns.length; i++) {
-        const a = acorns[i];
-        // Only chase acorns in the lower portion
-        if (a.y > canvas.height * 0.5) {
-          const dx = (a.x + Math.sin(a.wobble) * 20) - squirrel.x;
-          const dy = a.y - squirrel.y;
-          const dist = Math.sqrt(dx * dx + dy * dy);
-          if (dist < nearDist) {
-            nearDist = dist;
-            nearest = i;
-          }
+        if (acorns[i].y > lowestY) {
+          lowestY = acorns[i].y;
+          nearest = i;
         }
       }
 
@@ -537,12 +530,14 @@ function SquirrelCanvas() {
         const a = acorns[nearest];
         const tx = a.x + Math.sin(a.wobble) * 20;
         const dx = tx - squirrel.x;
-        squirrel.vx += dx * 0.005;
-        squirrel.vx *= 0.92;
+        squirrel.vx += dx * 0.003;
+        squirrel.vx *= 0.94;
         squirrel.x += squirrel.vx;
 
         // "Catch" — squirrel reaches the acorn
-        if (nearDist < 25 && a.y > canvas.height - 100) {
+        const catchDx = tx - squirrel.x;
+        const catchDist = Math.abs(catchDx);
+        if (catchDist < 20 && a.y > squirrel.y - 15) {
           squirrel.mood = 'happy';
           squirrel.moodTimer = 80;
           acorns[nearest] = spawnAcorn();
