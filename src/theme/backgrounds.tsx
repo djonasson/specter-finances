@@ -244,78 +244,94 @@ function drawSquirrel(ctx: CanvasRenderingContext2D, x: number, y: number, facin
   // Body
   ctx.fillStyle = fur;
   ctx.beginPath();
-  ctx.ellipse(0, 0, 10, 12, 0, 0, Math.PI * 2);
+  ctx.ellipse(0, 0, 10, 16, 0, 0, Math.PI * 2);
   ctx.fill();
   // Belly
   ctx.fillStyle = belly;
   ctx.beginPath();
-  ctx.ellipse(2, 3, 6, 7, 0, 0, Math.PI * 2);
+  ctx.ellipse(2, 3, 6, 10, 0, 0, Math.PI * 2);
   ctx.fill();
   // Head
   ctx.fillStyle = fur;
   ctx.beginPath();
-  ctx.arc(12, -8, 8, 0, Math.PI * 2);
+  ctx.arc(12, -12, 8, 0, Math.PI * 2);
   ctx.fill();
   // Ears — flatten when annoyed
   if (mood === 'annoyed') {
     ctx.beginPath();
-    ctx.ellipse(9, -15, 4, 2.5, -0.6, 0, Math.PI * 2);
+    ctx.ellipse(9, -19, 4, 2.5, -0.6, 0, Math.PI * 2);
     ctx.fill();
     ctx.beginPath();
-    ctx.ellipse(15, -15, 4, 2.5, 0.6, 0, Math.PI * 2);
+    ctx.ellipse(15, -19, 4, 2.5, 0.6, 0, Math.PI * 2);
     ctx.fill();
   } else {
     ctx.beginPath();
-    ctx.ellipse(9, -17, 3, 4, -0.3, 0, Math.PI * 2);
+    ctx.ellipse(9, -21, 3, 4, -0.3, 0, Math.PI * 2);
     ctx.fill();
     ctx.beginPath();
-    ctx.ellipse(15, -17, 3, 4, 0.3, 0, Math.PI * 2);
+    ctx.ellipse(15, -21, 3, 4, 0.3, 0, Math.PI * 2);
     ctx.fill();
   }
-  // Snout
+  // Long snout (rounder tip)
   ctx.fillStyle = belly;
   ctx.beginPath();
-  ctx.ellipse(18, -6, 5, 3.5, 0, 0, Math.PI * 2);
+  ctx.moveTo(16, -8);
+  ctx.bezierCurveTo(22, -8, 30, -10, 33, -11);
+  ctx.bezierCurveTo(35, -12, 35, -14, 33, -15);
+  ctx.bezierCurveTo(30, -16, 22, -16, 16, -14);
+  ctx.closePath();
   ctx.fill();
-  // Nose
+  // Nose at tip
   ctx.fillStyle = '#222';
   ctx.beginPath();
-  ctx.arc(22, -7, 1.5, 0, Math.PI * 2);
+  ctx.arc(34, -13, 1.8, 0, Math.PI * 2);
+  ctx.fill();
+  // Two saber teeth hanging from upper snout
+  ctx.fillStyle = '#fff';
+  ctx.beginPath();
+  ctx.moveTo(28, -11);
+  ctx.lineTo(29.5, -11);
+  ctx.lineTo(28.8, -4);
+  ctx.closePath();
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(31, -11.5);
+  ctx.lineTo(32.5, -11.5);
+  ctx.lineTo(31.8, -4.5);
+  ctx.closePath();
   ctx.fill();
   // Eye — changes with mood
   if (mood === 'happy') {
-    // Happy squint: curved lines
     ctx.strokeStyle = '#111';
     ctx.lineWidth = 1.5;
     ctx.lineCap = 'round';
     ctx.beginPath();
-    ctx.arc(15, -10, 2, Math.PI * 0.1, Math.PI * 0.9);
+    ctx.arc(15, -14, 2, Math.PI * 0.1, Math.PI * 0.9);
     ctx.stroke();
   } else if (mood === 'annoyed') {
-    // Angry eye: angled brow
     ctx.fillStyle = '#111';
     ctx.beginPath();
-    ctx.arc(15, -10, 2, 0, Math.PI * 2);
+    ctx.arc(15, -14, 2, 0, Math.PI * 2);
     ctx.fill();
     ctx.fillStyle = '#fff';
     ctx.beginPath();
-    ctx.arc(15.5, -10.5, 0.7, 0, Math.PI * 2);
+    ctx.arc(15.5, -14.5, 0.7, 0, Math.PI * 2);
     ctx.fill();
     // Angry brow
     ctx.strokeStyle = fur;
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.moveTo(12, -14);
-    ctx.lineTo(17, -13);
+    ctx.moveTo(12, -18);
+    ctx.lineTo(17, -17);
     ctx.stroke();
   } else {
     ctx.fillStyle = '#111';
     ctx.beginPath();
-    ctx.arc(15, -10, 2, 0, Math.PI * 2);
+    ctx.arc(15, -14, 2, 0, Math.PI * 2);
     ctx.fill();
     ctx.fillStyle = '#fff';
     ctx.beginPath();
-    ctx.arc(15.5, -10.5, 0.7, 0, Math.PI * 2);
+    ctx.arc(15.5, -14.5, 0.7, 0, Math.PI * 2);
     ctx.fill();
   }
   // Mouth — happy = smile
@@ -323,7 +339,7 @@ function drawSquirrel(ctx: CanvasRenderingContext2D, x: number, y: number, facin
     ctx.strokeStyle = '#5a3a1a';
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.arc(19, -4, 2.5, 0.2, Math.PI - 0.2);
+    ctx.arc(19, -8, 2.5, 0.2, Math.PI - 0.2);
     ctx.stroke();
   }
   // Arms
@@ -348,12 +364,41 @@ function drawSquirrel(ctx: CanvasRenderingContext2D, x: number, y: number, facin
   }
   // Legs
   ctx.beginPath();
-  ctx.moveTo(-4, 10);
-  ctx.lineTo(-6, 18);
+  ctx.moveTo(-4, 14);
+  ctx.lineTo(-6, 22);
   ctx.stroke();
   ctx.beginPath();
-  ctx.moveTo(4, 10);
-  ctx.lineTo(6, 18);
+  ctx.moveTo(4, 14);
+  ctx.lineTo(6, 22);
+  ctx.stroke();
+  // Long thin feet (pointing forward)
+  ctx.strokeStyle = belly;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(-6, 22);
+  ctx.lineTo(0, 24);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(6, 22);
+  ctx.lineTo(12, 24);
+  ctx.stroke();
+  // Toes
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(0, 24);
+  ctx.lineTo(2, 26);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(0, 24);
+  ctx.lineTo(1, 27);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(12, 24);
+  ctx.lineTo(14, 26);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(12, 24);
+  ctx.lineTo(13, 27);
   ctx.stroke();
   ctx.restore();
 }
