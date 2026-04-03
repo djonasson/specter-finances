@@ -170,46 +170,75 @@ function drawSquirrel(ctx: CanvasRenderingContext2D, x: number, y: number, facin
   ctx.translate(x, y);
   if (!facingRight) ctx.scale(-1, 1);
   const fur = isDark ? '#A0764A' : '#8B5E3C';
+  const furDark = isDark ? '#7A5630' : '#6B4428';
   const belly = isDark ? '#D4B896' : '#C4A882';
 
-  // Tail — changes shape based on mood
-  ctx.fillStyle = fur;
+  // Tail — striped, changes shape based on mood
+  function drawStripedTail(path: Path2D) {
+    // Base fur color
+    ctx.fillStyle = fur;
+    ctx.fill(path);
+    // Clip to tail shape for stripes perpendicular to the tail curve
+    ctx.save();
+    ctx.clip(path);
+    ctx.fillStyle = furDark;
+    const steps = 4;
+    for (let i = 0; i < steps; i++) {
+      const t1 = (i * 2 + 1) / (steps * 2 + 1);
+      const t2 = (i * 2 + 2) / (steps * 2 + 1);
+      const cy1 = -4 + t1 * -42;
+      const cy2 = -4 + t2 * -42;
+      const cx = -10 + ((t1 + t2) / 2) * -6 + Math.sin(((t1 + t2) / 2) * Math.PI) * -6;
+      ctx.beginPath();
+      ctx.moveTo(cx - 12, cy1);
+      ctx.lineTo(cx + 12, cy1);
+      ctx.lineTo(cx + 12, cy2);
+      ctx.lineTo(cx - 12, cy2);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.restore();
+    // Outline
+    ctx.strokeStyle = furDark;
+    ctx.lineWidth = 0.5;
+    ctx.stroke(path);
+  }
+
   if (mood === 'happy') {
-    // Wagging tail: smooth swinging motion
     const wag = Math.sin(frame * 0.4) * 8;
-    ctx.beginPath();
-    ctx.moveTo(-14, -4);
-    ctx.bezierCurveTo(-24 + wag, -22, -28 + wag, -34, -16 + wag, -36);
-    ctx.bezierCurveTo(-6 + wag * 0.5, -38, -6, -22, -10, -10);
-    ctx.fill();
+    const p = new Path2D();
+    p.moveTo(-12, -4);
+    p.bezierCurveTo(-20 + wag, -24, -24 + wag, -40, -14 + wag, -46);
+    p.bezierCurveTo(-8 + wag * 0.5, -48, -6, -28, -10, -10);
+    p.closePath();
+    drawStripedTail(p);
   } else if (mood === 'annoyed') {
-    // Fuzzy puffed-up tail: wider, jagged edges
-    ctx.beginPath();
-    ctx.moveTo(-14, -2);
-    ctx.lineTo(-18, -10);
-    ctx.lineTo(-26, -14);
-    ctx.lineTo(-22, -20);
-    ctx.lineTo(-30, -24);
-    ctx.lineTo(-24, -28);
-    ctx.lineTo(-28, -34);
-    ctx.lineTo(-18, -32);
-    ctx.lineTo(-14, -38);
-    ctx.lineTo(-10, -30);
-    ctx.lineTo(-4, -34);
-    ctx.lineTo(-6, -26);
-    ctx.lineTo(-2, -20);
-    ctx.lineTo(-8, -16);
-    ctx.lineTo(-6, -10);
-    ctx.lineTo(-10, -8);
-    ctx.closePath();
-    ctx.fill();
+    const p = new Path2D();
+    p.moveTo(-12, -2);
+    p.lineTo(-16, -12);
+    p.lineTo(-24, -16);
+    p.lineTo(-20, -22);
+    p.lineTo(-26, -28);
+    p.lineTo(-20, -32);
+    p.lineTo(-24, -38);
+    p.lineTo(-16, -36);
+    p.lineTo(-14, -46);
+    p.lineTo(-10, -38);
+    p.lineTo(-4, -40);
+    p.lineTo(-6, -32);
+    p.lineTo(-2, -24);
+    p.lineTo(-6, -18);
+    p.lineTo(-4, -12);
+    p.lineTo(-8, -8);
+    p.closePath();
+    drawStripedTail(p);
   } else {
-    // Neutral tail
-    ctx.beginPath();
-    ctx.moveTo(-14, -4);
-    ctx.bezierCurveTo(-24, -20, -30, -30, -18, -34);
-    ctx.bezierCurveTo(-8, -36, -6, -22, -10, -10);
-    ctx.fill();
+    const p = new Path2D();
+    p.moveTo(-12, -4);
+    p.bezierCurveTo(-20, -24, -26, -38, -14, -46);
+    p.bezierCurveTo(-6, -48, -4, -28, -8, -10);
+    p.closePath();
+    drawStripedTail(p);
   }
 
   // Body
@@ -329,6 +358,45 @@ function drawSquirrel(ctx: CanvasRenderingContext2D, x: number, y: number, facin
   ctx.restore();
 }
 
+function drawSpeechBubble(ctx: CanvasRenderingContext2D, x: number, y: number, text: string, progress: number, isDark: boolean) {
+  // progress: 1 = just appeared, 0 = about to disappear
+  const alpha = Math.min(1, progress * 2); // fade out in the last half
+  const rise = (1 - progress) * 15; // float upward over time
+  const bx = x + 20;
+  const by = y - 40 - rise;
+
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.font = 'bold 11px system-ui, sans-serif';
+  const metrics = ctx.measureText(text);
+  const pw = metrics.width + 14;
+  const ph = 22;
+
+  // Bubble background
+  ctx.fillStyle = isDark ? 'rgba(50,50,50,0.9)' : 'rgba(255,255,255,0.95)';
+  ctx.strokeStyle = isDark ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.15)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.roundRect(bx - pw / 2, by - ph / 2, pw, ph, 8);
+  ctx.fill();
+  ctx.stroke();
+
+  // Tail pointer
+  ctx.fillStyle = isDark ? 'rgba(50,50,50,0.9)' : 'rgba(255,255,255,0.95)';
+  ctx.beginPath();
+  ctx.moveTo(bx - 4, by + ph / 2);
+  ctx.lineTo(bx - 8, by + ph / 2 + 6);
+  ctx.lineTo(bx + 2, by + ph / 2);
+  ctx.fill();
+
+  // Text
+  ctx.fillStyle = isDark ? '#e0e0e0' : '#333';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, bx, by);
+  ctx.restore();
+}
+
 function SquirrelCanvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const isDark = useComputedColorScheme('light') === 'dark';
@@ -384,12 +452,12 @@ function SquirrelCanvas() {
 
         drawAcorn(ctx, a.x + wx, a.y, a.size, a.rotation, isDark);
 
-        // Acorn missed — fell past the squirrel
-        if (a.y > canvas.height + 30) {
-          // Only get annoyed if this was the one being chased
+        // Acorn missed — fell past the squirrel's feet
+        if (a.y > squirrel.y + 20) {
           if (i === squirrel.targetAcorn) {
             squirrel.mood = 'annoyed';
             squirrel.moodTimer = 60;
+            squirrel.targetAcorn = -1;
           }
           acorns[i] = spawnAcorn();
         }
@@ -440,6 +508,14 @@ function SquirrelCanvas() {
       squirrel.x = Math.max(25, Math.min(canvas.width - 25, squirrel.x));
 
       drawSquirrel(ctx, squirrel.x, squirrel.y, squirrel.vx >= 0, isDark, squirrel.mood, frame);
+
+      // Speech bubble
+      if (squirrel.mood !== 'neutral' && squirrel.moodTimer > 0) {
+        const maxTimer = squirrel.mood === 'happy' ? 80 : 60;
+        const progress = squirrel.moodTimer / maxTimer;
+        const text = squirrel.mood === 'happy' ? 'Tszi!' : 'Mavaffa!';
+        drawSpeechBubble(ctx, squirrel.x, squirrel.y, text, progress, isDark);
+      }
     }
 
     resize();
