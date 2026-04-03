@@ -19,13 +19,13 @@ export function setAuthChangeCallback(cb: (authenticated: boolean) => void) {
 function storeToken(token: string, expiresIn: number) {
   accessToken = token;
   const expiry = Date.now() + expiresIn * 1000;
-  sessionStorage.setItem(TOKEN_KEY, token);
-  sessionStorage.setItem(EXPIRY_KEY, String(expiry));
+  localStorage.setItem(TOKEN_KEY, token);
+  localStorage.setItem(EXPIRY_KEY, String(expiry));
 }
 
 function loadStoredToken(): boolean {
-  const token = sessionStorage.getItem(TOKEN_KEY);
-  const expiry = sessionStorage.getItem(EXPIRY_KEY);
+  const token = localStorage.getItem(TOKEN_KEY);
+  const expiry = localStorage.getItem(EXPIRY_KEY);
   if (token && expiry && Date.now() < Number(expiry)) {
     accessToken = token;
     return true;
@@ -35,8 +35,8 @@ function loadStoredToken(): boolean {
 }
 
 function clearStoredToken() {
-  sessionStorage.removeItem(TOKEN_KEY);
-  sessionStorage.removeItem(EXPIRY_KEY);
+  localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(EXPIRY_KEY);
   accessToken = null;
 }
 
@@ -83,37 +83,64 @@ export function signIn() {
 }
 
 /**
- * Silently request a fresh access token (no user prompt).
- * Resolves with the new token. If silent refresh fails (e.g. Google
- * session expired), signs the user out so they see the login screen.
+ * Request a fresh access token. First tries silently (no prompt).
+ * If silent refresh fails, falls back to a consent prompt (small popup)
+ * so the user doesn't have to go through the full sign-in flow.
  */
 export function refreshToken(): Promise<string> {
   if (!clientId) return Promise.reject(new Error('Auth not initialized'));
+
   return new Promise((resolve, reject) => {
+    // Step 1: try silent refresh
     const silentClient = google.accounts.oauth2.initTokenClient({
       client_id: clientId!,
       scope: SCOPES,
       callback: (response) => {
         if (response.access_token) {
-          const expiresIn = response.expires_in || 3600;
-          storeToken(response.access_token, expiresIn);
+          storeToken(response.access_token, response.expires_in || 3600);
           onAuthChange?.(true);
           resolve(response.access_token);
         } else {
-          clearStoredToken();
-          onAuthChange?.(false);
-          reject(new Error('Session expired — please sign in again'));
+          // Silent failed — fall back to consent prompt
+          requestWithConsent(resolve, reject);
         }
       },
       error_callback: () => {
-        clearStoredToken();
-        onAuthChange?.(false);
-        reject(new Error('Session expired — please sign in again'));
+        // Silent failed — fall back to consent prompt
+        requestWithConsent(resolve, reject);
       },
       prompt: '',
     });
     silentClient.requestAccessToken({ prompt: '' });
   });
+}
+
+function requestWithConsent(
+  resolve: (token: string) => void,
+  reject: (err: Error) => void,
+) {
+  if (!clientId) { reject(new Error('Auth not initialized')); return; }
+  const consentClient = google.accounts.oauth2.initTokenClient({
+    client_id: clientId!,
+    scope: SCOPES,
+    callback: (response) => {
+      if (response.access_token) {
+        storeToken(response.access_token, response.expires_in || 3600);
+        onAuthChange?.(true);
+        resolve(response.access_token);
+      } else {
+        clearStoredToken();
+        onAuthChange?.(false);
+        reject(new Error('Session expired — please sign in again'));
+      }
+    },
+    error_callback: () => {
+      clearStoredToken();
+      onAuthChange?.(false);
+      reject(new Error('Session expired — please sign in again'));
+    },
+  });
+  consentClient.requestAccessToken();
 }
 
 export function signOut() {
