@@ -635,11 +635,16 @@ export function SquirrelBackground() {
       };
     }
 
+    function getFooterHeight() {
+      const footer = document.querySelector('.mantine-AppShell-footer');
+      return footer ? footer.getBoundingClientRect().height : 60;
+    }
+
     function resize() {
       canvas.width = window.innerWidth;
       canvas.height = window.innerHeight;
       squirrel.x = canvas.width / 2;
-      squirrel.y = canvas.height - 85; // just above the footer
+      squirrel.y = canvas.height - getFooterHeight() - 30;
       acorns = Array.from({ length: 12 }, spawnAcorn);
       // Spread initial acorns across the screen
       for (const a of acorns) {
@@ -737,35 +742,32 @@ export function SquirrelBackground() {
           ice.x += ice.vx;
           ice.vx *= 0.99; // air friction
           const groundY = squirrel.y + 20;
-          const hitSquirrel = squirrel.invincible <= 0
+          const canBeHit = squirrel.mood !== 'flattened' && squirrel.invincible <= 0;
+          const hitSquirrel = canBeHit
             && Math.abs(ice.x - squirrel.x) < ice.width / 2 + 12
             && ice.y >= squirrel.y - 30 && ice.y <= groundY;
           const landed = ice.y >= groundY;
-          // Size tiers: tiny (<18), small (18-30), medium (30-45), large (45-60), mega (60+)
-          const shatters = ice.width >= 35; // medium+ blocks shatter into chunks
+          const shatters = ice.width >= 35;
 
-          // Check squirrel hit FIRST (before ground landing)
           if (hitSquirrel) {
             ice.y = groundY;
 
             if (shatters) {
               spawnFlyingChunks(ice.x, groundY, ice.width);
               iceBlocks.splice(i, 1);
-              if (squirrel.mood !== 'flattened') {
-                squirrel.mood = 'flattened';
-                squirrel.moodTimer = Math.min(250, 100 + ice.width * 2);
-                squirrel.vx = 0;
-              }
+              squirrel.mood = 'flattened';
+              squirrel.moodTimer = Math.min(250, 100 + ice.width * 2);
+              squirrel.vx = 0;
               continue;
             }
 
             ice.falling = false;
             spawnShards(ice.x, groundY, ice.width);
-            if (ice.width > 22 && squirrel.mood !== 'flattened') {
+            if (ice.width > 22) {
               squirrel.mood = 'flattened';
               squirrel.moodTimer = 150;
               squirrel.vx = 0;
-            } else if (squirrel.mood !== 'flattened') {
+            } else {
               squirrel.mood = 'annoyed';
               squirrel.moodTimer = 40;
               squirrel.vx += (squirrel.x < ice.x ? -2 : 2);
