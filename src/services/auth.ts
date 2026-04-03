@@ -12,13 +12,20 @@ export function getAccessToken(): string | null {
   return accessToken;
 }
 
+/** Check if a non-expired token exists in storage (without loading GIS) */
+export function hasStoredToken(): boolean {
+  const expiry = localStorage.getItem(EXPIRY_KEY);
+  return !!localStorage.getItem(TOKEN_KEY) && !!expiry && Date.now() < Number(expiry);
+}
+
 export function setAuthChangeCallback(cb: (authenticated: boolean) => void) {
   onAuthChange = cb;
 }
 
-function storeToken(token: string, expiresIn: number) {
+function storeToken(token: string, expiresIn: number | string) {
   accessToken = token;
-  const expiry = Date.now() + expiresIn * 1000;
+  const seconds = typeof expiresIn === 'string' ? parseInt(expiresIn, 10) : expiresIn;
+  const expiry = Date.now() + (seconds || 3600) * 1000;
   localStorage.setItem(TOKEN_KEY, token);
   localStorage.setItem(EXPIRY_KEY, String(expiry));
 }

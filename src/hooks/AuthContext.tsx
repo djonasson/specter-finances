@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import type { ReactNode } from 'react';
-import { initAuth, setAuthChangeCallback, signIn, signOut } from '../services/auth';
+import { initAuth, setAuthChangeCallback, signIn, signOut, hasStoredToken } from '../services/auth';
 
 interface AuthState {
   authenticated: boolean;
@@ -12,8 +12,8 @@ interface AuthState {
 const AuthContext = createContext<AuthState | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [authenticated, setAuthenticated] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [authenticated, setAuthenticated] = useState(hasStoredToken);
+  const [loading, setLoading] = useState(!hasStoredToken());
 
   useEffect(() => {
     const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;

@@ -10,11 +10,8 @@ import './index.css'
 import App from './App.tsx'
 import { registerSW } from 'virtual:pwa-register'
 
-// Check for SW updates every 60s; reload immediately when a new version is ready
+// Check for SW updates every 60s; new version activates silently
 registerSW({
-  onNeedRefresh() {
-    window.location.reload();
-  },
   onRegisteredSW(_url, registration) {
     if (registration) {
       setInterval(() => registration.update(), 60_000);
