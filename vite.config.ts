@@ -10,7 +10,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.svg', 'icon-192.png', 'icon-512.png'],
+      includeAssets: ['favicon-squirrel.svg', 'icon-192.png', 'icon-512.png'],
       manifest: {
         name: 'Specter Finances',
         short_name: 'Finances',

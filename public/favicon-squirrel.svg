@@ -1,0 +1,110 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="96" fill="#6366f1"/>
+
+  <!-- Tail (long, fluffy, curving up-left from body base) -->
+  <path d="M195,388 C145,355 70,260 35,150 C25,112 58,98 85,135 C115,190 158,320 192,362 Z" fill="#7A5630"/>
+  <clipPath id="tail-clip">
+    <path d="M195,388 C145,355 70,260 35,150 C25,112 58,98 85,135 C115,190 158,320 192,362 Z"/>
+  </clipPath>
+  <g clip-path="url(#tail-clip)">
+    <rect x="30" y="110" width="50" height="18" fill="#5a3e1e" transform="rotate(-60 55 119)"/>
+    <rect x="50" y="165" width="50" height="18" fill="#5a3e1e" transform="rotate(-55 75 174)"/>
+    <rect x="75" y="225" width="50" height="18" fill="#5a3e1e" transform="rotate(-50 100 234)"/>
+    <rect x="105" y="285" width="50" height="18" fill="#5a3e1e" transform="rotate(-45 130 294)"/>
+    <rect x="140" y="335" width="50" height="18" fill="#5a3e1e" transform="rotate(-40 165 344)"/>
+  </g>
+  <!-- Tail tip darker -->
+  <path d="M35,150 C25,112 58,98 85,135 C65,115 38,120 35,150 Z" fill="#5a3e1e"/>
+
+  <!-- Legs (behind body, connected) -->
+  <path d="M200,395 C195,420 185,440 175,445 L210,445 C210,430 208,410 205,395 Z" fill="#A0764A"/>
+  <path d="M270,395 C272,420 278,440 285,445 L250,445 C252,430 255,410 258,395 Z" fill="#A0764A"/>
+  <!-- Feet (long, flat, attached to legs) -->
+  <path d="M135,442 C135,432 160,425 195,432 L210,445 L130,450 Z" fill="#C4A882"/>
+  <path d="M320,442 C320,432 295,425 265,432 L250,445 L325,450 Z" fill="#C4A882"/>
+  <!-- Toes -->
+  <line x1="140" y1="447" x2="130" y2="453" stroke="#A0764A" stroke-width="2.5" stroke-linecap="round"/>
+  <line x1="150" y1="449" x2="142" y2="455" stroke="#A0764A" stroke-width="2.5" stroke-linecap="round"/>
+  <line x1="160" y1="450" x2="154" y2="456" stroke="#A0764A" stroke-width="2.5" stroke-linecap="round"/>
+  <line x1="314" y1="447" x2="322" y2="453" stroke="#A0764A" stroke-width="2.5" stroke-linecap="round"/>
+  <line x1="305" y1="449" x2="312" y2="455" stroke="#A0764A" stroke-width="2.5" stroke-linecap="round"/>
+  <line x1="296" y1="450" x2="302" y2="456" stroke="#A0764A" stroke-width="2.5" stroke-linecap="round"/>
+
+  <!-- Body (upright, seated, overlapping legs and tail base) -->
+  <ellipse cx="235" cy="340" rx="60" ry="75" fill="#A0764A"/>
+  <!-- Belly -->
+  <ellipse cx="232" cy="355" rx="42" ry="55" fill="#D4B896"/>
+
+  <!-- Neck (wide connection between body and head) -->
+  <path d="M215,275 C225,255 260,245 280,260 C285,270 275,290 260,295 L220,295 Z" fill="#A0764A"/>
+  <!-- Chest fur tuft -->
+  <path d="M220,285 C228,270 252,265 265,275 C258,285 240,290 225,290 Z" fill="#C4A882"/>
+
+  <!-- Head (overlapping neck) -->
+  <ellipse cx="262" cy="225" rx="48" ry="42" fill="#A0764A" transform="rotate(-10 262 225)"/>
+
+  <!-- Ears (rounded) -->
+  <ellipse cx="240" cy="172" rx="14" ry="22" transform="rotate(-15 240 172)" fill="#A0764A"/>
+  <ellipse cx="240" cy="172" rx="8" ry="14" transform="rotate(-15 240 172)" fill="#D4B896"/>
+  <ellipse cx="290" cy="168" rx="14" ry="22" transform="rotate(15 290 168)" fill="#A0764A"/>
+  <ellipse cx="290" cy="168" rx="8" ry="14" transform="rotate(15 290 168)" fill="#D4B896"/>
+
+  <!-- Eyes (big, bulging) -->
+  <circle cx="252" cy="205" r="20" fill="#F0E8D8"/>
+  <circle cx="252" cy="205" r="17" fill="#fff"/>
+  <circle cx="255" cy="202" r="9" fill="#222"/>
+  <circle cx="257" cy="199" r="3" fill="#fff"/>
+  <circle cx="282" cy="200" r="18" fill="#F0E8D8"/>
+  <circle cx="282" cy="200" r="15" fill="#fff"/>
+  <circle cx="284" cy="197" r="8" fill="#222"/>
+  <circle cx="286" cy="195" r="2.5" fill="#fff"/>
+
+  <!-- Upper snout/jaw (long, pointing up-right, attached to head) -->
+  <path d="M285,225 C300,218 340,195 370,160 C380,148 388,152 382,162 C362,190 325,218 295,232 Z" fill="#C4A882"/>
+  <path d="M285,220 C300,212 338,188 365,155 L370,160 C340,195 300,218 285,225 Z" fill="#D4B896"/>
+
+  <!-- Lower jaw (attached to head, open) -->
+  <path d="M285,235 C305,240 335,235 358,215 C360,213 363,215 360,218 C340,240 310,248 288,242 Z" fill="#B89872"/>
+
+  <!-- Mouth interior -->
+  <path d="M288,228 C305,225 335,215 355,198 L358,215 C335,235 305,240 288,238 Z" fill="#8B4040"/>
+
+  <!-- Small teeth along upper jaw -->
+  <path d="M320,223 L319,235 L324,234 Z" fill="#fff"/>
+  <path d="M335,217 L334,229 L339,228 Z" fill="#fff"/>
+
+  <!-- Lower teeth (small, pointing up) -->
+  <path d="M325,238 L324,229 L329,229 Z" fill="#fff"/>
+  <path d="M340,234 L339,226 L344,226 Z" fill="#fff"/>
+
+  <!-- Two big saber teeth: from under the snout tip, hanging down past lower jaw -->
+  <!-- Wider, slightly curved, drawn BEFORE nose so nose sits on top -->
+  <path d="M366,168 L376,165 L373,230 L368,228 Z" fill="#fff" stroke="#ddd" stroke-width="0.5"/>
+  <path d="M376,164 L386,161 L383,222 L378,220 Z" fill="#fff" stroke="#ddd" stroke-width="0.5"/>
+
+  <!-- Nose (on very top, covers tooth tops) -->
+  <ellipse cx="376" cy="155" rx="10" ry="8" fill="#222" transform="rotate(-50 376 155)"/>
+
+  <!-- Arms (holding acorn higher up against chest) -->
+  <path d="M220,305 L265,320" stroke="#A0764A" stroke-width="14" stroke-linecap="round"/>
+  <path d="M218,322 L262,335" stroke="#A0764A" stroke-width="14" stroke-linecap="round"/>
+  <!-- Claws on hands -->
+  <line x1="265" y1="318" x2="273" y2="315" stroke="#555" stroke-width="2" stroke-linecap="round"/>
+  <line x1="267" y1="324" x2="274" y2="322" stroke="#555" stroke-width="2" stroke-linecap="round"/>
+  <line x1="262" y1="333" x2="270" y2="332" stroke="#555" stroke-width="2" stroke-linecap="round"/>
+  <line x1="264" y1="339" x2="271" y2="338" stroke="#555" stroke-width="2" stroke-linecap="round"/>
+
+  <!-- Acorn (bigger, held higher) -->
+  <ellipse cx="290" cy="322" rx="32" ry="18" fill="#6B4C12"/>
+  <line x1="272" y1="322" x2="270" y2="307" stroke="#8B6914" stroke-width="2"/>
+  <line x1="282" y1="322" x2="281" y2="306" stroke="#8B6914" stroke-width="2"/>
+  <line x1="292" y1="322" x2="293" y2="306" stroke="#8B6914" stroke-width="2"/>
+  <line x1="302" y1="322" x2="304" y2="307" stroke="#8B6914" stroke-width="2"/>
+  <line x1="290" y1="306" x2="290" y2="296" stroke="#4a3408" stroke-width="3"/>
+  <ellipse cx="290" cy="356" rx="30" ry="36" fill="#C8922A"/>
+  <ellipse cx="282" cy="348" rx="9" ry="18" fill="rgba(255,255,200,0.25)" transform="rotate(-10 282 348)"/>
+
+  <!-- Euro badge -->
+  <circle cx="448" cy="80" r="40" fill="#22c55e"/>
+  <text x="448" y="99" text-anchor="middle" font-family="system-ui, sans-serif" font-weight="700" font-size="54" fill="#fff">€</text>
+</svg>

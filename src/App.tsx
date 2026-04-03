@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Routes, Route, NavLink, useLocation, useNavigate } from 'react-router-dom';
-import logoSvg from '/favicon.svg';
+import logoSvg from '/favicon-squirrel.svg';
 import {
   AppShell,
   Group,
@@ -255,7 +255,7 @@ export default function App() {
     return (
       <Center h="100vh">
         <Stack align="center" gap="md">
-          <Image src={logoSvg} w={64} h={64} />
+          <Image src={logoSvg} w={128} h={128} />
           <Title order={1}>Specter Finances</Title>
           <Text>Shared expense tracker</Text>
           <Button variant="outline" size="lg" onClick={signIn}>
