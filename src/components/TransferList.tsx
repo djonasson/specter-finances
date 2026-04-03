@@ -77,7 +77,7 @@ export function TransferList({ transfers, loading, onUpdate, onDelete, onRefresh
         </Button>
       </Group>
 
-      <Text size="sm" c="dimmed">
+      <Text size="sm" c="var(--mantine-color-text)">
         Showing {paged.length} of {filtered.length} transfers
       </Text>
 

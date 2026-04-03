@@ -148,7 +148,7 @@ export function ExpenseList({ expenses, loading, onUpdate, onDelete, onRefresh }
               <Stack gap="xs" style={{ flex: 1 }}>
                 {expense.category && (
                   <Group gap="xs">
-                    <Text size="sm" c="dimmed" w={70}>Category</Text>
+                    <Text size="sm" c="var(--mantine-color-text)" w={70}>Category</Text>
                     <Group gap={4} wrap="nowrap">
                       <CategoryIcon category={expense.category} size={16} />
                       <Text size="sm">{expense.category}</Text>
@@ -157,7 +157,7 @@ export function ExpenseList({ expenses, loading, onUpdate, onDelete, onRefresh }
                 )}
                 {expense.notes && (
                   <Group gap="xs" align="flex-start">
-                    <Text size="sm" c="dimmed" w={70}>Notes</Text>
+                    <Text size="sm" c="var(--mantine-color-text)" w={70}>Notes</Text>
                     <Text size="sm" style={{ flex: 1 }}>{expense.notes}</Text>
                   </Group>
                 )}
@@ -197,7 +197,7 @@ export function ExpenseList({ expenses, loading, onUpdate, onDelete, onRefresh }
         </Button>
       </Group>
 
-      <Text size="sm" c="dimmed">
+      <Text size="sm" c="var(--mantine-color-text)">
         Showing {paged.length} of {filtered.length} expenses
       </Text>
 

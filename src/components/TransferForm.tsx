@@ -70,7 +70,7 @@ export function TransferForm({ onSubmit, initial, submitLabel = 'Add Transfer', 
           allowDeselect={false}
         />
 
-        <Text size="sm" c="dimmed">Receiving: <Text span fw={600} c="var(--mantine-color-text)">{receiver}</Text></Text>
+        <Text size="sm">Receiving: <Text span fw={600}>{receiver}</Text></Text>
 
         <NumberInput
           label="Amount (€)"

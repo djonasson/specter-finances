@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { useComputedColorScheme } from '@mantine/core';
 import { useThemeSettings } from './ThemeContext';
 
 function MatrixCanvas() {
@@ -61,33 +62,41 @@ function MatrixCanvas() {
   );
 }
 
-const gradientStyle: React.CSSProperties = {
-  position: 'fixed',
-  inset: 0,
-  zIndex: -1,
-  pointerEvents: 'none',
-  background: 'linear-gradient(-45deg, var(--mantine-primary-color-filled), #23a6d5, #23d5ab, var(--mantine-primary-color-light))',
-  backgroundSize: '400% 400%',
-  animation: 'gradientShift 15s ease infinite',
-};
+function GradientBackground() {
+  const colorScheme = useComputedColorScheme('light');
+  const isDark = colorScheme === 'dark';
+
+  const style: React.CSSProperties = {
+    position: 'fixed',
+    inset: 0,
+    zIndex: -1,
+    pointerEvents: 'none',
+    background: isDark
+      ? 'linear-gradient(-45deg, var(--mantine-primary-color-filled), #1a5276, #1a7a6d, var(--mantine-primary-color-light))'
+      : 'linear-gradient(-45deg, var(--mantine-primary-color-filled), #23a6d5, #23d5ab, var(--mantine-primary-color-light))',
+    opacity: isDark ? 0.3 : 1,
+    backgroundSize: '400% 400%',
+    animation: 'gradientShift 15s ease infinite',
+  };
+
+  return (
+    <>
+      <style>{`
+        @keyframes gradientShift {
+          0% { background-position: 0% 50%; }
+          50% { background-position: 100% 50%; }
+          100% { background-position: 0% 50%; }
+        }
+      `}</style>
+      <div style={style} />
+    </>
+  );
+}
 
 export function BackgroundEffect() {
   const { backgroundEffect } = useThemeSettings();
 
   if (backgroundEffect === 'matrix') return <MatrixCanvas />;
-  if (backgroundEffect === 'gradient') {
-    return (
-      <>
-        <style>{`
-          @keyframes gradientShift {
-            0% { background-position: 0% 50%; }
-            50% { background-position: 100% 50%; }
-            100% { background-position: 0% 50%; }
-          }
-        `}</style>
-        <div style={gradientStyle} />
-      </>
-    );
-  }
+  if (backgroundEffect === 'gradient') return <GradientBackground />;
   return null;
 }

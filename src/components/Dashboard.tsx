@@ -11,6 +11,7 @@ import {
   Text,
   Stack,
   UnstyledButton,
+  useComputedColorScheme,
 } from '@mantine/core';
 import { DateInput } from '@mantine/dates';
 import { IconArrowUp, IconArrowDown, IconArrowsSort } from '@tabler/icons-react';
@@ -45,12 +46,25 @@ interface Props {
   transfers: Transfer[];
 }
 
-const COLORS = [
-  '#4e79a7', '#f28e2b', '#e15759', '#76b7b2', '#59a14f', '#edc948',
-  '#b07aa1', '#ff9da7', '#9c755f', '#bab0ac',
+// Pie chart palette — picked for readability on both light and dark backgrounds
+const COLORS_LIGHT = [
+  '#4e79a7', '#f28e2b', '#e15759', '#76b7b2', '#59a14f',
+  '#edc948', '#b07aa1', '#ff9da7', '#9c755f', '#bab0ac',
+];
+const COLORS_DARK = [
+  '#6fa0d6', '#f5a54b', '#f07b7b', '#8ed4cc', '#72c474',
+  '#f5dd6b', '#cfa0cc', '#ffb8c0', '#c4a07a', '#d4ccc8',
 ];
 
 export function Dashboard({ expenses, transfers }: Props) {
+  const colorScheme = useComputedColorScheme('light');
+  const isDark = colorScheme === 'dark';
+  const chartText = isDark ? '#c1c2c5' : '#495057';
+  const chartGrid = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)';
+  const pieColors = isDark ? COLORS_DARK : COLORS_LIGHT;
+  const danielColor = isDark ? '#6fa0d6' : '#4e79a7';
+  const manuelaColor = isDark ? '#f07b7b' : '#e15759';
+
   const [mode, setMode] = useState<FilterMode>('all');
   const [selectedYear, setSelectedYear] = useState(() => String(new Date().getFullYear()));
   const [customFrom, setCustomFrom] = useState<Date | null>(null);
@@ -72,7 +86,7 @@ export function Dashboard({ expenses, transfers }: Props) {
   const sortIcon = (col: SortCol) =>
     sortCol === col
       ? sortAsc ? <IconArrowUp size={14} /> : <IconArrowDown size={14} />
-      : <IconArrowsSort size={14} style={{ opacity: 0.3 }} />;
+      : <IconArrowsSort size={14} style={{ opacity: 0.5 }} />;
 
   const availableYears = useMemo(() => getAvailableYears(expenses), [expenses]);
 
@@ -103,7 +117,7 @@ export function Dashboard({ expenses, transfers }: Props) {
 
   const pieData = {
     labels: categoryLabels,
-    datasets: [{ data: categoryTotals, backgroundColor: COLORS.slice(0, categoryLabels.length) }],
+    datasets: [{ data: categoryTotals, backgroundColor: pieColors.slice(0, categoryLabels.length) }],
   };
 
   const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -148,15 +162,18 @@ export function Dashboard({ expenses, transfers }: Props) {
   const barData = {
     labels: barLabels,
     datasets: [
-      { label: 'Daniel', data: barDanielData, backgroundColor: '#4e79a7' },
-      { label: 'Manuela', data: barManuelaData, backgroundColor: '#e15759' },
+      { label: 'Daniel', data: barDanielData, backgroundColor: danielColor },
+      { label: 'Manuela', data: barManuelaData, backgroundColor: manuelaColor },
     ],
   };
 
   const barOptions = {
     responsive: true,
-    plugins: { legend: { position: 'top' as const } },
-    scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true } },
+    plugins: { legend: { position: 'top' as const, labels: { color: chartText } } },
+    scales: {
+      x: { stacked: true, ticks: { color: chartText }, grid: { color: chartGrid } },
+      y: { stacked: true, beginAtZero: true, ticks: { color: chartText }, grid: { color: chartGrid } },
+    },
   };
 
   return (
@@ -225,7 +242,7 @@ export function Dashboard({ expenses, transfers }: Props) {
                 variant="unstyled"
                 w={120}
               />
-              <Text size="xs" c="dimmed">—</Text>
+              <Text size="xs">—</Text>
               <DateInput
                 size="xs"
                 placeholder="To"
@@ -272,7 +289,7 @@ export function Dashboard({ expenses, transfers }: Props) {
               {netTransfer !== 0 && (
                 <Table.Tr>
                   <Table.Td colSpan={3}>
-                    <Text size="sm" c="dimmed" ta="center">
+                    <Text size="sm" ta="center">
                       Transfers: {netTransfer > 0 ? 'Daniel → Manuela' : 'Manuela → Daniel'} €{fmt(Math.abs(netTransfer))}
                     </Text>
                   </Table.Td>
@@ -285,7 +302,13 @@ export function Dashboard({ expenses, transfers }: Props) {
         <Card withBorder>
           <Title order={4} mb="md">Spending by Category</Title>
           <div style={{ maxHeight: 300 }}>
-            <Pie data={pieData} options={{ plugins: { legend: { position: 'right' } }, maintainAspectRatio: false }} />
+            <Pie data={pieData} options={{
+              plugins: {
+                legend: { position: 'right', labels: { color: chartText } },
+                tooltip: { titleColor: '#fff', bodyColor: '#fff' },
+              },
+              maintainAspectRatio: false,
+            }} />
           </div>
         </Card>
       </SimpleGrid>

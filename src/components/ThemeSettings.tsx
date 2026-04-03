@@ -76,7 +76,7 @@ export function ThemeSettings({ opened, onClose }: Props) {
               />
             ))}
           </Group>
-          <Text size="sm" c="dimmed" mb="xs">Or pick a custom color:</Text>
+          <Text size="sm" mb="xs">Or pick a custom color:</Text>
           <ColorPicker
             format="hex"
             value={customColorHex ?? '#4c6ef5'}

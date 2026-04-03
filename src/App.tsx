@@ -14,7 +14,6 @@ import {
   Loader,
   ActionIcon,
   UnstyledButton,
-  Box,
   Notification,
   Transition,
   Tabs,
@@ -46,7 +45,7 @@ function BottomNavItem({ to, icon, label }: { to: string; icon: React.ReactNode;
         gap: 2,
         flex: 1,
         padding: '8px 0',
-        color: active ? 'var(--mantine-primary-color-filled)' : 'var(--mantine-color-dimmed)',
+        color: active ? 'var(--mantine-primary-color-filled)' : 'var(--mantine-color-text)',
       }}
     >
       {icon}
@@ -114,7 +113,7 @@ function AuthenticatedApp() {
   );
 
   return (
-    <AppShell header={{ height: 56 }} padding="md">
+    <AppShell header={{ height: 56 }} footer={{ height: 60 }} padding="md">
       <AppShell.Header>
         <Group h="100%" px="md" justify="space-between">
           <Group gap="xs">
@@ -208,25 +207,12 @@ function AuthenticatedApp() {
         </Routes>
       </AppShell.Main>
 
-      <Box pb={60} />
-
-      <Box
-        style={{
-          position: 'fixed',
-          bottom: 0,
-          left: 0,
-          right: 0,
-          zIndex: 100,
-          background: 'var(--mantine-color-body)',
-          borderTop: '1px solid var(--mantine-color-default-border)',
-          display: 'flex',
-        }}
-      >
+      <AppShell.Footer style={{ display: 'flex' }}>
         <BottomNavItem to="/" icon={<IconLayoutDashboard size={22} />} label="Dashboard" />
         <BottomNavItem to="/add" icon={<IconPlus size={22} />} label="Add" />
         <BottomNavItem to="/list" icon={<IconList size={22} />} label="Expenses" />
         <BottomNavItem to="/transfers" icon={<IconArrowsExchange size={22} />} label="Transfers" />
-      </Box>
+      </AppShell.Footer>
 
       <Transition mounted={!!successMsg} transition="slide-down" duration={200}>
         {(styles) => (
@@ -271,7 +257,7 @@ export default function App() {
         <Stack align="center" gap="md">
           <Image src={logoSvg} w={64} h={64} />
           <Title order={1}>Specter Finances</Title>
-          <Text c="dimmed">Shared expense tracker</Text>
+          <Text>Shared expense tracker</Text>
           <Button variant="outline" size="lg" onClick={signIn}>
             Sign in with Google
           </Button>
