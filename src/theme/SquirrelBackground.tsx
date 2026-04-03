@@ -11,6 +11,7 @@ interface Acorn {
   size: number;
   rotation: number;
   rotSpeed: number;
+  big: boolean;
 }
 
 interface IceBlock {
@@ -47,7 +48,7 @@ interface Icicle {
   y: number; // top of icicle (= header bottom when attached)
 }
 
-type Mood = 'neutral' | 'happy' | 'annoyed' | 'anxious' | 'flattened';
+type Mood = 'neutral' | 'happy' | 'annoyed' | 'anxious' | 'flattened' | 'love';
 
 interface Squirrel {
   x: number;
@@ -60,12 +61,22 @@ interface Squirrel {
   invincible: number; // frames of invincibility after un-flattening
 }
 
-function drawAcorn(ctx: CanvasRenderingContext2D, x: number, y: number, size: number, rotation: number, isDark: boolean) {
+function drawAcorn(ctx: CanvasRenderingContext2D, x: number, y: number, size: number, rotation: number, isDark: boolean, big = false) {
   ctx.save();
   ctx.translate(x, y);
   ctx.rotate(rotation);
+  // Golden glow for big acorns
+  if (big) {
+    ctx.shadowColor = '#ffd700';
+    ctx.shadowBlur = 15;
+    ctx.fillStyle = 'rgba(255,215,0,0.15)';
+    ctx.beginPath();
+    ctx.arc(0, 0, size * 0.8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+  }
   // Acorn cap
-  ctx.fillStyle = isDark ? '#8B6914' : '#6B4C12';
+  ctx.fillStyle = big ? '#DAA520' : (isDark ? '#8B6914' : '#6B4C12');
   ctx.beginPath();
   ctx.ellipse(0, -size * 0.15, size * 0.55, size * 0.35, 0, Math.PI, 0);
   ctx.fill();
@@ -86,7 +97,7 @@ function drawAcorn(ctx: CanvasRenderingContext2D, x: number, y: number, size: nu
   ctx.lineTo(0, -size * 0.6);
   ctx.stroke();
   // Acorn body
-  ctx.fillStyle = isDark ? '#C8922A' : '#A0721E';
+  ctx.fillStyle = big ? '#FFD700' : (isDark ? '#C8922A' : '#A0721E');
   ctx.beginPath();
   ctx.ellipse(0, size * 0.2, size * 0.45, size * 0.5, 0, 0, Math.PI * 2);
   ctx.fill();
@@ -169,10 +180,86 @@ function drawSquirrel(ctx: CanvasRenderingContext2D, x: number, y: number, facin
       ctx.fillText('★', sx - 3, sy);
     }
 
-    // Speech bubble
     ctx.restore();
     return;
   }
+
+  if (mood === 'love') {
+    const fur = isDark ? '#A0764A' : '#8B5E3C';
+    const belly = isDark ? '#D4B896' : '#C4A882';
+
+    // Lying down body (on back, relaxed)
+    ctx.fillStyle = fur;
+    ctx.beginPath();
+    ctx.ellipse(0, 14, 18, 8, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Belly up
+    ctx.fillStyle = belly;
+    ctx.beginPath();
+    ctx.ellipse(0, 13, 12, 5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Head to the side
+    ctx.fillStyle = fur;
+    ctx.beginPath();
+    ctx.arc(16, 8, 7, 0, Math.PI * 2);
+    ctx.fill();
+    // Happy squint eye
+    ctx.strokeStyle = '#111';
+    ctx.lineWidth = 1.5;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.arc(20, 6, 2, Math.PI * 0.1, Math.PI * 0.9);
+    ctx.stroke();
+    // Snout
+    ctx.fillStyle = belly;
+    ctx.beginPath();
+    ctx.ellipse(24, 8, 5, 3, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Nose
+    ctx.fillStyle = '#222';
+    ctx.beginPath();
+    ctx.arc(28, 7, 1.5, 0, Math.PI * 2);
+    ctx.fill();
+    // Little smile
+    ctx.strokeStyle = '#5a3a1a';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(25, 10, 2, 0.2, Math.PI - 0.2);
+    ctx.stroke();
+    // Tail curled
+    ctx.fillStyle = fur;
+    ctx.beginPath();
+    ctx.ellipse(-16, 10, 6, 10, 0.3, 0, Math.PI * 2);
+    ctx.fill();
+    // Legs up relaxed
+    ctx.strokeStyle = fur;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(-8, 8);
+    ctx.lineTo(-12, 0);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(8, 8);
+    ctx.lineTo(12, 0);
+    ctx.stroke();
+
+    // Floating heart above
+    const heartY = -15 + Math.sin(frame * 0.06) * 5;
+    ctx.fillStyle = '#e74c3c';
+    ctx.beginPath();
+    ctx.moveTo(0, heartY + 5);
+    ctx.bezierCurveTo(0, heartY + 2, -4, heartY - 3, -7, heartY - 3);
+    ctx.bezierCurveTo(-11, heartY - 3, -11, heartY + 1, -11, heartY + 1);
+    ctx.bezierCurveTo(-11, heartY + 5, -6, heartY + 9, 0, heartY + 13);
+    ctx.bezierCurveTo(6, heartY + 9, 11, heartY + 5, 11, heartY + 1);
+    ctx.bezierCurveTo(11, heartY + 1, 11, heartY - 3, 7, heartY - 3);
+    ctx.bezierCurveTo(4, heartY - 3, 0, heartY + 2, 0, heartY + 5);
+    ctx.fill();
+
+    ctx.restore();
+    return;
+  }
+
   const fur = isDark ? '#A0764A' : '#8B5E3C';
   const furDark = isDark ? '#7A5630' : '#6B4428';
   const belly = isDark ? '#D4B896' : '#C4A882';
@@ -693,16 +780,19 @@ export function SquirrelBackground() {
     const squirrel: Squirrel = { x: 0, y: 0, targetAcorn: -1, vx: 0, vy: 0, mood: 'neutral', moodTimer: 0, invincible: 0 };
     let wasRescued = false;
 
-    function spawnAcorn(): Acorn {
+    let bigAcornTimer = 600 + Math.random() * 400; // first big acorn in ~15-25 seconds
+
+    function spawnAcorn(big = false): Acorn {
       return {
         x: Math.random() * canvas.width,
         y: -20,
-        speed: 0.5 + Math.random() * 1,
+        speed: big ? 0.3 + Math.random() * 0.5 : 0.5 + Math.random() * 1,
         wobble: Math.random() * Math.PI * 2,
         wobbleSpeed: 0.01 + Math.random() * 0.02,
-        size: 8 + Math.random() * 6,
+        size: big ? 18 + Math.random() * 8 : 8 + Math.random() * 6,
         rotation: Math.random() * Math.PI * 2,
         rotSpeed: (Math.random() - 0.5) * 0.02,
+        big,
       };
     }
 
@@ -736,6 +826,33 @@ export function SquirrelBackground() {
 
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+      // Snow on the ground
+      const groundY = squirrel.y + 25;
+      ctx.fillStyle = isDark ? 'rgba(200,220,240,0.15)' : 'rgba(240,248,255,0.6)';
+      ctx.beginPath();
+      ctx.moveTo(0, canvas.height);
+      ctx.lineTo(0, groundY + 4);
+      for (let sx = 0; sx <= canvas.width; sx += 20) {
+        const bump = Math.sin(sx * 0.05 + 1.5) * 3 + Math.sin(sx * 0.12) * 2;
+        ctx.lineTo(sx, groundY + bump);
+      }
+      ctx.lineTo(canvas.width, canvas.height);
+      ctx.closePath();
+      ctx.fill();
+
+      // Snow drifts (a few extra bumps for depth)
+      ctx.fillStyle = isDark ? 'rgba(220,235,250,0.1)' : 'rgba(255,255,255,0.5)';
+      ctx.beginPath();
+      ctx.moveTo(0, canvas.height);
+      ctx.lineTo(0, groundY + 8);
+      for (let sx = 0; sx <= canvas.width; sx += 15) {
+        const bump = Math.sin(sx * 0.08 + 3) * 4 + Math.sin(sx * 0.03 + 1) * 3;
+        ctx.lineTo(sx, groundY + 6 + bump);
+      }
+      ctx.lineTo(canvas.width, canvas.height);
+      ctx.closePath();
+      ctx.fill();
+
       // Update & draw acorns
       for (let i = 0; i < acorns.length; i++) {
         const a = acorns[i];
@@ -744,7 +861,7 @@ export function SquirrelBackground() {
         a.rotation += a.rotSpeed;
         const wx = Math.sin(a.wobble) * 20;
 
-        drawAcorn(ctx, a.x + wx, a.y, a.size, a.rotation, isDark);
+        drawAcorn(ctx, a.x + wx, a.y, a.size, a.rotation, isDark, a.big);
 
         // Acorn missed — fell past the squirrel's feet
         if (a.y > squirrel.y + 20) {
@@ -776,6 +893,13 @@ export function SquirrelBackground() {
       frame++;
 
       // Ice block spawning
+      // Big acorn spawning
+      bigAcornTimer--;
+      if (bigAcornTimer <= 0) {
+        acorns.push(spawnAcorn(true));
+        bigAcornTimer = 800 + Math.random() * 800; // next in ~20-40 seconds
+      }
+
       iceSpawnTimer--;
       if (iceSpawnTimer <= 0) {
         const w = 10 + Math.random() * 50;
@@ -825,7 +949,7 @@ export function SquirrelBackground() {
           ice.x += ice.vx;
           ice.vx *= 0.99; // air friction
           const groundY = squirrel.y + 20;
-          const canBeHit = squirrel.invincible <= 0 && (squirrel.mood === 'neutral' || squirrel.mood === 'annoyed' || squirrel.mood === 'anxious');
+          const canBeHit = squirrel.invincible <= 0 && squirrel.mood !== 'flattened' && squirrel.mood !== 'love' && squirrel.mood !== 'happy';
           const hitSquirrel = canBeHit
             && Math.abs(ice.x - squirrel.x) < ice.width / 2 + 12
             && ice.y >= squirrel.y - 30 && ice.y <= groundY;
@@ -935,22 +1059,29 @@ export function SquirrelBackground() {
           ic.y += ic.fallSpeed;
           const groundY = squirrel.y + 20;
 
-          // Hit squirrel?
-          const canBeHit = squirrel.invincible <= 0 && (squirrel.mood === 'neutral' || squirrel.mood === 'annoyed' || squirrel.mood === 'anxious');
-          if (canBeHit && ic.y + ic.length >= squirrel.y - 20
-            && Math.abs(ic.x - squirrel.x) < 15) {
-            // Icicle scares squirrel
+          const icicleCanScare = squirrel.invincible <= 0 && squirrel.mood !== 'flattened' && squirrel.mood !== 'love';
+          const icicleTip = ic.y + ic.length;
+          const dxToSquirrel = Math.abs(ic.x - squirrel.x);
+
+          // Direct hit on squirrel?
+          if (icicleCanScare && icicleTip >= squirrel.y - 10 && dxToSquirrel < 25) {
             squirrel.mood = 'anxious';
-            squirrel.moodTimer = 50;
-            squirrel.vx += (squirrel.x < ic.x ? -3 : 3);
-            spawnShards(ic.x, squirrel.y, ic.width * 2);
+            squirrel.moodTimer = 60;
+            squirrel.vx += (squirrel.x < ic.x ? -4 : 4);
+            spawnShards(ic.x, squirrel.y, ic.width * 3);
             icicles.splice(i, 1);
             continue;
           }
 
           // Hit ground?
-          if (ic.y + ic.length >= groundY) {
-            spawnShards(ic.x, groundY, ic.width * 2);
+          if (icicleTip >= groundY) {
+            spawnShards(ic.x, groundY, ic.width * 3);
+            // Near miss — scare squirrel if close
+            if (icicleCanScare && dxToSquirrel < 50) {
+              squirrel.mood = 'anxious';
+              squirrel.moodTimer = 40;
+              squirrel.vx += (squirrel.x < ic.x ? -2 : 2);
+            }
             icicles.splice(i, 1);
             continue;
           }
@@ -962,7 +1093,7 @@ export function SquirrelBackground() {
       let blocked = false;
       if (squirrel.mood === 'flattened') blocked = false;
       for (const ice of iceBlocks) {
-        if (ice.falling || squirrel.mood === 'flattened') continue;
+        if (ice.falling || squirrel.mood === 'flattened' || squirrel.mood === 'love') continue;
         const iceLeft = ice.x - ice.width / 2;
         const iceRight = ice.x + ice.width / 2;
         // Check if ice is between squirrel and target direction
@@ -1000,7 +1131,7 @@ export function SquirrelBackground() {
         const a = acorns[nearest];
         const tx = a.x + Math.sin(a.wobble) * 20;
         const dx = tx - squirrel.x;
-        if (squirrel.mood !== 'flattened') {
+        if (squirrel.mood !== 'flattened' && squirrel.mood !== 'love') {
           squirrel.vx += dx * 0.003;
           squirrel.vx *= 0.94;
           squirrel.x += squirrel.vx;
@@ -1009,9 +1140,15 @@ export function SquirrelBackground() {
         // "Catch" — squirrel reaches the acorn
         const catchDx = tx - squirrel.x;
         const catchDist = Math.abs(catchDx);
-        if (catchDist < 20 && a.y > squirrel.y - 15 && squirrel.mood !== 'flattened') {
-          squirrel.mood = 'happy';
-          squirrel.moodTimer = 80;
+        if (catchDist < 20 && a.y > squirrel.y - 15 && squirrel.mood !== 'flattened' && squirrel.mood !== 'love') {
+          if (a.big) {
+            squirrel.mood = 'love';
+            squirrel.moodTimer = 200;
+            squirrel.vx = 0;
+          } else {
+            squirrel.mood = 'happy';
+            squirrel.moodTimer = 80;
+          }
           acorns[nearest] = spawnAcorn();
         }
       }
@@ -1030,8 +1167,10 @@ export function SquirrelBackground() {
 
       // Speech bubble
       if (squirrel.mood !== 'neutral' && squirrel.moodTimer > 0) {
-        const maxTimer = squirrel.mood === 'happy' ? 80 : squirrel.mood === 'flattened' ? 250 : squirrel.mood === 'anxious' ? 20 : 60;
+        const maxTimer = squirrel.mood === 'happy' ? 80 : squirrel.mood === 'flattened' ? 250 : squirrel.mood === 'love' ? 200 : squirrel.mood === 'anxious' ? 20 : 60;
         const progress = squirrel.moodTimer / maxTimer;
+        if (squirrel.mood === 'love') {} // heart is drawn by drawSquirrel
+        else {
         let text: string;
         if (squirrel.mood === 'happy' && wasRescued) { text = 'Tszankyou!'; }
         else if (squirrel.mood === 'happy') { text = 'Tszi!'; wasRescued = false; }
@@ -1039,6 +1178,7 @@ export function SquirrelBackground() {
         else if (squirrel.mood === 'anxious') { text = '!!!'; }
         else { text = 'Nontszifacoszi!'; wasRescued = false; }
         drawSpeechBubble(ctx, squirrel.x, squirrel.y, text, progress, isDark);
+        }
       }
     }
 
