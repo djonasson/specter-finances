@@ -46,6 +46,7 @@ interface Squirrel {
   vy: number;
   mood: Mood;
   moodTimer: number; // frames remaining for current mood
+  invincible: number; // frames of invincibility after un-flattening
 }
 
 function drawAcorn(ctx: CanvasRenderingContext2D, x: number, y: number, size: number, rotation: number, isDark: boolean) {
@@ -619,7 +620,7 @@ export function SquirrelBackground() {
       }
     }
     let frame = 0;
-    const squirrel: Squirrel = { x: 0, y: 0, targetAcorn: -1, vx: 0, vy: 0, mood: 'neutral', moodTimer: 0 };
+    const squirrel: Squirrel = { x: 0, y: 0, targetAcorn: -1, vx: 0, vy: 0, mood: 'neutral', moodTimer: 0, invincible: 0 };
 
     function spawnAcorn(): Acorn {
       return {
@@ -678,8 +679,12 @@ export function SquirrelBackground() {
       // Mood timer countdown
       if (squirrel.moodTimer > 0) {
         squirrel.moodTimer--;
-        if (squirrel.moodTimer === 0) squirrel.mood = 'neutral';
+        if (squirrel.moodTimer === 0) {
+          if (squirrel.mood === 'flattened') squirrel.invincible = 80;
+          squirrel.mood = 'neutral';
+        }
       }
+      if (squirrel.invincible > 0) squirrel.invincible--;
       frame++;
 
       // Ice block spawning
@@ -732,7 +737,8 @@ export function SquirrelBackground() {
           ice.x += ice.vx;
           ice.vx *= 0.99; // air friction
           const groundY = squirrel.y + 20;
-          const hitSquirrel = Math.abs(ice.x - squirrel.x) < ice.width / 2 + 12
+          const hitSquirrel = squirrel.invincible <= 0
+            && Math.abs(ice.x - squirrel.x) < ice.width / 2 + 12
             && ice.y >= squirrel.y - 30 && ice.y <= groundY;
           const landed = ice.y >= groundY;
           // Size tiers: tiny (<18), small (18-30), medium (30-45), large (45-60), mega (60+)
