@@ -98,7 +98,7 @@ function drawAcorn(ctx: CanvasRenderingContext2D, x: number, y: number, size: nu
   ctx.restore();
 }
 
-function drawSquirrel(ctx: CanvasRenderingContext2D, x: number, y: number, facingRight: boolean, isDark: boolean, mood: Mood, frame: number) {
+function drawSquirrel(ctx: CanvasRenderingContext2D, x: number, y: number, facingRight: boolean, isDark: boolean, mood: Mood, frame: number, lookingUp: boolean) {
   ctx.save();
   ctx.translate(x, y);
   if (!facingRight) ctx.scale(-1, 1);
@@ -264,7 +264,13 @@ function drawSquirrel(ctx: CanvasRenderingContext2D, x: number, y: number, facin
   ctx.beginPath();
   ctx.ellipse(2, 3, 6, 10, 0, 0, Math.PI * 2);
   ctx.fill();
-  // Head
+  // Head (tilts up when looking at acorn above)
+  if (lookingUp && mood === 'neutral') {
+    ctx.save();
+    ctx.translate(12, -8);
+    ctx.rotate(-0.3); // tilt head upward
+    ctx.translate(-12, 8);
+  }
   ctx.fillStyle = fur;
   ctx.beginPath();
   ctx.arc(12, -12, 8, 0, Math.PI * 2);
@@ -376,6 +382,9 @@ function drawSquirrel(ctx: CanvasRenderingContext2D, x: number, y: number, facin
     ctx.beginPath();
     ctx.arc(19, -8, 2.5, 0.2, Math.PI - 0.2);
     ctx.stroke();
+  }
+  if (lookingUp && mood === 'neutral') {
+    ctx.restore(); // end head tilt
   }
   // Arms
   ctx.strokeStyle = fur;
@@ -752,11 +761,18 @@ export function SquirrelBackground() {
       if (squirrel.moodTimer > 0) {
         squirrel.moodTimer--;
         if (squirrel.moodTimer === 0) {
-          if (squirrel.mood === 'flattened') squirrel.invincible = 80;
+          const wasFlattenedBeforeReset = squirrel.mood === 'flattened';
           squirrel.mood = 'neutral';
+          if (wasFlattenedBeforeReset) squirrel.invincible = 120;
         }
       }
       if (squirrel.invincible > 0) squirrel.invincible--;
+
+      // Safety net: force un-flatten if somehow stuck (should never happen)
+      if (squirrel.mood === 'flattened' && squirrel.moodTimer <= 0) {
+        squirrel.mood = 'neutral';
+        squirrel.invincible = 120;
+      }
       frame++;
 
       // Ice block spawning
@@ -809,7 +825,7 @@ export function SquirrelBackground() {
           ice.x += ice.vx;
           ice.vx *= 0.99; // air friction
           const groundY = squirrel.y + 20;
-          const canBeHit = squirrel.mood !== 'flattened' && squirrel.invincible <= 0;
+          const canBeHit = squirrel.invincible <= 0 && (squirrel.mood === 'neutral' || squirrel.mood === 'annoyed' || squirrel.mood === 'anxious');
           const hitSquirrel = canBeHit
             && Math.abs(ice.x - squirrel.x) < ice.width / 2 + 12
             && ice.y >= squirrel.y - 30 && ice.y <= groundY;
@@ -822,14 +838,11 @@ export function SquirrelBackground() {
             if (shatters) {
               spawnFlyingChunks(ice.x, groundY, ice.width);
               iceBlocks.splice(i, 1);
-              squirrel.mood = 'flattened';
-              squirrel.moodTimer = Math.min(250, 100 + ice.width * 2);
-              squirrel.vx = 0;
-              continue;
+            } else {
+              ice.falling = false;
+              spawnShards(ice.x, groundY, ice.width);
             }
 
-            ice.falling = false;
-            spawnShards(ice.x, groundY, ice.width);
             if (ice.width > 22) {
               squirrel.mood = 'flattened';
               squirrel.moodTimer = 150;
@@ -839,6 +852,7 @@ export function SquirrelBackground() {
               squirrel.moodTimer = 40;
               squirrel.vx += (squirrel.x < ice.x ? -2 : 2);
             }
+            if (shatters) continue;
           } else if (landed) {
             ice.y = groundY;
 
@@ -922,7 +936,7 @@ export function SquirrelBackground() {
           const groundY = squirrel.y + 20;
 
           // Hit squirrel?
-          const canBeHit = squirrel.mood !== 'flattened' && squirrel.invincible <= 0;
+          const canBeHit = squirrel.invincible <= 0 && (squirrel.mood === 'neutral' || squirrel.mood === 'annoyed' || squirrel.mood === 'anxious');
           if (canBeHit && ic.y + ic.length >= squirrel.y - 20
             && Math.abs(ic.x - squirrel.x) < 15) {
             // Icicle scares squirrel
@@ -1005,7 +1019,14 @@ export function SquirrelBackground() {
       // Keep squirrel on screen
       squirrel.x = Math.max(25, Math.min(canvas.width - 25, squirrel.x));
 
-      drawSquirrel(ctx, squirrel.x, squirrel.y, squirrel.vx >= 0, isDark, squirrel.mood, frame);
+      // Squirrel looks up when waiting under a nut
+      let lookingUp = false;
+      if (squirrel.targetAcorn >= 0 && squirrel.targetAcorn < acorns.length) {
+        const target = acorns[squirrel.targetAcorn];
+        const tx = target.x + Math.sin(target.wobble) * 20;
+        lookingUp = Math.abs(tx - squirrel.x) < 15 && Math.abs(squirrel.vx) < 0.5;
+      }
+      drawSquirrel(ctx, squirrel.x, squirrel.y, squirrel.vx >= 0, isDark, squirrel.mood, frame, lookingUp);
 
       // Speech bubble
       if (squirrel.mood !== 'neutral' && squirrel.moodTimer > 0) {
