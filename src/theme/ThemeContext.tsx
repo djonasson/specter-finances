@@ -10,25 +10,46 @@ import { generateColors } from '@mantine/colors-generator';
 
 export type BackgroundEffect = 'none' | 'matrix' | 'gradient';
 
+interface GradientSettings {
+  colors: [string, string, string]; // three hex stops
+  speed: number; // 1–10, default 5
+}
+
 interface ThemeSettings {
   primaryColor: string;
   customColorHex: string | null;
   backgroundEffect: BackgroundEffect;
+  matrixSpeed: number; // 1 (slowest) to 10 (fastest), default 6
+  cardOpacity: number; // 0 (fully transparent) to 100 (fully opaque), default 80
+  gradient: GradientSettings;
 }
 
 interface ThemeContextValue extends ThemeSettings {
   setPrimaryColor: (colorKey: string) => void;
   setCustomColor: (hex: string) => void;
   setBackgroundEffect: (effect: BackgroundEffect) => void;
+  setMatrixSpeed: (speed: number) => void;
+  setCardOpacity: (opacity: number) => void;
+  setGradient: (gradient: Partial<GradientSettings>) => void;
   resetTheme: () => void;
 }
 
+export type { GradientSettings };
+
 const STORAGE_KEY = 'specter-theme';
+
+const DEFAULT_GRADIENT: GradientSettings = {
+  colors: ['#4c6ef5', '#23a6d5', '#23d5ab'],
+  speed: 5,
+};
 
 const DEFAULT_SETTINGS: ThemeSettings = {
   primaryColor: 'indigo',
   customColorHex: null,
   backgroundEffect: 'none',
+  matrixSpeed: 6,
+  cardOpacity: 80,
+  gradient: DEFAULT_GRADIENT,
 };
 
 function loadSettings(): ThemeSettings {
@@ -75,6 +96,27 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     [update]
   );
 
+  const setMatrixSpeed = useCallback(
+    (speed: number) => update({ matrixSpeed: speed }),
+    [update]
+  );
+
+  const setCardOpacity = useCallback(
+    (opacity: number) => update({ cardOpacity: opacity }),
+    [update]
+  );
+
+  const setGradient = useCallback(
+    (partial: Partial<GradientSettings>) =>
+      setSettings((prev) => {
+        const next = { ...prev, gradient: { ...prev.gradient, ...partial } };
+        if (partial.colors) next.gradient.colors = partial.colors;
+        saveSettings(next);
+        return next;
+      }),
+    []
+  );
+
   const resetTheme = useCallback(() => {
     setSettings(DEFAULT_SETTINGS);
     saveSettings(DEFAULT_SETTINGS);
@@ -97,8 +139,25 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     setPrimaryColor,
     setCustomColor,
     setBackgroundEffect,
+    setMatrixSpeed,
+    setCardOpacity,
+    setGradient,
     resetTheme,
   };
+
+  const cardOpacityStyle = settings.backgroundEffect !== 'none' && settings.cardOpacity < 100
+    ? `
+      .mantine-Card-root,
+      .mantine-AppShell-header,
+      .mantine-AppShell-footer {
+        opacity: ${settings.cardOpacity / 100} !important;
+      }
+      .mantine-Card-root:hover,
+      .mantine-AppShell-header:hover {
+        opacity: 1 !important;
+      }
+    `
+    : '';
 
   return (
     <ThemeContext.Provider value={value}>
@@ -107,6 +166,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         defaultColorScheme="auto"
         colorSchemeManager={colorSchemeManager}
       >
+        {cardOpacityStyle && <style>{cardOpacityStyle}</style>}
         {children}
       </MantineProvider>
     </ThemeContext.Provider>

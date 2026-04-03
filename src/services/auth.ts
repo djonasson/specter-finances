@@ -9,6 +9,7 @@ let onAuthChange: ((authenticated: boolean) => void) | null = null;
 let initPromise: Promise<void> | null = null;
 
 export function getAccessToken(): string | null {
+  if (!accessToken) loadStoredToken();
   return accessToken;
 }
 

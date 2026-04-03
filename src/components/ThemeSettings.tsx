@@ -6,12 +6,14 @@ import {
   ColorSwatch,
   ColorPicker,
   Select,
+  Slider,
   Button,
   Text,
   useMantineColorScheme,
 } from '@mantine/core';
+import { ColorInput } from '@mantine/core';
 import { useThemeSettings } from '../theme/ThemeContext';
-import type { BackgroundEffect } from '../theme/ThemeContext';
+import type { BackgroundEffect, GradientSettings } from '../theme/ThemeContext';
 
 interface Props {
   opened: boolean;
@@ -37,11 +39,23 @@ export function ThemeSettings({ opened, onClose }: Props) {
     primaryColor,
     customColorHex,
     backgroundEffect,
+    matrixSpeed,
+    cardOpacity,
+    gradient,
     setPrimaryColor,
     setCustomColor,
     setBackgroundEffect,
+    setMatrixSpeed,
+    setCardOpacity,
+    setGradient,
     resetTheme,
   } = useThemeSettings();
+
+  const updateGradientColor = (index: number, hex: string) => {
+    const colors = [...gradient.colors] as GradientSettings['colors'];
+    colors[index] = hex;
+    setGradient({ colors });
+  };
 
   return (
     <Drawer opened={opened} onClose={onClose} title="Theme Settings" position="right" size="sm">
@@ -97,7 +111,62 @@ export function ThemeSettings({ opened, onClose }: Props) {
             ]}
             allowDeselect={false}
           />
+          {backgroundEffect === 'matrix' && (
+            <>
+              <Text size="sm" mt="md" mb="xs">Matrix Speed</Text>
+              <Slider
+                value={matrixSpeed}
+                onChange={setMatrixSpeed}
+                min={1}
+                max={10}
+                step={1}
+                marks={[
+                  { value: 1, label: 'Slow' },
+                  { value: 10, label: 'Fast' },
+                ]}
+              />
+            </>
+          )}
+          {backgroundEffect === 'gradient' && (
+            <>
+              <Text size="sm" mt="md" mb="xs">Gradient Speed</Text>
+              <Slider
+                value={gradient.speed}
+                onChange={(val) => setGradient({ speed: val })}
+                min={1}
+                max={10}
+                step={1}
+                marks={[
+                  { value: 1, label: 'Slow' },
+                  { value: 10, label: 'Fast' },
+                ]}
+              />
+              <Text size="sm" mt="md" mb="xs">Gradient Colors</Text>
+              <Stack gap="xs">
+                <ColorInput label="Color 1" value={gradient.colors[0]} onChange={(hex) => updateGradientColor(0, hex)} format="hex" />
+                <ColorInput label="Color 2" value={gradient.colors[1]} onChange={(hex) => updateGradientColor(1, hex)} format="hex" />
+                <ColorInput label="Color 3" value={gradient.colors[2]} onChange={(hex) => updateGradientColor(2, hex)} format="hex" />
+              </Stack>
+            </>
+          )}
         </div>
+
+        {backgroundEffect !== 'none' && (
+          <div>
+            <Text fw={500} mb="xs">Card Transparency</Text>
+            <Slider
+              value={100 - cardOpacity}
+              onChange={(val) => setCardOpacity(100 - val)}
+              min={0}
+              max={80}
+              step={5}
+              marks={[
+                { value: 0, label: 'Solid' },
+                { value: 80, label: 'Glass' },
+              ]}
+            />
+          </div>
+        )}
 
         <Button variant="subtle" onClick={() => { resetTheme(); setColorScheme('auto'); }}>
           Reset to Defaults
