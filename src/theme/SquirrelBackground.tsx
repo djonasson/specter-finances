@@ -36,6 +36,17 @@ interface IceShard {
   rotSpeed: number;
 }
 
+interface Icicle {
+  x: number;
+  length: number; // current length (grows over time)
+  maxLength: number; // breaks off at or after this length
+  width: number;
+  growing: boolean;
+  falling: boolean;
+  fallSpeed: number;
+  y: number; // top of icicle (= header bottom when attached)
+}
+
 type Mood = 'neutral' | 'happy' | 'annoyed' | 'anxious' | 'flattened';
 
 interface Squirrel {
@@ -558,6 +569,54 @@ function drawIceBlock(ctx: CanvasRenderingContext2D, ice: IceBlock, isDark: bool
   ctx.restore();
 }
 
+function drawIcicle(ctx: CanvasRenderingContext2D, icicle: Icicle, isDark: boolean) {
+  const { x, y, length, width } = icicle;
+  ctx.save();
+
+  // Main icicle body — tapers to a point
+  ctx.fillStyle = isDark ? 'rgba(150,215,240,0.6)' : 'rgba(190,235,250,0.7)';
+  ctx.beginPath();
+  ctx.moveTo(x - width / 2, y);
+  ctx.lineTo(x + width / 2, y);
+  ctx.lineTo(x + width * 0.15, y + length * 0.7);
+  ctx.lineTo(x, y + length);
+  ctx.lineTo(x - width * 0.15, y + length * 0.7);
+  ctx.closePath();
+  ctx.fill();
+
+  // Highlight
+  ctx.fillStyle = 'rgba(255,255,255,0.35)';
+  ctx.beginPath();
+  ctx.moveTo(x - width * 0.15, y);
+  ctx.lineTo(x - width * 0.05, y);
+  ctx.lineTo(x - width * 0.02, y + length * 0.6);
+  ctx.lineTo(x - width * 0.1, y + length * 0.4);
+  ctx.closePath();
+  ctx.fill();
+
+  // Edge
+  ctx.strokeStyle = isDark ? 'rgba(120,200,230,0.4)' : 'rgba(160,220,240,0.5)';
+  ctx.lineWidth = 0.5;
+  ctx.beginPath();
+  ctx.moveTo(x - width / 2, y);
+  ctx.lineTo(x + width / 2, y);
+  ctx.lineTo(x + width * 0.15, y + length * 0.7);
+  ctx.lineTo(x, y + length);
+  ctx.lineTo(x - width * 0.15, y + length * 0.7);
+  ctx.closePath();
+  ctx.stroke();
+
+  // Drip at tip when growing
+  if (icicle.growing && Math.random() > 0.95) {
+    ctx.fillStyle = isDark ? 'rgba(150,215,240,0.5)' : 'rgba(190,235,250,0.6)';
+    ctx.beginPath();
+    ctx.ellipse(x, y + length + 2, 1.5, 2.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.restore();
+}
+
 export function SquirrelBackground() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const isDark = useComputedColorScheme('light') === 'dark';
@@ -569,8 +628,10 @@ export function SquirrelBackground() {
     let acorns: Acorn[] = [];
     let iceBlocks: IceBlock[] = [];
     let iceShards: IceShard[] = [];
+    let icicles: Icicle[] = [];
     let iceSpawnTimer = 300; // frames until next ice block
     let megaIceTimer = 800 + Math.random() * 600; // first mega in 20-35 seconds
+    let icicleSpawnTimer = 100; // start spawning icicles quickly
 
     function spawnFlyingChunks(x: number, y: number, parentSize: number) {
       // More chunks for bigger blocks
@@ -621,6 +682,7 @@ export function SquirrelBackground() {
     }
     let frame = 0;
     const squirrel: Squirrel = { x: 0, y: 0, targetAcorn: -1, vx: 0, vy: 0, mood: 'neutral', moodTimer: 0, invincible: 0 };
+    let wasRescued = false;
 
     function spawnAcorn(): Acorn {
       return {
@@ -638,6 +700,11 @@ export function SquirrelBackground() {
     function getFooterHeight() {
       const footer = document.querySelector('.mantine-AppShell-footer');
       return footer ? footer.getBoundingClientRect().height : 60;
+    }
+
+    function getHeaderHeight() {
+      const header = document.querySelector('.mantine-AppShell-header');
+      return header ? header.getBoundingClientRect().height : 56;
     }
 
     function resize() {
@@ -821,6 +888,62 @@ export function SquirrelBackground() {
         ctx.restore();
       }
 
+      // Icicle spawning
+      icicleSpawnTimer--;
+      if (icicleSpawnTimer <= 0) {
+        const headerBottom = getHeaderHeight();
+        icicles.push({
+          x: 40 + Math.random() * (canvas.width - 80),
+          y: headerBottom,
+          length: 0,
+          maxLength: 20 + Math.random() * 40,
+          width: 4 + Math.random() * 6,
+          growing: true,
+          falling: false,
+          fallSpeed: 0,
+        });
+        icicleSpawnTimer = 200 + Math.random() * 300; // new icicle every 5-12 seconds
+      }
+
+      // Update & draw icicles
+      for (let i = icicles.length - 1; i >= 0; i--) {
+        const ic = icicles[i];
+        if (ic.growing) {
+          ic.length += 0.15 + Math.random() * 0.1; // slow growth
+          // Break off randomly once past minimum size
+          if (ic.length >= ic.maxLength && Math.random() < 0.008) {
+            ic.growing = false;
+            ic.falling = true;
+            ic.fallSpeed = 1;
+          }
+        } else if (ic.falling) {
+          ic.fallSpeed += 0.25;
+          ic.y += ic.fallSpeed;
+          const groundY = squirrel.y + 20;
+
+          // Hit squirrel?
+          const canBeHit = squirrel.mood !== 'flattened' && squirrel.invincible <= 0;
+          if (canBeHit && ic.y + ic.length >= squirrel.y - 20
+            && Math.abs(ic.x - squirrel.x) < 15) {
+            // Icicle scares squirrel
+            squirrel.mood = 'anxious';
+            squirrel.moodTimer = 50;
+            squirrel.vx += (squirrel.x < ic.x ? -3 : 3);
+            spawnShards(ic.x, squirrel.y, ic.width * 2);
+            icicles.splice(i, 1);
+            continue;
+          }
+
+          // Hit ground?
+          if (ic.y + ic.length >= groundY) {
+            spawnShards(ic.x, groundY, ic.width * 2);
+            icicles.splice(i, 1);
+            continue;
+          }
+        }
+        drawIcicle(ctx, ic, isDark);
+      }
+
       // Check if squirrel is blocked by ice (skip if flattened — he's not moving)
       let blocked = false;
       if (squirrel.mood === 'flattened') blocked = false;
@@ -888,18 +1011,37 @@ export function SquirrelBackground() {
       if (squirrel.mood !== 'neutral' && squirrel.moodTimer > 0) {
         const maxTimer = squirrel.mood === 'happy' ? 80 : squirrel.mood === 'flattened' ? 250 : squirrel.mood === 'anxious' ? 20 : 60;
         const progress = squirrel.moodTimer / maxTimer;
-        const text = squirrel.mood === 'happy' ? 'Tszi!' : squirrel.mood === 'flattened' ? '...' : squirrel.mood === 'anxious' ? '!!!' : 'Nontszifacoszi!';
+        let text: string;
+        if (squirrel.mood === 'happy' && wasRescued) { text = 'Tszankyou!'; }
+        else if (squirrel.mood === 'happy') { text = 'Tszi!'; wasRescued = false; }
+        else if (squirrel.mood === 'flattened') { text = '...'; }
+        else if (squirrel.mood === 'anxious') { text = '!!!'; }
+        else { text = 'Nontszifacoszi!'; wasRescued = false; }
         drawSpeechBubble(ctx, squirrel.x, squirrel.y, text, progress, isDark);
+      }
+    }
+
+    function handleClick(e: MouseEvent) {
+      if (squirrel.mood !== 'flattened') return;
+      const dx = e.clientX - squirrel.x;
+      const dy = e.clientY - squirrel.y;
+      if (Math.abs(dx) < 40 && Math.abs(dy) < 30) {
+        squirrel.mood = 'happy';
+        squirrel.moodTimer = 80;
+        squirrel.invincible = 80;
+        wasRescued = true;
       }
     }
 
     resize();
     animationId = requestAnimationFrame(draw);
     window.addEventListener('resize', resize);
+    document.addEventListener('click', handleClick);
 
     return () => {
       cancelAnimationFrame(animationId);
       window.removeEventListener('resize', resize);
+      document.removeEventListener('click', handleClick);
     };
   }, [isDark]);
 
