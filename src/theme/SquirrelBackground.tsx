@@ -571,16 +571,18 @@ export function SquirrelBackground() {
     let iceSpawnTimer = 300; // frames until next ice block
     let megaIceTimer = 800 + Math.random() * 600; // first mega in 20-35 seconds
 
-    function spawnFlyingChunks(x: number, y: number) {
-      const count = 3 + Math.floor(Math.random() * 6);
+    function spawnFlyingChunks(x: number, y: number, parentSize: number) {
+      // More chunks for bigger blocks
+      const sizeFactor = parentSize / 40; // ~1 for medium, ~2 for mega
+      const count = Math.floor((2 + Math.random() * 3) * sizeFactor);
       for (let i = 0; i < count; i++) {
-        const w = 8 + Math.random() * 25;
-        const melt = 100 + Math.random() * 200;
-        const speed = 3 + Math.random() * 7;
+        const w = 6 + Math.random() * (parentSize * 0.4);
+        const melt = 80 + Math.random() * 200;
+        const speed = (2 + Math.random() * 5) * Math.min(sizeFactor, 1.5);
         const launchAngle = -Math.PI * (0.1 + Math.random() * 0.7);
         const dir = Math.random() > 0.5 ? 1 : -1;
         iceBlocks.push({
-          x: x + (Math.random() - 0.5) * 30,
+          x: x + (Math.random() - 0.5) * parentSize * 0.5,
           y: y - Math.random() * 15,
           width: w,
           height: w * (0.4 + Math.random() * 0.8),
@@ -591,10 +593,11 @@ export function SquirrelBackground() {
           vx: Math.cos(launchAngle) * speed * dir * (1 + Math.random() * 2),
         });
       }
-      // Extra shards for drama
-      spawnShards(x, y, 60);
-      spawnShards(x - 20, y, 40);
-      spawnShards(x + 20, y, 40);
+      // Shards scale with size
+      const shardBursts = Math.ceil(sizeFactor * 2);
+      for (let i = 0; i < shardBursts; i++) {
+        spawnShards(x + (Math.random() - 0.5) * parentSize * 0.5, y, parentSize);
+      }
     }
 
     function spawnShards(x: number, y: number, size: number) {
@@ -681,7 +684,7 @@ export function SquirrelBackground() {
       // Ice block spawning
       iceSpawnTimer--;
       if (iceSpawnTimer <= 0) {
-        const w = 15 + Math.random() * 35;
+        const w = 10 + Math.random() * 50;
         const melt = 200 + Math.random() * 200;
         // 50% chance to target near the squirrel
         const targetX = Math.random() < 0.5
@@ -727,48 +730,50 @@ export function SquirrelBackground() {
           ice.y += ice.fallSpeed;
           ice.x += ice.vx;
           ice.vx *= 0.99; // air friction
-          const isMega = ice.width >= 55;
           const groundY = squirrel.y + 20;
           const hitSquirrel = Math.abs(ice.x - squirrel.x) < ice.width / 2 + 12
             && ice.y >= squirrel.y - 30 && ice.y <= groundY;
           const landed = ice.y >= groundY;
+          // Size tiers: tiny (<18), small (18-30), medium (30-45), large (45-60), mega (60+)
+          const shatters = ice.width >= 35; // medium+ blocks shatter into chunks
 
           // Check squirrel hit FIRST (before ground landing)
           if (hitSquirrel) {
             ice.y = groundY;
-            spawnShards(ice.x, groundY, ice.width);
 
-            if (isMega) {
-              spawnFlyingChunks(ice.x, groundY);
+            if (shatters) {
+              spawnFlyingChunks(ice.x, groundY, ice.width);
               iceBlocks.splice(i, 1);
-              squirrel.mood = 'flattened';
-              squirrel.moodTimer = 250;
-              squirrel.vx = 0;
+              if (squirrel.mood !== 'flattened') {
+                squirrel.mood = 'flattened';
+                squirrel.moodTimer = Math.min(250, 100 + ice.width * 2);
+                squirrel.vx = 0;
+              }
               continue;
             }
 
             ice.falling = false;
-            if (ice.width > 22) {
-              // Anything but the smallest chunks flattens him
+            spawnShards(ice.x, groundY, ice.width);
+            if (ice.width > 22 && squirrel.mood !== 'flattened') {
               squirrel.mood = 'flattened';
-              squirrel.moodTimer = 200;
+              squirrel.moodTimer = 150;
               squirrel.vx = 0;
             } else if (squirrel.mood !== 'flattened') {
-              // Tiny chunks bounce off
               squirrel.mood = 'annoyed';
               squirrel.moodTimer = 40;
               squirrel.vx += (squirrel.x < ice.x ? -2 : 2);
             }
           } else if (landed) {
             ice.y = groundY;
-            ice.falling = false;
-            spawnShards(ice.x, groundY, ice.width);
 
-            if (isMega) {
-              spawnFlyingChunks(ice.x, groundY);
+            if (shatters) {
+              spawnFlyingChunks(ice.x, groundY, ice.width);
               iceBlocks.splice(i, 1);
               continue;
             }
+
+            ice.falling = false;
+            spawnShards(ice.x, groundY, ice.width);
           }
         } else {
           ice.meltTimer--;
