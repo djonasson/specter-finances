@@ -108,6 +108,7 @@ export function ThemeSettings({ opened, onClose }: Props) {
               { label: 'None', value: 'none' },
               { label: 'Matrix', value: 'matrix' },
               { label: 'Gradient', value: 'gradient' },
+              { label: 'Squirrel', value: 'squirrel' },
             ]}
             allowDeselect={false}
           />

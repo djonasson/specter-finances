@@ -8,7 +8,7 @@ import {
 import type { MantineColorsTuple } from '@mantine/core';
 import { generateColors } from '@mantine/colors-generator';
 
-export type BackgroundEffect = 'none' | 'matrix' | 'gradient';
+export type BackgroundEffect = 'none' | 'matrix' | 'gradient' | 'squirrel';
 
 interface GradientSettings {
   colors: [string, string, string]; // three hex stops
