@@ -29,6 +29,7 @@ import { Dashboard } from './components/Dashboard';
 import { ThemeToggle } from './components/ThemeToggle';
 import { ThemeSettings } from './components/ThemeSettings';
 import { BackgroundEffect } from './theme/backgrounds';
+import { useThemeSettings } from './theme/ThemeContext';
 import { InstallButton } from './components/InstallButton';
 
 function BottomNavItem({ to, icon, label }: { to: string; icon: React.ReactNode; label: string }) {
@@ -55,6 +56,7 @@ function BottomNavItem({ to, icon, label }: { to: string; icon: React.ReactNode;
 }
 
 function AuthenticatedApp() {
+  const { backgroundEffect } = useThemeSettings();
   const { signOut } = useAuth();
   const {
     expenses, loading, error, load, add, update, remove,
@@ -113,7 +115,12 @@ function AuthenticatedApp() {
   );
 
   return (
-    <AppShell header={{ height: 56 }} footer={{ height: 60 }} padding="md">
+    <>
+    <AppShell
+      header={{ height: 56 }}
+      footer={{ height: 60 }}
+      padding="md"
+    >
       <AppShell.Header>
         <Group h="100%" px="md" justify="space-between">
           <Group gap="xs">
@@ -205,6 +212,7 @@ function AuthenticatedApp() {
             }
           />
         </Routes>
+        {backgroundEffect === 'squirrel' && <div style={{ height: 100 }} />}
       </AppShell.Main>
 
       <AppShell.Footer style={{ display: 'flex' }}>
@@ -234,9 +242,22 @@ function AuthenticatedApp() {
         )}
       </Transition>
 
-      <BackgroundEffect />
       <ThemeSettings opened={settingsOpened} onClose={() => setSettingsOpened(false)} />
     </AppShell>
+    {backgroundEffect === 'squirrel' && (
+      <div style={{
+        position: 'fixed',
+        bottom: 60,
+        left: 0,
+        right: 0,
+        height: 80,
+        zIndex: 100,
+        pointerEvents: 'none',
+        background: 'var(--mantine-color-body)',
+      }} />
+    )}
+    <BackgroundEffect />
+    </>
   );
 }
 

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import {
+  useComputedColorScheme,
   Group,
   TextInput,
   Button,
@@ -32,6 +33,7 @@ const NOWRAP = { whiteSpace: 'nowrap' } as const;
 const ELLIPSIS = { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } as const;
 
 export function ExpenseList({ expenses, loading, onUpdate, onDelete, onRefresh }: Props) {
+  const isDark = useComputedColorScheme('light') === 'dark';
   const [editingRow, setEditingRow] = useState<number | null>(null);
   const [expandedRow, setExpandedRow] = useState<number | null>(null);
   const [deletingRow, setDeletingRow] = useState<number | null>(null);
@@ -204,7 +206,7 @@ export function ExpenseList({ expenses, loading, onUpdate, onDelete, onRefresh }
       {/* Desktop table */}
       <Box visibleFrom="sm">
         <Table.ScrollContainer minWidth={700}>
-          <Table striped highlightOnHover>
+          <Table striped highlightOnHover style={isDark ? { '--table-striped-color': 'rgba(255,255,255,0.07)' } as React.CSSProperties : undefined}>
             <Table.Thead>
               <Table.Tr>
                 <Table.Th style={NOWRAP} w={110}>Date</Table.Th>
@@ -225,7 +227,7 @@ export function ExpenseList({ expenses, loading, onUpdate, onDelete, onRefresh }
 
       {/* Mobile table */}
       <Box hiddenFrom="sm" style={{ overflowX: 'hidden' }}>
-        <Table striped highlightOnHover layout="fixed">
+        <Table striped highlightOnHover layout="fixed" style={isDark ? { '--table-striped-color': 'rgba(255,255,255,0.07)' } as React.CSSProperties : undefined}>
           <Table.Thead>
             <Table.Tr>
               <Table.Th w={90} style={NOWRAP}>Date</Table.Th>

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import {
+  useComputedColorScheme,
   Group,
   TextInput,
   Button,
@@ -28,6 +29,7 @@ const TABULAR = { fontVariantNumeric: 'tabular-nums' } as const;
 const NOWRAP = { whiteSpace: 'nowrap' } as const;
 
 export function TransferList({ transfers, loading, onUpdate, onDelete, onRefresh }: Props) {
+  const isDark = useComputedColorScheme('light') === 'dark';
   const [editingRow, setEditingRow] = useState<number | null>(null);
   const [deletingRow, setDeletingRow] = useState<number | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<Transfer | null>(null);
@@ -81,7 +83,7 @@ export function TransferList({ transfers, loading, onUpdate, onDelete, onRefresh
         Showing {paged.length} of {filtered.length} transfers
       </Text>
 
-      <Table striped highlightOnHover>
+      <Table striped highlightOnHover style={isDark ? { '--table-striped-color': 'rgba(255,255,255,0.07)' } as React.CSSProperties : undefined}>
         <Table.Thead>
           <Table.Tr>
             <Table.Th style={NOWRAP}>Date</Table.Th>

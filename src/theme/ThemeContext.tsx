@@ -145,16 +145,20 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     resetTheme,
   };
 
+  const isSquirrel = settings.backgroundEffect === 'squirrel';
   const cardOpacityStyle = settings.backgroundEffect !== 'none' && settings.cardOpacity < 100
     ? `
-      .mantine-Card-root,
+      .mantine-Card-root${!isSquirrel ? `,
       .mantine-AppShell-header,
-      .mantine-AppShell-footer {
+      .mantine-AppShell-footer` : ''} {
         opacity: ${settings.cardOpacity / 100} !important;
       }
-      .mantine-Card-root:hover,
-      .mantine-AppShell-header:hover {
+      .mantine-Card-root:hover${!isSquirrel ? `,
+      .mantine-AppShell-header:hover` : ''} {
         opacity: 1 !important;
+      }
+      .mantine-AppShell-main {
+        background: transparent !important;
       }
     `
     : '';

@@ -826,33 +826,6 @@ export function SquirrelBackground() {
 
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      // Snow on the ground
-      const groundY = squirrel.y + 25;
-      ctx.fillStyle = isDark ? 'rgba(200,220,240,0.15)' : 'rgba(240,248,255,0.6)';
-      ctx.beginPath();
-      ctx.moveTo(0, canvas.height);
-      ctx.lineTo(0, groundY + 4);
-      for (let sx = 0; sx <= canvas.width; sx += 20) {
-        const bump = Math.sin(sx * 0.05 + 1.5) * 3 + Math.sin(sx * 0.12) * 2;
-        ctx.lineTo(sx, groundY + bump);
-      }
-      ctx.lineTo(canvas.width, canvas.height);
-      ctx.closePath();
-      ctx.fill();
-
-      // Snow drifts (a few extra bumps for depth)
-      ctx.fillStyle = isDark ? 'rgba(220,235,250,0.1)' : 'rgba(255,255,255,0.5)';
-      ctx.beginPath();
-      ctx.moveTo(0, canvas.height);
-      ctx.lineTo(0, groundY + 8);
-      for (let sx = 0; sx <= canvas.width; sx += 15) {
-        const bump = Math.sin(sx * 0.08 + 3) * 4 + Math.sin(sx * 0.03 + 1) * 3;
-        ctx.lineTo(sx, groundY + 6 + bump);
-      }
-      ctx.lineTo(canvas.width, canvas.height);
-      ctx.closePath();
-      ctx.fill();
-
       // Update & draw acorns
       for (let i = 0; i < acorns.length; i++) {
         const a = acorns[i];
@@ -1156,6 +1129,32 @@ export function SquirrelBackground() {
       // Keep squirrel on screen
       squirrel.x = Math.max(25, Math.min(canvas.width - 25, squirrel.x));
 
+      // Snow, squirrel, speech bubbles
+      const fgGroundY = squirrel.y + 25;
+      ctx.fillStyle = isDark ? 'rgba(200,220,240,0.15)' : 'rgba(240,248,255,0.6)';
+      ctx.beginPath();
+      ctx.moveTo(0, canvas.height);
+      ctx.lineTo(0, fgGroundY + 4);
+      for (let sx = 0; sx <= canvas.width; sx += 20) {
+        const bump = Math.sin(sx * 0.05 + 1.5) * 3 + Math.sin(sx * 0.12) * 2;
+        ctx.lineTo(sx, fgGroundY + bump);
+      }
+      ctx.lineTo(canvas.width, canvas.height);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.fillStyle = isDark ? 'rgba(220,235,250,0.1)' : 'rgba(255,255,255,0.5)';
+      ctx.beginPath();
+      ctx.moveTo(0, canvas.height);
+      ctx.lineTo(0, fgGroundY + 8);
+      for (let sx = 0; sx <= canvas.width; sx += 15) {
+        const bump = Math.sin(sx * 0.08 + 3) * 4 + Math.sin(sx * 0.03 + 1) * 3;
+        ctx.lineTo(sx, fgGroundY + 6 + bump);
+      }
+      ctx.lineTo(canvas.width, canvas.height);
+      ctx.closePath();
+      ctx.fill();
+
       // Squirrel looks up when waiting under a nut
       let lookingUp = false;
       if (squirrel.targetAcorn >= 0 && squirrel.targetAcorn < acorns.length) {
@@ -1212,7 +1211,7 @@ export function SquirrelBackground() {
       style={{
         position: 'fixed',
         inset: 0,
-        zIndex: -1,
+        zIndex: 101,
         pointerEvents: 'none',
       }}
     />
