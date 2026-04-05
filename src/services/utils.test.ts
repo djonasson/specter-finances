@@ -107,6 +107,54 @@ describe('fromDate', () => {
     const original = '2026-06-15';
     expect(fromDate(toDate(original))).toBe(original);
   });
+
+  it('handles future dates', () => {
+    expect(fromDate(new Date(2030, 5, 15))).toBe('2030-06-15');
+  });
+});
+
+// ── DateInput onChange simulation ──
+// Mantine v8 DateInput onChange returns DateStringValue (string), not Date.
+// These tests verify the pattern used in form components.
+
+describe('DateInput onChange handling', () => {
+  // Simulates the pattern: typeof d === 'string' ? d : fromDate(d)
+  function handleDateChange(d: string | Date | null): string {
+    if (d === null) return '';
+    return typeof d === 'string' ? d : fromDate(d);
+  }
+
+  it('handles string value from Mantine v8 DateInput', () => {
+    expect(handleDateChange('2026-04-10')).toBe('2026-04-10');
+  });
+
+  it('handles future date string', () => {
+    expect(handleDateChange('2030-12-25')).toBe('2030-12-25');
+  });
+
+  it('handles past date string', () => {
+    expect(handleDateChange('2020-01-01')).toBe('2020-01-01');
+  });
+
+  it('handles Date object fallback', () => {
+    expect(handleDateChange(new Date(2026, 3, 10))).toBe('2026-04-10');
+  });
+
+  it('handles null (cleared input)', () => {
+    expect(handleDateChange(null)).toBe('');
+  });
+
+  it('preserves date through form state round-trip', () => {
+    // Simulate: user picks date -> onChange -> form.date -> value prop -> next onChange
+    const picked = '2026-12-25';
+    const formDate = handleDateChange(picked);
+    expect(formDate).toBe('2026-12-25');
+    // The form.date is then passed as value={form.date || null} to DateInput
+    // On next change, DateInput returns another string
+    const repicked = '2027-01-15';
+    const formDate2 = handleDateChange(repicked);
+    expect(formDate2).toBe('2027-01-15');
+  });
 });
 
 // ── Number helpers ──

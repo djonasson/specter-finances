@@ -58,17 +58,25 @@ export function initAuth(id: string): Promise<void> {
 
     const script = document.createElement('script');
     script.src = 'https://accounts.google.com/gsi/client';
+    script.onerror = () => {
+      console.error('Failed to load Google Identity Services script');
+      resolve();
+    };
     script.onload = () => {
       tokenClient = google.accounts.oauth2.initTokenClient({
         client_id: id,
         scope: SCOPES,
         callback: (response) => {
           if (response.access_token) {
-            // GIS returns expires_in as a string in seconds
             const expiresIn = response.expires_in || 3600;
             storeToken(response.access_token, expiresIn);
             onAuthChange?.(true);
           }
+        },
+        error_callback: (err) => {
+          console.warn('Auth error:', err);
+          // Popup was blocked or user closed it — stay on sign-in screen
+          onAuthChange?.(false);
         },
       });
 

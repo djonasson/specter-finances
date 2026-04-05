@@ -67,8 +67,8 @@ export function Dashboard({ expenses, transfers }: Props) {
 
   const [mode, setMode] = useState<FilterMode>('all');
   const [selectedYear, setSelectedYear] = useState(() => String(new Date().getFullYear()));
-  const [customFrom, setCustomFrom] = useState<Date | null>(null);
-  const [customTo, setCustomTo] = useState<Date | null>(null);
+  const [customFrom, setCustomFrom] = useState<string | null>(null);
+  const [customTo, setCustomTo] = useState<string | null>(null);
 
   type SortCol = 'category' | 'daniel' | 'manuela' | 'total';
   const [sortCol, setSortCol] = useState<SortCol>('total');
@@ -93,8 +93,8 @@ export function Dashboard({ expenses, transfers }: Props) {
   const filterParams = useMemo(() => ({
     mode,
     selectedYear,
-    customFrom: fromDate(customFrom),
-    customTo: fromDate(customTo),
+    customFrom: customFrom ?? '',
+    customTo: customTo ?? '',
   }), [mode, selectedYear, customFrom, customTo]);
 
   const filtered = useMemo(
@@ -236,7 +236,7 @@ export function Dashboard({ expenses, transfers }: Props) {
                 size="xs"
                 placeholder="From"
                 value={customFrom}
-                onChange={(d) => setCustomFrom(d as Date | null)}
+                onChange={(d) => setCustomFrom(typeof d === 'string' ? d : fromDate(d))}
                 clearable
                 valueFormat="YYYY-MM-DD"
                 variant="unstyled"
@@ -247,7 +247,7 @@ export function Dashboard({ expenses, transfers }: Props) {
                 size="xs"
                 placeholder="To"
                 value={customTo}
-                onChange={(d) => setCustomTo(d as Date | null)}
+                onChange={(d) => setCustomTo(typeof d === 'string' ? d : fromDate(d))}
                 clearable
                 valueFormat="YYYY-MM-DD"
                 variant="unstyled"

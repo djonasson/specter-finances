@@ -4,7 +4,7 @@ import { DateInput } from '@mantine/dates';
 import { IconAlertCircle } from '@tabler/icons-react';
 import { PEOPLE } from '../types/transfer';
 import type { Person, TransferFormData } from '../types/transfer';
-import { today, toDate, fromDate } from '../services/utils';
+import { today, fromDate } from '../services/utils';
 
 interface Props {
   onSubmit: (data: TransferFormData) => Promise<void>;
@@ -56,8 +56,8 @@ export function TransferForm({ onSubmit, initial, submitLabel = 'Add Transfer', 
 
         <DateInput
           label="Date"
-          value={toDate(form.date)}
-          onChange={(d) => setForm((f) => ({ ...f, date: fromDate(d as Date | null) }))}
+          value={form.date || null}
+          onChange={(d) => setForm((f) => ({ ...f, date: typeof d === 'string' ? d : fromDate(d) }))}
           required
           valueFormat="YYYY-MM-DD"
         />

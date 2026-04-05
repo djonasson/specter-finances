@@ -5,7 +5,7 @@ import { DateInput } from '@mantine/dates';
 import { IconAlertCircle } from '@tabler/icons-react';
 import { CATEGORIES } from '../types/expense';
 import type { ExpenseFormData } from '../types/expense';
-import { today, toDate, fromDate, toNum, fromNum } from '../services/utils';
+import { today, fromDate, toNum, fromNum } from '../services/utils';
 
 interface Props {
   onSubmit: (data: ExpenseFormData) => Promise<void>;
@@ -64,8 +64,8 @@ export function ExpenseForm({ onSubmit, initial, submitLabel = 'Add Expense', on
 
         <DateInput
           label="Date"
-          value={toDate(form.date)}
-          onChange={(d) => set('date', fromDate(d as Date | null))}
+          value={form.date || null}
+          onChange={(d) => set('date', typeof d === 'string' ? d : fromDate(d))}
           required
           valueFormat="YYYY-MM-DD"
         />
