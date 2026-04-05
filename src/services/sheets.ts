@@ -2,6 +2,7 @@ import { getAccessToken, refreshToken } from './auth';
 import { normalizeDate, normalizeAmount, formatAmount, parseAmount } from './parsing';
 import type { Expense, ExpenseFormData } from '../types/expense';
 import type { Transfer, TransferFormData } from '../types/transfer';
+import type { Gift, GiftFormData } from '../types/gift';
 
 export { parseAmount };
 
@@ -167,13 +168,13 @@ const TRANSFERS_SHEET = 'Transfers';
 function transferRow(form: TransferFormData): string[] {
   const danielAmt = form.from === 'Daniel' ? formatAmount(form.amount) : '';
   const manuelaAmt = form.from === 'Manuela' ? formatAmount(form.amount) : '';
-  return [form.date, danielAmt, manuelaAmt];
+  return [form.date, danielAmt, manuelaAmt, form.notes];
 }
 
 /** Fetch all transfer rows from the Transfers sheet */
 export async function fetchTransfers(): Promise<Transfer[]> {
   const { spreadsheetId } = getConfig();
-  const range = encodeURIComponent(`${TRANSFERS_SHEET}!A2:C`);
+  const range = encodeURIComponent(`${TRANSFERS_SHEET}!A2:D`);
   const data = await sheetsRequest(
     `/${spreadsheetId}/values/${range}?valueRenderOption=UNFORMATTED_VALUE`
   );
@@ -184,13 +185,14 @@ export async function fetchTransfers(): Promise<Transfer[]> {
     date: normalizeDate(row[0]),
     amountDaniel: normalizeAmount(row[1]),
     amountManuela: normalizeAmount(row[2]),
+    notes: String(row[3] || ''),
   }));
 }
 
 /** Append a new transfer row */
 export async function addTransfer(form: TransferFormData): Promise<void> {
   const { spreadsheetId } = getConfig();
-  const range = encodeURIComponent(`${TRANSFERS_SHEET}!A:C`);
+  const range = encodeURIComponent(`${TRANSFERS_SHEET}!A:D`);
 
   await sheetsRequest(
     `/${spreadsheetId}/values/${range}:append?valueInputOption=USER_ENTERED`,
@@ -207,7 +209,7 @@ export async function updateTransfer(
   form: TransferFormData
 ): Promise<void> {
   const { spreadsheetId } = getConfig();
-  const range = encodeURIComponent(`${TRANSFERS_SHEET}!A${rowIndex}:C${rowIndex}`);
+  const range = encodeURIComponent(`${TRANSFERS_SHEET}!A${rowIndex}:D${rowIndex}`);
 
   await sheetsRequest(
     `/${spreadsheetId}/values/${range}?valueInputOption=USER_ENTERED`,
@@ -221,4 +223,68 @@ export async function updateTransfer(
 /** Delete a transfer row */
 export async function deleteTransfer(rowIndex: number): Promise<void> {
   await deleteRow(TRANSFERS_SHEET, rowIndex);
+}
+
+// ── Gifts ───────────────────────────────────────────────���─
+
+const GIFTS_SHEET = 'Gifts';
+
+function giftRow(form: GiftFormData): string[] {
+  const danielAmt = form.from === 'Daniel' ? formatAmount(form.amount) : '';
+  const manuelaAmt = form.from === 'Manuela' ? formatAmount(form.amount) : '';
+  return [form.date, danielAmt, manuelaAmt, form.notes];
+}
+
+/** Fetch all gift rows from the Gifts sheet */
+export async function fetchGifts(): Promise<Gift[]> {
+  const { spreadsheetId } = getConfig();
+  const range = encodeURIComponent(`${GIFTS_SHEET}!A2:D`);
+  const data = await sheetsRequest(
+    `/${spreadsheetId}/values/${range}?valueRenderOption=UNFORMATTED_VALUE`
+  );
+
+  const rows: unknown[][] = data.values || [];
+  return rows.map((row, i) => ({
+    rowIndex: i + 2,
+    date: normalizeDate(row[0]),
+    amountDaniel: normalizeAmount(row[1]),
+    amountManuela: normalizeAmount(row[2]),
+    notes: String(row[3] || ''),
+  }));
+}
+
+/** Append a new gift row */
+export async function addGift(form: GiftFormData): Promise<void> {
+  const { spreadsheetId } = getConfig();
+  const range = encodeURIComponent(`${GIFTS_SHEET}!A:D`);
+
+  await sheetsRequest(
+    `/${spreadsheetId}/values/${range}:append?valueInputOption=USER_ENTERED`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ values: [giftRow(form)] }),
+    }
+  );
+}
+
+/** Update an existing gift row */
+export async function updateGift(
+  rowIndex: number,
+  form: GiftFormData
+): Promise<void> {
+  const { spreadsheetId } = getConfig();
+  const range = encodeURIComponent(`${GIFTS_SHEET}!A${rowIndex}:D${rowIndex}`);
+
+  await sheetsRequest(
+    `/${spreadsheetId}/values/${range}?valueInputOption=USER_ENTERED`,
+    {
+      method: 'PUT',
+      body: JSON.stringify({ values: [giftRow(form)] }),
+    }
+  );
+}
+
+/** Delete a gift row */
+export async function deleteGift(rowIndex: number): Promise<void> {
+  await deleteRow(GIFTS_SHEET, rowIndex);
 }

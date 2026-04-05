@@ -2,6 +2,7 @@ import { parseAmount } from './parsing';
 import type { Expense } from '../types/expense';
 import type { ExpenseFormData } from '../types/expense';
 import type { Transfer, TransferFormData, Person } from '../types/transfer';
+import type { Gift, GiftFormData } from '../types/gift';
 
 // ── Date helpers ──
 
@@ -147,13 +148,16 @@ export interface BalanceResult {
   totalManuela: number;
   transferDaniel: number;
   transferManuela: number;
+  giftDaniel: number;
+  giftManuela: number;
   adjustedDeltaDaniel: number;
   adjustedDeltaManuela: number;
   netTransfer: number;
+  netGift: number;
 }
 
-/** Calculate balance between Daniel and Manuela accounting for transfers */
-export function calculateBalance(expenses: Expense[], transfers: Transfer[]): BalanceResult {
+/** Calculate balance between Daniel and Manuela accounting for transfers and gifts */
+export function calculateBalance(expenses: Expense[], transfers: Transfer[], gifts: Gift[] = []): BalanceResult {
   const { totalDaniel, totalManuela } = aggregateExpenses(expenses);
 
   let transferDaniel = 0;
@@ -163,20 +167,32 @@ export function calculateBalance(expenses: Expense[], transfers: Transfer[]): Ba
     transferManuela += toNumber(t.amountManuela);
   }
 
-  // Expenses are shared (50/50), so the raw delta is 2× the per-person owed amount.
-  // Transfers are direct payments at face value, so they must be doubled to match the display scale.
-  const adjustedDeltaDaniel = (totalDaniel - totalManuela) + 2 * (transferDaniel - transferManuela);
+  let giftDaniel = 0;
+  let giftManuela = 0;
+  for (const g of gifts) {
+    giftDaniel += toNumber(g.amountDaniel);
+    giftManuela += toNumber(g.amountManuela);
+  }
+
+  // A transfer/gift of €X causes a net swing of 2×X on the balance
+  // (the sender loses €X AND the receiver gains €X).
+  // Transfers settle the balance (+2x), gifts are the inverse (-2x).
+  const adjustedDeltaDaniel = (totalDaniel - totalManuela) + 2 * (transferDaniel - transferManuela) - 2 * (giftDaniel - giftManuela);
   const adjustedDeltaManuela = -adjustedDeltaDaniel || 0;
   const netTransfer = transferDaniel - transferManuela;
+  const netGift = giftDaniel - giftManuela;
 
   return {
     totalDaniel,
     totalManuela,
     transferDaniel,
     transferManuela,
+    giftDaniel,
+    giftManuela,
     adjustedDeltaDaniel,
     adjustedDeltaManuela,
     netTransfer,
+    netGift,
   };
 }
 
@@ -199,6 +215,30 @@ export function transferToFormData(t: Transfer): TransferFormData {
     date: t.date,
     from,
     amount: parseAmount(from === 'Daniel' ? t.amountDaniel : t.amountManuela),
+    notes: t.notes,
+  };
+}
+
+// ── Gift helpers ──
+
+/** Determine who gave the gift */
+export function giftFrom(g: Gift): Person {
+  return g.amountDaniel ? 'Daniel' : 'Manuela';
+}
+
+/** Get the formatted gift amount */
+export function giftAmount(g: Gift): string {
+  return g.amountDaniel || g.amountManuela;
+}
+
+/** Convert a Gift to form data for editing */
+export function giftToFormData(g: Gift): GiftFormData {
+  const from = giftFrom(g);
+  return {
+    date: g.date,
+    from,
+    amount: parseAmount(from === 'Daniel' ? g.amountDaniel : g.amountManuela),
+    notes: g.notes,
   };
 }
 

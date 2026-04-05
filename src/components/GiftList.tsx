@@ -12,14 +12,14 @@ import {
   Stack,
 } from '@mantine/core';
 import { IconSearch, IconEdit, IconTrash } from '@tabler/icons-react';
-import type { Transfer, TransferFormData } from '../types/transfer';
-import { transferFrom, transferAmount, transferToFormData } from '../services/utils';
-import { TransferForm } from './TransferForm';
+import type { Gift, GiftFormData } from '../types/gift';
+import { giftFrom, giftAmount, giftToFormData } from '../services/utils';
+import { GiftForm } from './GiftForm';
 
 interface Props {
-  transfers: Transfer[];
+  gifts: Gift[];
   loading: boolean;
-  onUpdate: (rowIndex: number, data: TransferFormData) => Promise<void>;
+  onUpdate: (rowIndex: number, data: GiftFormData) => Promise<void>;
   onDelete: (rowIndex: number) => Promise<void>;
   onRefresh: () => void;
 }
@@ -28,22 +28,22 @@ const PAGE_SIZE = 50;
 const TABULAR = { fontVariantNumeric: 'tabular-nums' } as const;
 const NOWRAP = { whiteSpace: 'nowrap' } as const;
 
-export function TransferList({ transfers, loading, onUpdate, onDelete, onRefresh }: Props) {
+export function GiftList({ gifts, loading, onUpdate, onDelete, onRefresh }: Props) {
   const isDark = useComputedColorScheme('light') === 'dark';
   const [editingRow, setEditingRow] = useState<number | null>(null);
   const [deletingRow, setDeletingRow] = useState<number | null>(null);
-  const [confirmDelete, setConfirmDelete] = useState<Transfer | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<Gift | null>(null);
   const [filter, setFilter] = useState('');
   const [page, setPage] = useState(0);
 
-  const sorted = [...transfers].reverse();
+  const sorted = [...gifts].reverse();
 
   const filtered = filter
-    ? sorted.filter((t) => {
+    ? sorted.filter((g) => {
         const q = filter.toLowerCase();
-        const from = transferFrom(t).toLowerCase();
+        const from = giftFrom(g).toLowerCase();
         const to = (from === 'daniel' ? 'manuela' : 'daniel');
-        return t.date.includes(filter) || from.includes(q) || to.includes(q) || t.notes.toLowerCase().includes(q);
+        return g.date.includes(filter) || from.includes(q) || to.includes(q) || g.notes.toLowerCase().includes(q);
       })
     : sorted;
 
@@ -65,7 +65,7 @@ export function TransferList({ transfers, loading, onUpdate, onDelete, onRefresh
     <Stack gap="md">
       <Group>
         <TextInput
-          placeholder="Search transfers..."
+          placeholder="Search gifts..."
           leftSection={<IconSearch size={16} />}
           value={filter}
           onChange={(e) => {
@@ -80,30 +80,30 @@ export function TransferList({ transfers, loading, onUpdate, onDelete, onRefresh
       </Group>
 
       <Text size="sm" c="var(--mantine-color-text)">
-        Showing {paged.length} of {filtered.length} transfers
+        Showing {paged.length} of {filtered.length} gifts
       </Text>
 
       <Table striped highlightOnHover style={isDark ? { '--table-striped-color': 'rgba(255,255,255,0.07)' } as React.CSSProperties : undefined}>
         <Table.Thead>
           <Table.Tr>
             <Table.Th style={NOWRAP}>Date</Table.Th>
-            <Table.Th>Transfer</Table.Th>
+            <Table.Th>Gift</Table.Th>
             <Table.Th ta="right">Amount</Table.Th>
             <Table.Th>Notes</Table.Th>
             <Table.Th w={80}>Actions</Table.Th>
           </Table.Tr>
         </Table.Thead>
         <Table.Tbody>
-          {paged.map((t) => {
-            if (editingRow === t.rowIndex) {
+          {paged.map((g) => {
+            if (editingRow === g.rowIndex) {
               return (
-                <Table.Tr key={t.rowIndex}>
+                <Table.Tr key={g.rowIndex}>
                   <Table.Td colSpan={5} bg="var(--mantine-color-default-hover)">
-                    <TransferForm
-                      initial={transferToFormData(t)}
+                    <GiftForm
+                      initial={giftToFormData(g)}
                       submitLabel="Save"
                       onSubmit={async (data) => {
-                        await onUpdate(t.rowIndex, data);
+                        await onUpdate(g.rowIndex, data);
                         setEditingRow(null);
                       }}
                       onCancel={() => setEditingRow(null)}
@@ -113,26 +113,26 @@ export function TransferList({ transfers, loading, onUpdate, onDelete, onRefresh
               );
             }
 
-            const from = transferFrom(t);
+            const from = giftFrom(g);
             const to = from === 'Daniel' ? 'Manuela' : 'Daniel';
 
             return (
-              <Table.Tr key={t.rowIndex}>
-                <Table.Td style={NOWRAP}>{t.date}</Table.Td>
+              <Table.Tr key={g.rowIndex}>
+                <Table.Td style={NOWRAP}>{g.date}</Table.Td>
                 <Table.Td>{from} → {to}</Table.Td>
-                <Table.Td ta="right" style={TABULAR}>{transferAmount(t)}</Table.Td>
-                <Table.Td>{t.notes}</Table.Td>
+                <Table.Td ta="right" style={TABULAR}>{giftAmount(g)}</Table.Td>
+                <Table.Td>{g.notes}</Table.Td>
                 <Table.Td>
                   <Group gap={4} wrap="nowrap">
-                    <ActionIcon variant="subtle" onClick={() => setEditingRow(t.rowIndex)} title="Edit">
+                    <ActionIcon variant="subtle" onClick={() => setEditingRow(g.rowIndex)} title="Edit">
                       <IconEdit size={16} />
                     </ActionIcon>
                     <ActionIcon
                       variant="subtle"
                       color="red"
-                      onClick={() => setConfirmDelete(t)}
+                      onClick={() => setConfirmDelete(g)}
                       title="Delete"
-                      disabled={deletingRow === t.rowIndex}
+                      disabled={deletingRow === g.rowIndex}
                     >
                       <IconTrash size={16} />
                     </ActionIcon>
@@ -157,14 +157,14 @@ export function TransferList({ transfers, loading, onUpdate, onDelete, onRefresh
       <Modal
         opened={!!confirmDelete}
         onClose={() => setConfirmDelete(null)}
-        title="Delete transfer?"
+        title="Delete gift?"
       >
         {confirmDelete && (
           <Stack gap="md">
             <Text>
               <Text span fw={600}>{confirmDelete.date}</Text> —{' '}
-              {transferFrom(confirmDelete)} → {transferFrom(confirmDelete) === 'Daniel' ? 'Manuela' : 'Daniel'}{' '}
-              {transferAmount(confirmDelete)}
+              {giftFrom(confirmDelete)} → {giftFrom(confirmDelete) === 'Daniel' ? 'Manuela' : 'Daniel'}{' '}
+              {giftAmount(confirmDelete)}
             </Text>
             <Group>
               <Button color="red" onClick={handleDeleteConfirm}>

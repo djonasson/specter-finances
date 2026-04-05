@@ -28,6 +28,7 @@ import {
 import { Bar, Pie } from 'react-chartjs-2';
 import type { Expense } from '../types/expense';
 import type { Transfer } from '../types/transfer';
+import type { Gift } from '../types/gift';
 import { CategoryIcon } from './CategoryIcon';
 import {
   getAvailableYears,
@@ -44,6 +45,7 @@ ChartJS.register(CategoryScale, LinearScale, BarElement, ArcElement, ChartTitle,
 interface Props {
   expenses: Expense[];
   transfers: Transfer[];
+  gifts: Gift[];
 }
 
 // Pie chart palette — picked for readability on both light and dark backgrounds
@@ -56,7 +58,7 @@ const COLORS_DARK = [
   '#f5dd6b', '#cfa0cc', '#ffb8c0', '#c4a07a', '#d4ccc8',
 ];
 
-export function Dashboard({ expenses, transfers }: Props) {
+export function Dashboard({ expenses, transfers, gifts }: Props) {
   const colorScheme = useComputedColorScheme('light');
   const isDark = colorScheme === 'dark';
   const chartText = isDark ? '#c1c2c5' : '#495057';
@@ -107,8 +109,13 @@ export function Dashboard({ expenses, transfers }: Props) {
     [transfers, filterParams],
   );
 
+  const filteredGifts = useMemo(
+    () => filterByDate(gifts, filterParams),
+    [gifts, filterParams],
+  );
+
   const { totalDaniel, totalManuela, byCategory, byMonth } = aggregateExpenses(filtered);
-  const { adjustedDeltaDaniel, adjustedDeltaManuela, netTransfer } = calculateBalance(filtered, filteredTransfers);
+  const { adjustedDeltaDaniel, adjustedDeltaManuela, transferDaniel, transferManuela, giftDaniel, giftManuela } = calculateBalance(filtered, filteredTransfers, filteredGifts);
 
   const categoryLabels = Object.keys(byCategory).sort();
   const categoryTotals = categoryLabels.map(
@@ -262,39 +269,50 @@ export function Dashboard({ expenses, transfers }: Props) {
         <Card withBorder>
           <Title order={4} mb="md">Spending by Person</Title>
           <Table>
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th />
+                <Table.Th ta="right">Daniel</Table.Th>
+                <Table.Th ta="right">Manuela</Table.Th>
+              </Table.Tr>
+            </Table.Thead>
             <Table.Tbody>
               <Table.Tr>
-                <Table.Td>Daniel</Table.Td>
+                <Table.Td>Expenses</Table.Td>
                 <Table.Td ta="right" style={{ fontVariantNumeric: 'tabular-nums' }}>€{fmt(totalDaniel)}</Table.Td>
-                <Table.Td ta="right">
+                <Table.Td ta="right" style={{ fontVariantNumeric: 'tabular-nums' }}>€{fmt(totalManuela)}</Table.Td>
+              </Table.Tr>
+              {(transferDaniel > 0 || transferManuela > 0) && (
+                <Table.Tr>
+                  <Table.Td>Transfers</Table.Td>
+                  <Table.Td ta="right" style={{ fontVariantNumeric: 'tabular-nums' }}>{transferDaniel > 0 ? `€${fmt(transferDaniel)}` : '—'}</Table.Td>
+                  <Table.Td ta="right" style={{ fontVariantNumeric: 'tabular-nums' }}>{transferManuela > 0 ? `€${fmt(transferManuela)}` : '—'}</Table.Td>
+                </Table.Tr>
+              )}
+              {(giftDaniel > 0 || giftManuela > 0) && (
+                <Table.Tr>
+                  <Table.Td>Gifts</Table.Td>
+                  <Table.Td ta="right" style={{ fontVariantNumeric: 'tabular-nums' }}>{giftDaniel > 0 ? `€${fmt(giftDaniel)}` : '—'}</Table.Td>
+                  <Table.Td ta="right" style={{ fontVariantNumeric: 'tabular-nums' }}>{giftManuela > 0 ? `€${fmt(giftManuela)}` : '—'}</Table.Td>
+                </Table.Tr>
+              )}
+              <Table.Tr style={{ borderTop: '2px solid var(--mantine-color-default-border)' }}>
+                <Table.Td fw={600}>Balance</Table.Td>
+                <Table.Td ta="right" fw={600}>
                   <Text span c={adjustedDeltaDaniel >= 0 ? 'green' : 'red'} style={{ fontVariantNumeric: 'tabular-nums' }}>
                     {adjustedDeltaDaniel >= 0 ? '+' : ''}€{fmt(adjustedDeltaDaniel)}
                   </Text>
                 </Table.Td>
-              </Table.Tr>
-              <Table.Tr>
-                <Table.Td>Manuela</Table.Td>
-                <Table.Td ta="right" style={{ fontVariantNumeric: 'tabular-nums' }}>€{fmt(totalManuela)}</Table.Td>
-                <Table.Td ta="right">
+                <Table.Td ta="right" fw={600}>
                   <Text span c={adjustedDeltaManuela >= 0 ? 'green' : 'red'} style={{ fontVariantNumeric: 'tabular-nums' }}>
                     {adjustedDeltaManuela >= 0 ? '+' : ''}€{fmt(adjustedDeltaManuela)}
                   </Text>
                 </Table.Td>
               </Table.Tr>
-              <Table.Tr style={{ borderTop: '2px solid var(--mantine-color-default-border)' }}>
-                <Table.Td fw={600}>Total</Table.Td>
-                <Table.Td ta="right" fw={600} style={{ fontVariantNumeric: 'tabular-nums' }}>€{fmt(totalDaniel + totalManuela)}</Table.Td>
-                <Table.Td />
+              <Table.Tr>
+                <Table.Td fw={600}>Total expenses</Table.Td>
+                <Table.Td ta="right" fw={600} colSpan={2} style={{ fontVariantNumeric: 'tabular-nums' }}>€{fmt(totalDaniel + totalManuela)}</Table.Td>
               </Table.Tr>
-              {netTransfer !== 0 && (
-                <Table.Tr>
-                  <Table.Td colSpan={3}>
-                    <Text size="sm" ta="center">
-                      Transfers: {netTransfer > 0 ? 'Daniel → Manuela' : 'Manuela → Daniel'} €{fmt(Math.abs(netTransfer))}
-                    </Text>
-                  </Table.Td>
-                </Table.Tr>
-              )}
             </Table.Tbody>
           </Table>
         </Card>

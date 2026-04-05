@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { Expense } from '../types/expense';
 import type { Transfer } from '../types/transfer';
+import type { Gift } from '../types/gift';
 import {
   toDate,
   fromDate,
@@ -15,6 +16,9 @@ import {
   transferFrom,
   transferAmount,
   transferToFormData,
+  giftFrom,
+  giftAmount,
+  giftToFormData,
   expenseToFormData,
 } from './utils';
 import { formatAmount } from './parsing';
@@ -40,6 +44,18 @@ function makeTransfer(overrides: Partial<Transfer> = {}): Transfer {
     date: '2026-01-20',
     amountDaniel: '',
     amountManuela: '',
+    notes: '',
+    ...overrides,
+  };
+}
+
+function makeGift(overrides: Partial<Gift> = {}): Gift {
+  return {
+    rowIndex: 2,
+    date: '2026-01-20',
+    amountDaniel: '',
+    amountManuela: '',
+    notes: '',
     ...overrides,
   };
 }
@@ -671,21 +687,22 @@ describe('transferAmount', () => {
 describe('transferToFormData', () => {
   it('converts Daniel transfer to form data', () => {
     const t = makeTransfer({ date: '2026-02-10', amountDaniel: '€200.00', amountManuela: '' });
-    expect(transferToFormData(t)).toEqual({ date: '2026-02-10', from: 'Daniel', amount: '200.00' });
+    expect(transferToFormData(t)).toEqual({ date: '2026-02-10', from: 'Daniel', amount: '200.00', notes: '' });
   });
 
   it('converts Manuela transfer to form data', () => {
     const t = makeTransfer({ date: '2026-02-10', amountDaniel: '', amountManuela: '€75.50' });
-    expect(transferToFormData(t)).toEqual({ date: '2026-02-10', from: 'Manuela', amount: '75.50' });
+    expect(transferToFormData(t)).toEqual({ date: '2026-02-10', from: 'Manuela', amount: '75.50', notes: '' });
   });
 
   it('round-trips through formatAmount → transferToFormData', () => {
-    const original = { date: '2026-04-01', from: 'Daniel' as const, amount: '500' };
+    const original = { date: '2026-04-01', from: 'Daniel' as const, amount: '500', notes: '' };
     const transfer: Transfer = {
       rowIndex: 2,
       date: original.date,
       amountDaniel: formatAmount(original.amount),
       amountManuela: '',
+      notes: '',
     };
     const result = transferToFormData(transfer);
     expect(result.date).toBe('2026-04-01');
@@ -749,5 +766,147 @@ describe('expenseToFormData', () => {
     const result = expenseToFormData(e);
     expect(result.item).toBe('Test item');
     expect(result.notes).toBe('Some notes');
+  });
+});
+
+// ── Gift balance tests ──
+
+describe('calculateBalance with gifts', () => {
+  it('gift only — Daniel gifts €100, swing of -200', () => {
+    const gifts = [makeGift({ amountDaniel: '€100.00' })];
+    const result = calculateBalance([], [], gifts);
+    expect(result.adjustedDeltaDaniel).toBe(-200);
+    expect(result.adjustedDeltaManuela).toBe(200);
+    expect(result.netGift).toBe(100);
+  });
+
+  it('gift only — Manuela gifts €100, swing of +200', () => {
+    const gifts = [makeGift({ amountManuela: '€100.00' })];
+    const result = calculateBalance([], [], gifts);
+    expect(result.adjustedDeltaDaniel).toBe(200);
+    expect(result.adjustedDeltaManuela).toBe(-200);
+    expect(result.netGift).toBe(-100);
+  });
+
+  it('gift cancels transfer — Daniel transfers €100 AND gifts €100', () => {
+    const transfers = [makeTransfer({ amountDaniel: '€100.00' })];
+    const gifts = [makeGift({ amountDaniel: '€100.00' })];
+    const result = calculateBalance([], transfers, gifts);
+    expect(result.adjustedDeltaDaniel).toBe(0);
+    expect(result.adjustedDeltaManuela).toBe(0);
+  });
+
+  it('expenses + transfers + gifts combined', () => {
+    const expenses = [makeExpense({ amountDaniel: '€300.00', amountManuela: '€100.00' })];
+    const transfers = [makeTransfer({ amountManuela: '€50.00' })];
+    const gifts = [makeGift({ amountDaniel: '€25.00' })];
+    const result = calculateBalance(expenses, transfers, gifts);
+    // 200 + 2*(0-50) - 2*(25-0) = 200 - 100 - 50 = 50
+    expect(result.adjustedDeltaDaniel).toBe(50);
+    expect(result.adjustedDeltaManuela).toBe(-50);
+  });
+
+  it('user scenario: €6,086.38 delta, Manuela transfers €300, Daniel gifts €100', () => {
+    const expenses = [
+      makeExpense({ amountDaniel: '€8,043.19', amountManuela: '€1,956.81' }),
+    ];
+    const transfers = [makeTransfer({ amountManuela: '€300.00' })];
+    const gifts = [makeGift({ amountDaniel: '€100.00' })];
+    const result = calculateBalance(expenses, transfers, gifts);
+    // 6086.38 + 2*(0-300) - 2*(100-0) = 6086.38 - 600 - 200 = 5286.38
+    expect(result.adjustedDeltaDaniel).toBeCloseTo(5286.38, 2);
+    expect(result.adjustedDeltaManuela).toBeCloseTo(-5286.38, 2);
+  });
+
+  it('gift from Daniel increases his deficit when he is ahead', () => {
+    const expenses = [makeExpense({ amountDaniel: '€500.00', amountManuela: '€100.00' })];
+    const gifts = [makeGift({ amountDaniel: '€50.00' })];
+    const result = calculateBalance(expenses, [], gifts);
+    // 400 - 2*(50) = 300
+    expect(result.adjustedDeltaDaniel).toBe(300);
+  });
+
+  it('default gifts parameter preserves backward compatibility', () => {
+    const expenses = [makeExpense({ amountDaniel: '€300.00', amountManuela: '€100.00' })];
+    const transfers = [makeTransfer({ amountManuela: '€50.00' })];
+    const result = calculateBalance(expenses, transfers);
+    expect(result.adjustedDeltaDaniel).toBe(100);
+    expect(result.giftDaniel).toBe(0);
+    expect(result.giftManuela).toBe(0);
+    expect(result.netGift).toBe(0);
+  });
+});
+
+// ── Gift helpers ──
+
+describe('giftFrom', () => {
+  it('returns Daniel when Daniel column has amount', () => {
+    expect(giftFrom(makeGift({ amountDaniel: '€100.00', amountManuela: '' }))).toBe('Daniel');
+  });
+
+  it('returns Manuela when Manuela column has amount', () => {
+    expect(giftFrom(makeGift({ amountDaniel: '', amountManuela: '€100.00' }))).toBe('Manuela');
+  });
+
+  it('returns Manuela when both are empty', () => {
+    expect(giftFrom(makeGift({ amountDaniel: '', amountManuela: '' }))).toBe('Manuela');
+  });
+});
+
+describe('giftAmount', () => {
+  it('returns Daniel amount when present', () => {
+    expect(giftAmount(makeGift({ amountDaniel: '€100.00', amountManuela: '' }))).toBe('€100.00');
+  });
+
+  it('returns Manuela amount when Daniel is empty', () => {
+    expect(giftAmount(makeGift({ amountDaniel: '', amountManuela: '€200.00' }))).toBe('€200.00');
+  });
+
+  it('returns empty when both are empty', () => {
+    expect(giftAmount(makeGift({ amountDaniel: '', amountManuela: '' }))).toBe('');
+  });
+});
+
+describe('giftToFormData', () => {
+  it('converts Daniel gift to form data', () => {
+    const g = makeGift({ date: '2026-02-10', amountDaniel: '€200.00', amountManuela: '', notes: 'Birthday' });
+    expect(giftToFormData(g)).toEqual({ date: '2026-02-10', from: 'Daniel', amount: '200.00', notes: 'Birthday' });
+  });
+
+  it('converts Manuela gift to form data', () => {
+    const g = makeGift({ date: '2026-02-10', amountDaniel: '', amountManuela: '€75.50', notes: '' });
+    expect(giftToFormData(g)).toEqual({ date: '2026-02-10', from: 'Manuela', amount: '75.50', notes: '' });
+  });
+
+  it('round-trips through formatAmount → giftToFormData', () => {
+    const original = { date: '2026-04-01', from: 'Daniel' as const, amount: '500', notes: 'Test' };
+    const gift: Gift = {
+      rowIndex: 2,
+      date: original.date,
+      amountDaniel: formatAmount(original.amount),
+      amountManuela: '',
+      notes: original.notes,
+    };
+    const result = giftToFormData(gift);
+    expect(result.date).toBe('2026-04-01');
+    expect(result.from).toBe('Daniel');
+    expect(result.amount).toBe('500.00');
+    expect(result.notes).toBe('Test');
+  });
+});
+
+// ── Transfer helpers with notes ──
+
+describe('transferToFormData with notes', () => {
+  it('includes notes in form data', () => {
+    const t = makeTransfer({ date: '2026-02-10', amountDaniel: '€200.00', notes: 'Settlement' });
+    const result = transferToFormData(t);
+    expect(result.notes).toBe('Settlement');
+  });
+
+  it('handles empty notes', () => {
+    const t = makeTransfer({ date: '2026-02-10', amountDaniel: '€200.00', notes: '' });
+    const result = transferToFormData(t);
+    expect(result.notes).toBe('');
   });
 });

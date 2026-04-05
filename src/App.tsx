@@ -18,13 +18,15 @@ import {
   Transition,
   Tabs,
 } from '@mantine/core';
-import { IconAlertCircle, IconCheck, IconSettings, IconLayoutDashboard, IconPlus, IconList, IconArrowsExchange } from '@tabler/icons-react';
+import { IconAlertCircle, IconCheck, IconSettings, IconLayoutDashboard, IconPlus, IconList, IconArrowsExchange, IconGift } from '@tabler/icons-react';
 import { useAuth } from './hooks/AuthContext';
 import { useExpensesContext } from './hooks/ExpensesContext';
 import { ExpenseForm } from './components/ExpenseForm';
 import { ExpenseList } from './components/ExpenseList';
 import { TransferForm } from './components/TransferForm';
 import { TransferList } from './components/TransferList';
+import { GiftForm } from './components/GiftForm';
+import { GiftList } from './components/GiftList';
 import { Dashboard } from './components/Dashboard';
 import { ThemeToggle } from './components/ThemeToggle';
 import { ThemeSettings } from './components/ThemeSettings';
@@ -62,6 +64,8 @@ function AuthenticatedApp() {
     expenses, loading, error, load, add, update, remove,
     transfers, transfersLoading, transfersError, loadTransfers,
     addTransfer, updateTransfer, removeTransfer,
+    gifts, giftsLoading, giftsError, loadGifts,
+    addGift, updateGift, removeGift,
   } = useExpensesContext();
   const [settingsOpened, setSettingsOpened] = useState(false);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
@@ -71,7 +75,8 @@ function AuthenticatedApp() {
   useEffect(() => {
     load();
     loadTransfers();
-  }, [load, loadTransfers, location.pathname]);
+    loadGifts();
+  }, [load, loadTransfers, loadGifts, location.pathname]);
 
   // Auto-dismiss success message
   useEffect(() => {
@@ -114,6 +119,23 @@ function AuthenticatedApp() {
     [removeTransfer],
   );
 
+  const addGiftAndRedirect = useCallback(
+    async (form: Parameters<typeof addGift>[0]) => {
+      await addGift(form);
+      navigate('/gifts');
+      setSuccessMsg('Gift added');
+    },
+    [addGift, navigate],
+  );
+
+  const removeGiftWithNotify = useCallback(
+    async (rowIndex: number) => {
+      await removeGift(rowIndex);
+      setSuccessMsg('Gift deleted');
+    },
+    [removeGift],
+  );
+
   return (
     <>
     <AppShell
@@ -141,9 +163,9 @@ function AuthenticatedApp() {
       </AppShell.Header>
 
       <AppShell.Main>
-        {(error || transfersError) && (
+        {(error || transfersError || giftsError) && (
           <Alert color="red" icon={<IconAlertCircle size={16} />} mb="md">
-            {error || transfersError}
+            {error || transfersError || giftsError}
           </Alert>
         )}
 
@@ -153,10 +175,10 @@ function AuthenticatedApp() {
             element={
               <>
                 <Title order={2} mb="md">Dashboard</Title>
-                {loading || transfersLoading ? (
+                {loading || transfersLoading || giftsLoading ? (
                   <Center py="xl"><Loader /></Center>
                 ) : (
-                  <Dashboard expenses={expenses} transfers={transfers} />
+                  <Dashboard expenses={expenses} transfers={transfers} gifts={gifts} />
                 )}
               </>
             }
@@ -170,12 +192,16 @@ function AuthenticatedApp() {
                   <Tabs.List>
                     <Tabs.Tab value="expense">Expense</Tabs.Tab>
                     <Tabs.Tab value="transfer">Transfer</Tabs.Tab>
+                    <Tabs.Tab value="gift">Gift</Tabs.Tab>
                   </Tabs.List>
                   <Tabs.Panel value="expense" pt="md">
                     <ExpenseForm onSubmit={addAndRedirect} />
                   </Tabs.Panel>
                   <Tabs.Panel value="transfer" pt="md">
                     <TransferForm onSubmit={addTransferAndRedirect} />
+                  </Tabs.Panel>
+                  <Tabs.Panel value="gift" pt="md">
+                    <GiftForm onSubmit={addGiftAndRedirect} />
                   </Tabs.Panel>
                 </Tabs>
               </>
@@ -211,6 +237,21 @@ function AuthenticatedApp() {
               </>
             }
           />
+          <Route
+            path="/gifts"
+            element={
+              <>
+                <Title order={2} mb="md">Gifts</Title>
+                <GiftList
+                  gifts={gifts}
+                  loading={giftsLoading}
+                  onUpdate={updateGift}
+                  onDelete={removeGiftWithNotify}
+                  onRefresh={loadGifts}
+                />
+              </>
+            }
+          />
         </Routes>
         {backgroundEffect === 'squirrel' && <div style={{ height: 100 }} />}
       </AppShell.Main>
@@ -220,6 +261,7 @@ function AuthenticatedApp() {
         <BottomNavItem to="/add" icon={<IconPlus size={22} />} label="Add" />
         <BottomNavItem to="/list" icon={<IconList size={22} />} label="Expenses" />
         <BottomNavItem to="/transfers" icon={<IconArrowsExchange size={22} />} label="Transfers" />
+        <BottomNavItem to="/gifts" icon={<IconGift size={22} />} label="Gifts" />
       </AppShell.Footer>
 
       <Transition mounted={!!successMsg} transition="slide-down" duration={200}>

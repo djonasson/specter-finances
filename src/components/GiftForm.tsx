@@ -3,25 +3,26 @@ import { Stack, Group, Button, Select, NumberInput, TextInput, Text, Alert } fro
 import { DateInput } from '@mantine/dates';
 import { IconAlertCircle } from '@tabler/icons-react';
 import { PEOPLE } from '../types/transfer';
-import type { Person, TransferFormData } from '../types/transfer';
+import type { Person } from '../types/transfer';
+import type { GiftFormData } from '../types/gift';
 import { today, fromDate } from '../services/utils';
 
 interface Props {
-  onSubmit: (data: TransferFormData) => Promise<void>;
-  initial?: TransferFormData;
+  onSubmit: (data: GiftFormData) => Promise<void>;
+  initial?: GiftFormData;
   submitLabel?: string;
   onCancel?: () => void;
 }
 
-const emptyForm: TransferFormData = {
+const emptyForm: GiftFormData = {
   date: today(),
   from: 'Daniel',
   amount: '',
   notes: '',
 };
 
-export function TransferForm({ onSubmit, initial, submitLabel = 'Add Transfer', onCancel }: Props) {
-  const [form, setForm] = useState<TransferFormData>(initial ?? emptyForm);
+export function GiftForm({ onSubmit, initial, submitLabel = 'Add Gift', onCancel }: Props) {
+  const [form, setForm] = useState<GiftFormData>(initial ?? emptyForm);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -64,7 +65,7 @@ export function TransferForm({ onSubmit, initial, submitLabel = 'Add Transfer', 
         />
 
         <Select
-          label="Who is transferring?"
+          label="Who is giving the gift?"
           value={form.from}
           onChange={(val) => setForm((f) => ({ ...f, from: (val as Person) ?? 'Daniel' }))}
           data={PEOPLE as unknown as string[]}
