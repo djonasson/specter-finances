@@ -760,6 +760,7 @@ export function SquirrelBackground() {
     }
 
     function spawnShards(x: number, y: number, size: number) {
+      if (iceShards.length >= 50) return; // cap total shards
       const count = 3 + Math.floor(Math.random() * 4);
       for (let i = 0; i < count; i++) {
         const angle = -Math.PI * 0.1 - Math.random() * Math.PI * 0.8; // upward spread
@@ -843,7 +844,13 @@ export function SquirrelBackground() {
             squirrel.moodTimer = 60;
             squirrel.targetAcorn = -1;
           }
-          acorns[i] = spawnAcorn();
+          // Remove extra acorns beyond base count to prevent array growth
+          if (acorns.length > 12) {
+            acorns.splice(i, 1);
+            i--;
+          } else {
+            acorns[i] = spawnAcorn();
+          }
         }
       }
 
@@ -865,16 +872,17 @@ export function SquirrelBackground() {
       }
       frame++;
 
-      // Ice block spawning
-      // Big acorn spawning
+      // Big acorn spawning (cap total acorns at 20 to prevent unbounded growth)
       bigAcornTimer--;
       if (bigAcornTimer <= 0) {
-        acorns.push(spawnAcorn(true));
+        if (acorns.length < 20) {
+          acorns.push(spawnAcorn(true));
+        }
         bigAcornTimer = 800 + Math.random() * 800; // next in ~20-40 seconds
       }
 
       iceSpawnTimer--;
-      if (iceSpawnTimer <= 0) {
+      if (iceSpawnTimer <= 0 && iceBlocks.length < 20) {
         const w = 10 + Math.random() * 50;
         const melt = 200 + Math.random() * 200;
         // 50% chance to target near the squirrel
@@ -999,9 +1007,9 @@ export function SquirrelBackground() {
         ctx.restore();
       }
 
-      // Icicle spawning
+      // Icicle spawning (cap at 15 to prevent accumulation)
       icicleSpawnTimer--;
-      if (icicleSpawnTimer <= 0) {
+      if (icicleSpawnTimer <= 0 && icicles.length < 15) {
         const headerBottom = getHeaderHeight();
         icicles.push({
           x: 40 + Math.random() * (canvas.width - 80),
