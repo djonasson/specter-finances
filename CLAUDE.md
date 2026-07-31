@@ -15,9 +15,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **Hard rule: no real personal names anywhere in this repo** — not in identifiers,
 string literals, types, tests, comments, or docs. The two people are `Person =
 'A' | 'B'` (`types/person.ts`), positional to the sheet's two amount columns, and
-their display names are read at runtime from row 1 of the expenses tab
-(`readPersonNames` in `services/sheets.ts`), falling back to "Partner A"/"Partner
-B". Anyone can use this app and none of them need to learn whose finances it was
+their display names are read at runtime from the expenses tab's header rows
+(`readPersonNames` in `services/sheets.ts`) — sub-header first, then row 1,
+taking both names or neither, falling back to "Partner A"/"Partner B". Anyone can use this app and none of them need to learn whose finances it was
 built for. Components take a `names: PersonNames` prop rather than reaching for a
 name themselves; `App` is the single place that pulls it off the context.
 
@@ -76,7 +76,7 @@ Changing these signs, coefficients or the halving changes who owes whom and by h
 
 ### Key details
 
-- **Expense sheet layout:** Row 1 = header, row 2 = sub-header, data starts at row 3. Columns: Date | Amount (A) | Amount (B) | Item | Category | Notes. Row 1's two amount headers are read as the partners' display names — see below. Transfers/Gifts have a single header row, data from row 2. `rowIndex` in each type is the 1-based sheet row number.
+- **Expense sheet layout:** Row 1 = header, row 2 = sub-header, data starts at row 3. Columns: Date | Amount (A) | Amount (B) | Item | Category | Notes. The partners' display names are read from these header rows — `readPersonNames` tries row 2 first, then row 1, because row 1 often merges both amount columns under one group label. Transfers/Gifts have a single header row, data from row 2. `rowIndex` in each type is the 1-based sheet row number.
 - **Deletes** go through `deleteRow` (batchUpdate `deleteDimension`), which looks up the `sheetId` by tab title — so deleting renumbers `rowIndex` for everything below; the UI reloads after mutations rather than patching in place.
 - **Date handling:** The sheet may store dates as serial numbers (Google Sheets epoch) or text in various formats (DD/MM/YYYY, DD.MM.YY, etc.). All normalization is in `services/parsing.ts`.
 - **Amounts:** Stored/displayed with `€` prefix and comma thousands separators. `parseAmount`/`formatAmount` in `parsing.ts` convert between display format and raw numbers.

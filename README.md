@@ -77,15 +77,21 @@ list pages, but the same record shape.
 
 The two people are `A` and `B` in the code — positional, matching the two amount
 columns. Their names are never written in the source: the app reads them from the
-**two amount headers in row 1** of the expenses tab every time it loads, so
-whoever points it at their own spreadsheet sees their own names. A blank header
-cell shows "Partner A" / "Partner B" rather than a guess.
+expenses tab's **header rows** every time it loads, so whoever points it at their
+own spreadsheet sees their own names.
+
+The sub-header (row 2) is checked first, then row 1, because row 1 often merges
+both amount columns under a single group label:
 
 ```
-Sheet row 1:   Date │ Ada │ Bo │ Item │ Category │ Notes
-                      └──┬──┘
-                         the two names, read at runtime
+Row 1:   Date │    Amount    │ Item │ Category │ Notes     ← merged, not a name
+Row 2:        │  Ada  │  Bo  │                             ← the two names
+Row 3:   ...data starts here
 ```
+
+Both names have to come from the same row — one real name beside a placeholder
+would read as though the sheet were half-configured — otherwise the app shows
+"Partner A" / "Partner B".
 
 Renaming yourself is therefore a sheet edit, not a code change.
 

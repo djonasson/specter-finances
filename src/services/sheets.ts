@@ -115,19 +115,31 @@ async function describeSheetAccess(sheetId: string, token: string): Promise<stri
 }
 
 /**
- * Who the two amount columns belong to, taken from the header row.
+ * Who the two amount columns belong to, taken from the sheet's two header rows.
  *
  * The names live in the spreadsheet, never in this codebase — so the app
  * carries nobody's identity and anyone pointing it at their own sheet sees
- * their own names. A blank header cell falls back to a generic label rather
- * than inventing one.
+ * their own names.
+ *
+ * The SUB-header (row 2) is tried first. Row 1 commonly carries a merged group
+ * label spanning both amount columns — "Amount", say — which is not a name, and
+ * a merged cell reports its value only in the first column, leaving the second
+ * blank. Reading row 1 first therefore produced "Amount" beside "Partner B".
+ *
+ * A row only qualifies if BOTH cells are filled and differ, so the two labels
+ * always come from the same place: a half-answer next to a placeholder is worse
+ * than two honest placeholders.
  */
-export function readPersonNames(header: unknown[] | undefined): PersonNames {
-  const cell = (i: number) => String(header?.[i] ?? '').trim();
-  return {
-    a: cell(1) || DEFAULT_NAMES.a,
-    b: cell(2) || DEFAULT_NAMES.b,
-  };
+export function readPersonNames(rows: unknown[][]): PersonNames {
+  const cell = (row: unknown[] | undefined, i: number) => String(row?.[i] ?? '').trim();
+
+  for (const row of [rows[1], rows[0]]) {
+    const a = cell(row, 1);
+    const b = cell(row, 2);
+    if (a && b && a !== b) return { a, b };
+  }
+
+  return DEFAULT_NAMES;
 }
 
 export interface ExpensesResult {
@@ -138,7 +150,7 @@ export interface ExpensesResult {
 /**
  * Fetch the expense rows and the two names in one request.
  *
- * The range starts at A1 rather than A3 so the header comes back with the
+ * The range starts at A1 rather than A3 so both header rows come back with the
  * data: rows 1 and 2 are the header and sub-header, and data still starts at
  * sheet row 3.
  */
@@ -152,7 +164,7 @@ export async function fetchExpenses(): Promise<ExpensesResult> {
   const rows: unknown[][] = data.values || [];
 
   return {
-    names: readPersonNames(rows[0]),
+    names: readPersonNames(rows),
     expenses: rows.slice(2).map((row, i) => ({
       rowIndex: (i + 3) as ExpenseRow,
       date: normalizeDate(row[0]),

@@ -125,15 +125,33 @@ describe('row index offsets', () => {
 // spending to the other.
 
 describe('person names', () => {
-  const header = ['Date', 'Ada', 'Bo', 'Item', 'Category', 'Notes'];
+  const merged = ['Date', 'Amount', '', 'Item', 'Category', 'Notes'];
+  const subHeader = ['', 'Ada', 'Bo', '', '', ''];
+  const data = ['2026-01-01', 10, '', 'Bread', 'Food', ''];
 
-  it('takes them from the two amount columns of the header row', async () => {
-    mockFetch([{ values: [header, [], ['2026-01-01', 10, '', 'Bread', 'Food', '']] }]);
+  it('reads them from the sub-header under a merged group header', () => {
+    // The real layout: row 1 merges B and C under one "Amount" label, so only
+    // B1 carries it and C1 comes back blank. Reading row 1 first put "Amount"
+    // next to a "Partner B" placeholder.
+    mockFetch([{ values: [merged, subHeader, data] }]);
+    return fetchExpenses().then(({ names }) => {
+      expect(names).toEqual({ a: 'Ada', b: 'Bo' });
+    });
+  });
+
+  it('reads them from row 1 when that is where they are', async () => {
+    mockFetch([{ values: [['Date', 'Ada', 'Bo', 'Item'], [], data] }]);
     const { names } = await fetchExpenses();
     expect(names).toEqual({ a: 'Ada', b: 'Bo' });
   });
 
-  it('asks for the header row in the same request as the data', async () => {
+  it('prefers the sub-header when both rows are filled', async () => {
+    mockFetch([{ values: [['Date', 'Paid', 'Paid too'], subHeader, data] }]);
+    const { names } = await fetchExpenses();
+    expect(names).toEqual({ a: 'Ada', b: 'Bo' });
+  });
+
+  it('asks for both header rows in the same request as the data', async () => {
     const calls = mockFetch([{ values: [] }]);
     await fetchExpenses();
     expect(decodeURIComponent(calls[0].url)).toContain('Sheet1!A1:F');
@@ -141,19 +159,28 @@ describe('person names', () => {
   });
 
   it('trims surrounding whitespace', async () => {
-    mockFetch([{ values: [['Date', '  Ada ', ' Bo  ']] }]);
+    mockFetch([{ values: [merged, ['', '  Ada ', ' Bo  ']] }]);
     const { names } = await fetchExpenses();
     expect(names).toEqual({ a: 'Ada', b: 'Bo' });
   });
 
-  it('falls back to generic labels for blank header cells', async () => {
-    mockFetch([{ values: [['Date', '', '   ', 'Item']] }]);
+  // Both labels have to come from one row. One real name beside a placeholder
+  // reads as though the sheet is misconfigured for only one of the two.
+  it('takes both names or neither, never one of each', async () => {
+    mockFetch([{ values: [merged, ['', 'Ada', '']] }]);
     const { names } = await fetchExpenses();
     expect(names).toEqual({ a: 'Partner A', b: 'Partner B' });
   });
 
-  it('falls back when the header row is short', async () => {
-    mockFetch([{ values: [['Date']] }]);
+  it('ignores a row whose two cells are identical', async () => {
+    // A group label repeated across both columns names nobody.
+    mockFetch([{ values: [['Date', 'Amount', 'Amount'], []] }]);
+    const { names } = await fetchExpenses();
+    expect(names).toEqual({ a: 'Partner A', b: 'Partner B' });
+  });
+
+  it('falls back when neither header row has both', async () => {
+    mockFetch([{ values: [['Date'], ['', '', '   ']] }]);
     const { names } = await fetchExpenses();
     expect(names).toEqual({ a: 'Partner A', b: 'Partner B' });
   });
@@ -164,7 +191,7 @@ describe('person names', () => {
     expect(names).toEqual({ a: 'Partner A', b: 'Partner B' });
   });
 
-  it('accepts a header cell the sheet returned as a number', async () => {
+  it('accepts header cells the sheet returned as numbers', async () => {
     // valueRenderOption=UNFORMATTED_VALUE hands back numbers unquoted.
     mockFetch([{ values: [['Date', 1, 2]] }]);
     const { names } = await fetchExpenses();
@@ -172,7 +199,7 @@ describe('person names', () => {
   });
 
   it('keeps the data rows starting at sheet row 3 regardless', async () => {
-    mockFetch([{ values: [header, ['', 'paid', 'paid'], ['2026-01-01', 10, '', 'Bread']] }]);
+    mockFetch([{ values: [merged, subHeader, data] }]);
     const { expenses } = await fetchExpenses();
     expect(expenses).toHaveLength(1);
     expect(expenses[0].rowIndex).toBe(3);
