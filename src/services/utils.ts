@@ -137,16 +137,20 @@ export function notCountedProblem(
   values: Pick<ExpenseFormData, 'amountA' | 'amountB' | 'notCountedA' | 'notCountedB'>,
   names: PersonNames,
 ): string | null {
-  const over = (amount: string, notCounted: string) =>
-    toNum(notCounted) !== '' && Number(toNum(notCounted)) > Number(toNum(amount) || 0);
+  const check = (amount: string, notCounted: string, who: string) => {
+    const aside = toNum(notCounted);
+    if (aside === '') return null;
+    // Negative as well as excessive: the balance subtracts this figure, so a
+    // negative one silently increases what the other person owes.
+    if (aside < 0) return `Not counted cannot be negative`;
+    if (aside > (toNum(amount) || 0)) return `Not counted cannot be more than what ${who} paid`;
+    return null;
+  };
 
-  if (over(values.amountA, values.notCountedA)) {
-    return `Not counted cannot be more than what ${names.a} paid`;
-  }
-  if (over(values.amountB, values.notCountedB)) {
-    return `Not counted cannot be more than what ${names.b} paid`;
-  }
-  return null;
+  return (
+    check(values.amountA, values.notCountedA, names.a) ??
+    check(values.amountB, values.notCountedB, names.b)
+  );
 }
 
 // ── Recently added ──
@@ -464,15 +468,24 @@ export function calculateBalance(
 ): BalanceResult {
   const { totalA, totalB } = aggregateExpenses(expenses);
 
-  // The part of the spending that was only for one of them. Clamped to the
-  // amount beside it: it is a slice of that amount, and a value larger than the
-  // whole would push the shared figure negative and swing the balance the wrong
-  // way. The form refuses to enter one, but the sheet can be edited by hand.
+  // The part of the spending that was only for one of them, held to both ends
+  // of what it can be: no less than nothing, no more than the amount it is a
+  // slice of.
+  //
+  // Both bounds move money if they are missing. Over the amount pushes the
+  // shared figure negative; under zero *adds* to it, because the shared figure
+  // subtracts this — a refund typed as -50 against a €100 row would have the
+  // other owing €75 instead of €50, with the dashboard showing no Not counted
+  // row at all to explain it. The forms refuse both, but a spreadsheet cell can
+  // hold anything, and a formula that goes negative gets here by accident.
+  const slice = (notCounted: string, amount: string) =>
+    Math.max(0, Math.min(toNumber(notCounted), toNumber(amount)));
+
   let notCountedA = 0;
   let notCountedB = 0;
   for (const e of expenses) {
-    notCountedA += Math.min(toNumber(e.notCountedA), toNumber(e.amountA));
-    notCountedB += Math.min(toNumber(e.notCountedB), toNumber(e.amountB));
+    notCountedA += slice(e.notCountedA, e.amountA);
+    notCountedB += slice(e.notCountedB, e.amountB);
   }
 
   let transferA = 0;

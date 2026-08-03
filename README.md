@@ -95,6 +95,10 @@ rows for you.
 
 ### It asks first, and it catches up
 
+Whenever months are waiting, the expenses page says so in a banner with a
+**Review and add** button, so a payment cannot go unnoticed because a dialog was
+missed or dismissed.
+
 Recurring payments are **rules**, not expenses. Nothing is written to the sheet
 until you confirm it. When something is due you get a list of the months, and you
 can correct any amount or untick any row before it is added.
@@ -158,8 +162,9 @@ The other owes €45 instead of €50.
 
 It is a **slice of the amount, never an extra charge**. Not counted can be
 anything from nothing up to the whole amount — a purchase entirely for one of you
-simply has the two equal, and then nobody owes anything for it. More than the
-amount is refused, because it would quietly pay the wrong person.
+simply has the two equal, and then nobody owes anything for it. Anything outside
+that is ignored, in the app and in the sheet: more than the amount would pay the
+wrong person, and a negative would quietly increase what the other owes.
 
 The dashboard shows a **Not counted** row between the spending and the balance,
 so the step from one to the other is visible rather than mysterious.

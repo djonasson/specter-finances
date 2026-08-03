@@ -1,5 +1,6 @@
 import type { ComponentProps } from 'react';
-import { Tabs } from '@mantine/core';
+import { Alert, Button, Group, Tabs, Text } from '@mantine/core';
+import { IconCalendarRepeat } from '@tabler/icons-react';
 import { useSearchParams } from 'react-router-dom';
 import type { PersonNames } from '../types/person';
 import { ExpenseList } from './ExpenseList';
@@ -49,6 +50,33 @@ export function ExpensesPage({ names, expenses, recurring }: Props) {
       </Tabs.List>
 
       <Tabs.Panel value="expenses" pt="md">
+        {/*
+          Standing, not a one-shot dialog. The confirmation only appears once and
+          is easy to miss or dismiss, and a recurring payment that has not been
+          created yet is otherwise invisible from this side: the rule is on the
+          other tab, and the expenses it would create do not exist yet. Without
+          this, setting one up looks like nothing happened.
+        */}
+        {recurring.pending.length > 0 && (
+          <Alert
+            color="indigo"
+            icon={<IconCalendarRepeat size={16} />}
+            mb="md"
+            title={`${recurring.pending.length} recurring ${
+              recurring.pending.length === 1 ? 'payment is' : 'payments are'
+            } waiting to be added`}
+          >
+            <Group justify="space-between" wrap="wrap" gap="sm">
+              <Text>
+                They are not on the sheet yet, so they are not in anyone’s balance. Check the
+                amounts before adding them.
+              </Text>
+              <Button size="xs" onClick={recurring.onGenerate}>
+                Review and add
+              </Button>
+            </Group>
+          </Alert>
+        )}
         <ExpenseList names={names} {...expenses} />
       </Tabs.Panel>
 

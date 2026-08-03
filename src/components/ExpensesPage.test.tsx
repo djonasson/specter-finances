@@ -64,7 +64,11 @@ function LocationProbe() {
   return <div data-testid="location">{`${location.pathname}${location.search}`}</div>;
 }
 
-function renderPage(initialEntry = '/list', dueCount = 0) {
+function renderPage(
+  initialEntry = '/list',
+  dueCount = 0,
+  overrides: { onGenerate?: () => void } = {},
+) {
   renderWithMantine(
     <MemoryRouter initialEntries={[initialEntry]}>
       <ExpensesPage
@@ -85,7 +89,7 @@ function renderPage(initialEntry = '/list', dueCount = 0) {
           onDelete: vi.fn(async () => {}),
           onAssignId: vi.fn(async () => {}),
           onSetUp: vi.fn(async () => {}),
-          onGenerate: vi.fn(),
+          onGenerate: overrides.onGenerate ?? vi.fn(),
           onRefresh: vi.fn(),
         }}
       />
@@ -126,6 +130,33 @@ describe('ExpensesPage', () => {
     await user.click(screen.getByRole('tab', { name: 'Expenses' }));
     expect(screen.getByTestId('location')).toHaveTextContent('/list');
     expect(screen.getByTestId('location')).not.toHaveTextContent('tab=recurring');
+  });
+
+  // The confirmation is a one-shot dialog that can be missed or dismissed, and
+  // a rule that has not created anything yet is invisible from this tab — the
+  // rule lives on the other one and its expenses do not exist. Without a
+  // standing cue, setting one up looks like nothing happened.
+  it('says on the expenses tab itself that payments are waiting', () => {
+    renderPage('/list', 2);
+    expect(screen.getByText('2 recurring payments are waiting to be added')).toBeInTheDocument();
+  });
+
+  it('reads naturally when only one is waiting', () => {
+    renderPage('/list', 1);
+    expect(screen.getByText('1 recurring payment is waiting to be added')).toBeInTheDocument();
+  });
+
+  it('says nothing when nothing is waiting', () => {
+    renderPage('/list', 0);
+    expect(screen.queryByText(/waiting to be added/)).not.toBeInTheDocument();
+  });
+
+  it('opens the confirmation again from the banner, however it was dismissed', async () => {
+    const user = userEvent.setup();
+    const onGenerate = vi.fn();
+    renderPage('/list', 2, { onGenerate });
+    await user.click(screen.getByRole('button', { name: 'Review and add' }));
+    expect(onGenerate).toHaveBeenCalled();
   });
 
   it('says on the tab itself how many payments are waiting', () => {

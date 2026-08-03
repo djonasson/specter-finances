@@ -125,6 +125,27 @@ function FilterChip({
   );
 }
 
+/**
+ * One labelled money pair in the totals table.
+ *
+ * The four rows under Expenses all read the same way — a label and each
+ * person's figure, or a dash where there is nothing — and the tabular figures
+ * have to line up down the column, so the styling belongs in one place.
+ */
+function PairRow({ label, a, b }: { label: string; a: number; b: number }) {
+  return (
+    <Table.Tr>
+      <Table.Td>{label}</Table.Td>
+      <Table.Td ta="right" style={{ fontVariantNumeric: 'tabular-nums' }}>
+        {a > 0 ? `€${fmt(a)}` : '—'}
+      </Table.Td>
+      <Table.Td ta="right" style={{ fontVariantNumeric: 'tabular-nums' }}>
+        {b > 0 ? `€${fmt(b)}` : '—'}
+      </Table.Td>
+    </Table.Tr>
+  );
+}
+
 export function Dashboard({ names, expenses, transfers, gifts }: Props) {
   const colorScheme = useComputedColorScheme('light');
   const isDark = colorScheme === 'dark';
@@ -323,52 +344,20 @@ export function Dashboard({ names, expenses, transfers, gifts }: Props) {
                 was spent, and this is the part of it the other person was never
                 asked to share.
               */}
-              {(notCountedA > 0 || notCountedB > 0) && (
-                <Table.Tr>
-                  <Table.Td>Not counted</Table.Td>
-                  <Table.Td ta="right" style={{ fontVariantNumeric: 'tabular-nums' }}>
-                    {notCountedA > 0 ? `€${fmt(notCountedA)}` : '—'}
-                  </Table.Td>
-                  <Table.Td ta="right" style={{ fontVariantNumeric: 'tabular-nums' }}>
-                    {notCountedB > 0 ? `€${fmt(notCountedB)}` : '—'}
-                  </Table.Td>
-                </Table.Tr>
-              )}
-              {(transferA > 0 || transferB > 0) && (
-                <Table.Tr>
-                  <Table.Td>Transfers</Table.Td>
-                  <Table.Td ta="right" style={{ fontVariantNumeric: 'tabular-nums' }}>
-                    {transferA > 0 ? `€${fmt(transferA)}` : '—'}
-                  </Table.Td>
-                  <Table.Td ta="right" style={{ fontVariantNumeric: 'tabular-nums' }}>
-                    {transferB > 0 ? `€${fmt(transferB)}` : '—'}
-                  </Table.Td>
-                </Table.Tr>
-              )}
+              {notCountedA > 0 || notCountedB > 0 ? (
+                <PairRow label="Not counted" a={notCountedA} b={notCountedB} />
+              ) : null}
+              {transferA > 0 || transferB > 0 ? (
+                <PairRow label="Transfers" a={transferA} b={transferB} />
+              ) : null}
               {/* Two rows, because only one of them is in the Balance below:
                   presents sit outside the shared pot, forgiveness moves it. */}
-              {(presentA > 0 || presentB > 0) && (
-                <Table.Tr>
-                  <Table.Td>Gifts</Table.Td>
-                  <Table.Td ta="right" style={{ fontVariantNumeric: 'tabular-nums' }}>
-                    {presentA > 0 ? `€${fmt(presentA)}` : '—'}
-                  </Table.Td>
-                  <Table.Td ta="right" style={{ fontVariantNumeric: 'tabular-nums' }}>
-                    {presentB > 0 ? `€${fmt(presentB)}` : '—'}
-                  </Table.Td>
-                </Table.Tr>
-              )}
-              {(forgivenA > 0 || forgivenB > 0) && (
-                <Table.Tr>
-                  <Table.Td>Forgiven</Table.Td>
-                  <Table.Td ta="right" style={{ fontVariantNumeric: 'tabular-nums' }}>
-                    {forgivenA > 0 ? `€${fmt(forgivenA)}` : '—'}
-                  </Table.Td>
-                  <Table.Td ta="right" style={{ fontVariantNumeric: 'tabular-nums' }}>
-                    {forgivenB > 0 ? `€${fmt(forgivenB)}` : '—'}
-                  </Table.Td>
-                </Table.Tr>
-              )}
+              {presentA > 0 || presentB > 0 ? (
+                <PairRow label="Gifts" a={presentA} b={presentB} />
+              ) : null}
+              {forgivenA > 0 || forgivenB > 0 ? (
+                <PairRow label="Forgiven" a={forgivenA} b={forgivenB} />
+              ) : null}
               <Table.Tr style={{ borderTop: '2px solid var(--mantine-color-default-border)' }}>
                 <Table.Td fw={600}>Balance</Table.Td>
                 <Table.Td ta="right" fw={600}>

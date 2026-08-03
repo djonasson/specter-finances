@@ -1608,3 +1608,36 @@ describe('notCountedProblem', () => {
     expect(notCountedProblem({ ...base, amountA: '', notCountedA: '10' }, NAMES)).not.toBeNull();
   });
 });
+
+// ── Both ends of the clamp ──
+//
+// The shared figure subtracts what was set aside, so the guard has to hold at
+// both ends. Too much pushes sharing negative; too little — a negative — adds to
+// it, and the dashboard row is hidden below zero, so the balance would move with
+// nothing on screen to explain why.
+
+describe('a not-counted figure the sheet should not hold', () => {
+  it('ignores a negative rather than letting it inflate what the other owes', () => {
+    const expenses = [makeExpense({ amountA: '€100.00', notCountedA: '€-50.00' })];
+    const balance = calculateBalance(expenses, [], []);
+    expect(balance.notCountedA).toBe(0);
+    // Unchanged from the same row with the column blank.
+    expect(balance.owedToA).toBe(50);
+  });
+
+  it('ignores an excess rather than letting it pay the wrong person', () => {
+    const expenses = [makeExpense({ amountA: '€100.00', notCountedA: '€500.00' })];
+    expect(calculateBalance(expenses, [], []).owedToA).toBe(0);
+  });
+
+  it('refuses a negative in the form, so the two guards agree', () => {
+    const NAMES = { a: 'Ada', b: 'Bo' };
+    const base = { amountA: '100', amountB: '100', notCountedA: '', notCountedB: '' };
+    expect(notCountedProblem({ ...base, notCountedA: '-50' }, NAMES)).toBe(
+      'Not counted cannot be negative',
+    );
+    expect(notCountedProblem({ ...base, notCountedB: '-1' }, NAMES)).toBe(
+      'Not counted cannot be negative',
+    );
+  });
+});

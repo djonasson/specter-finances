@@ -244,6 +244,40 @@ export async function fetchExpenses(): Promise<ExpensesResult> {
 }
 
 /**
+ * One expense row in sheet column order.
+ *
+ * Stated once: the two paths that append a row — a hand-entered expense and a
+ * generated one — write the same ten columns, and a layout spelled out twice is
+ * the drift `recurringRow` exists to prevent on the other tab. Cells arrive
+ * already formatted, because the two callers format at different moments.
+ */
+function expenseRow(cells: {
+  date: string;
+  amountA: string;
+  amountB: string;
+  item: string;
+  category: string;
+  notes: string;
+  marker: string;
+  addedOn: string;
+  notCountedA: string;
+  notCountedB: string;
+}): string[] {
+  return [
+    cells.date,
+    cells.amountA,
+    cells.amountB,
+    cells.item,
+    cells.category,
+    cells.notes,
+    cells.marker,
+    cells.addedOn,
+    cells.notCountedA,
+    cells.notCountedB,
+  ];
+}
+
+/**
  * Append a new expense row, stamped with today's date.
  *
  * Appending writes the full A:H because the row is new: there is no marker to
@@ -254,18 +288,18 @@ export async function fetchExpenses(): Promise<ExpensesResult> {
 export async function addExpense(form: ExpenseFormData): Promise<void> {
   const { spreadsheetId, sheetName } = getConfig();
   const range = encodeURIComponent(`${sheetName}!A:J`);
-  const row = [
-    form.date,
-    formatAmount(form.amountA),
-    formatAmount(form.amountB),
-    form.item,
-    form.category,
-    form.notes,
-    '',
-    today(),
-    formatAmount(form.notCountedA),
-    formatAmount(form.notCountedB),
-  ];
+  const row = expenseRow({
+    date: form.date,
+    amountA: formatAmount(form.amountA),
+    amountB: formatAmount(form.amountB),
+    item: form.item,
+    category: form.category,
+    notes: form.notes,
+    marker: '', // hand-entered: nothing produced it
+    addedOn: today(),
+    notCountedA: formatAmount(form.notCountedA),
+    notCountedB: formatAmount(form.notCountedB),
+  });
 
   await sheetsRequest(`/${spreadsheetId}/values/${range}:append?valueInputOption=USER_ENTERED`, {
     method: 'POST',
@@ -290,28 +324,23 @@ export async function addExpense(form: ExpenseFormData): Promise<void> {
 export async function updateExpense(rowIndex: ExpenseRow, form: ExpenseFormData): Promise<void> {
   const { spreadsheetId, sheetName } = getConfig();
 
+  const entered = [
+    form.date,
+    formatAmount(form.amountA),
+    formatAmount(form.amountB),
+    form.item,
+    form.category,
+    form.notes,
+  ];
+  const setAside = [formatAmount(form.notCountedA), formatAmount(form.notCountedB)];
+
   await sheetsRequest(`/${spreadsheetId}/values:batchUpdate`, {
     method: 'POST',
     body: JSON.stringify({
       valueInputOption: 'USER_ENTERED',
       data: [
-        {
-          range: `${sheetName}!A${rowIndex}:F${rowIndex}`,
-          values: [
-            [
-              form.date,
-              formatAmount(form.amountA),
-              formatAmount(form.amountB),
-              form.item,
-              form.category,
-              form.notes,
-            ],
-          ],
-        },
-        {
-          range: `${sheetName}!I${rowIndex}:J${rowIndex}`,
-          values: [[formatAmount(form.notCountedA), formatAmount(form.notCountedB)]],
-        },
+        { range: `${sheetName}!A${rowIndex}:F${rowIndex}`, values: [entered] },
+        { range: `${sheetName}!I${rowIndex}:J${rowIndex}`, values: [setAside] },
       ],
     }),
   });
@@ -596,6 +625,32 @@ export async function fetchRecurring(): Promise<RecurringResult> {
 export const EXPENSE_COLUMN_LABELS = ['Recurring', 'Added'];
 
 /**
+ * Fill in blank heading cells over a range, leaving anything already there.
+ *
+ * Only blank cells are written, and the write is narrowed to exactly those: a
+ * label someone chose themselves outranks ours, and writing a cell back even
+ * with the value just read would replace a formula there with whatever it
+ * currently renders to.
+ */
+async function ensureLabels(sheet: string, row: number, columns: string[], labels: string[]) {
+  const { spreadsheetId } = getConfig();
+  const span = `${sheet}!${columns[0]}${row}:${columns[columns.length - 1]}${row}`;
+  const existing = await sheetsRequest(`/${spreadsheetId}/values/${encodeURIComponent(span)}`);
+  const current = (existing.values?.[0] ?? []) as unknown[];
+
+  const blank = labels.map((_, i) => !String(current[i] ?? '').trim());
+  const first = blank.indexOf(true);
+  if (first === -1) return;
+  const last = blank.lastIndexOf(true);
+
+  const writeRange = `${sheet}!${columns[first]}${row}:${columns[last]}${row}`;
+  await sheetsRequest(
+    `/${spreadsheetId}/values/${encodeURIComponent(writeRange)}?valueInputOption=USER_ENTERED`,
+    { method: 'PUT', body: JSON.stringify({ values: [labels.slice(first, last + 1)] }) },
+  );
+}
+
+/**
  * Put a heading over the two columns the app maintains on the expenses tab.
  *
  * Kept apart from the Recurring tab, and not behind its early return, because
@@ -612,24 +667,8 @@ export const EXPENSE_COLUMN_LABELS = ['Recurring', 'Added'];
 const EXPENSE_LABEL_COLUMNS = ['G', 'H'];
 
 export async function ensureExpenseColumnLabels(): Promise<void> {
-  const { spreadsheetId, sheetName } = getConfig();
-  const readRange = encodeURIComponent(`${sheetName}!G2:H2`);
-  const existing = await sheetsRequest(`/${spreadsheetId}/values/${readRange}`);
-  const current = (existing.values?.[0] ?? []) as unknown[];
-
-  const blank = EXPENSE_COLUMN_LABELS.map((_, i) => !String(current[i] ?? '').trim());
-  const first = blank.indexOf(true);
-  if (first === -1) return;
-  const last = blank.lastIndexOf(true);
-
-  // Two columns, so the blanks are always adjacent — one write either way.
-  const writeRange = encodeURIComponent(
-    `${sheetName}!${EXPENSE_LABEL_COLUMNS[first]}2:${EXPENSE_LABEL_COLUMNS[last]}2`,
-  );
-  await sheetsRequest(`/${spreadsheetId}/values/${writeRange}?valueInputOption=USER_ENTERED`, {
-    method: 'PUT',
-    body: JSON.stringify({ values: [EXPENSE_COLUMN_LABELS.slice(first, last + 1)] }),
-  });
+  const { sheetName } = getConfig();
+  await ensureLabels(sheetName, 2, EXPENSE_LABEL_COLUMNS, EXPENSE_COLUMN_LABELS);
 }
 
 /**
@@ -698,6 +737,11 @@ export async function ensureRecurringSetup(): Promise<void> {
     rememberTabPresence(spreadsheetId, true);
   }
 
+  // A tab created before the not-counted columns existed has an eight-cell
+  // header while the app writes ten. Reads and writes are positional so no
+  // value is wrong, but two unlabelled columns of money in someone's own
+  // spreadsheet is the thing this whole labelling exists to avoid.
+  await ensureLabels(RECURRING_SHEET, 1, ['I', 'J'], RECURRING_HEADER.slice(8));
   await ensureExpenseColumnLabels();
 }
 
@@ -761,21 +805,16 @@ export async function appendGeneratedExpenses(pending: PendingExpense[]): Promis
   const { spreadsheetId, sheetName } = getConfig();
   const range = encodeURIComponent(`${sheetName}!A:J`);
   const addedOn = today();
-  const values = pending.map((p) => [
-    p.date,
-    p.amountA,
-    p.amountB,
-    p.item,
-    p.category,
-    p.notes,
-    p.marker,
-    // Stamped like any other new row. It matters most here: a payment caught up
-    // for two months ago is dated two months ago, so it lands far down a list
-    // ordered by date and would otherwise be invisible.
-    addedOn,
-    p.notCountedA,
-    p.notCountedB,
-  ]);
+  const values = pending.map((p) =>
+    expenseRow({
+      ...p,
+      category: p.category,
+      // Stamped like any other new row. It matters most here: a payment caught
+      // up for two months ago is dated two months ago, so it lands far down a
+      // list ordered by date and would otherwise be invisible.
+      addedOn,
+    }),
+  );
 
   await sheetsRequest(
     `/${spreadsheetId}/values/${range}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,

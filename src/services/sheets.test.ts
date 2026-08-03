@@ -775,14 +775,31 @@ describe('setting up the Recurring tab', () => {
   it('creates nothing when the tab already exists', async () => {
     const calls = mockFetchStatuses([
       { body: { sheets: [{ properties: { title: 'Recurring', sheetId: 7 } }] } },
-      { body: { values: [['Recurring', 'Added']] } }, // labels already in place
+      { body: { values: [['Not counted (A)', 'Not counted (B)']] } },
+      { body: { values: [['Recurring', 'Added']] } },
     ]);
 
     await ensureRecurringSetup();
 
-    // The tab lookup and the label check, and no writes of any kind.
-    expect(calls).toHaveLength(2);
+    // The tab lookup and the two label checks, and no writes of any kind.
+    expect(calls).toHaveLength(3);
     expect(calls.every((c) => (c.options.method ?? 'GET') === 'GET')).toBe(true);
+  });
+
+  // A tab created before the not-counted columns existed keeps an eight-cell
+  // header while the app writes ten, leaving two columns of money unlabelled.
+  it('labels the recurring columns added after the tab was created', async () => {
+    const calls = mockFetchStatuses([
+      { body: { sheets: [{ properties: { title: 'Recurring', sheetId: 7 } }] } },
+      { body: {} }, // I1:J1 blank
+      { body: {} },
+      { body: { values: [['Recurring', 'Added']] } },
+    ]);
+
+    await ensureRecurringSetup();
+
+    expect(urls(calls)[2]).toContain('Recurring!I1:J1');
+    expect(bodyOf(calls[2]).values).toEqual([['Not counted (A)', 'Not counted (B)']]);
   });
 
   it('labels the expense columns even when the tab is already there', async () => {
@@ -791,29 +808,34 @@ describe('setting up the Recurring tab', () => {
     // every added expense writes that column regardless.
     const calls = mockFetchStatuses([
       { body: { sheets: [{ properties: { title: 'Recurring', sheetId: 7 } }] } },
+      { body: { values: [['Not counted (A)', 'Not counted (B)']] } },
       { body: {} }, // G2:H2 blank
       { body: {} },
     ]);
 
     await ensureRecurringSetup();
 
-    expect(urls(calls)[2]).toContain('Sheet1!G2:H2');
-    expect(bodyOf(calls[2]).values).toEqual([['Recurring', 'Added']]);
+    expect(urls(calls)[3]).toContain('Sheet1!G2:H2');
+    expect(bodyOf(calls[3]).values).toEqual([['Recurring', 'Added']]);
   });
 
   it('asks the spreadsheet only once per session whether the tab exists', async () => {
     const first = mockFetchStatuses([
       { body: { sheets: [{ properties: { title: 'Recurring', sheetId: 7 } }] } },
+      { body: { values: [['Not counted (A)', 'Not counted (B)']] } },
       { body: { values: [['Recurring', 'Added']] } },
     ]);
     await ensureRecurringSetup();
-    expect(first).toHaveLength(2);
+    expect(first).toHaveLength(3);
 
-    const second = mockFetchStatuses([{ body: { values: [['Recurring', 'Added']] } }]);
+    const second = mockFetchStatuses([
+      { body: { values: [['Not counted (A)', 'Not counted (B)']] } },
+      { body: { values: [['Recurring', 'Added']] } },
+    ]);
     await ensureRecurringSetup();
-    // Only the label check — the tab lookup is not repeated.
-    expect(second).toHaveLength(1);
-    expect(urls(second)[0]).toContain('Sheet1!G2:H2');
+    // Only the label checks — the tab lookup is not repeated.
+    expect(second).toHaveLength(2);
+    expect(urls(second)[1]).toContain('Sheet1!G2:H2');
   });
 });
 
@@ -821,6 +843,7 @@ describe('writing recurring rules', () => {
   it('gives a new rule an id, so what it generates can be traced back', async () => {
     const calls = mockFetchStatuses([
       { body: { sheets: [{ properties: { title: 'Recurring', sheetId: 7 } }] } },
+      { body: { values: [['Not counted (A)', 'Not counted (B)']] } },
       { body: { values: [['Recurring', 'Added']] } }, // labels already in place
       { body: {} },
     ]);
@@ -837,7 +860,7 @@ describe('writing recurring rules', () => {
       day: 10,
     });
 
-    const row = (bodyOf(calls[2]).values as string[][])[0];
+    const row = (bodyOf(calls[3]).values as string[][])[0];
     expect(row.slice(0, 7)).toEqual(['2026-01-10', '€12.99', '', 'Phone', 'Various', '', '10']);
     expect(row[7]).toMatch(/^r[a-z0-9]+$/);
   });
@@ -1336,6 +1359,7 @@ describe('the not-counted columns', () => {
   it('keeps a rule’s share on the Recurring tab', async () => {
     const calls = mockFetchStatuses([
       { body: { sheets: [{ properties: { title: 'Recurring', sheetId: 7 } }] } },
+      { body: { values: [['Not counted (A)', 'Not counted (B)']] } },
       { body: { values: [['Recurring', 'Added']] } },
       { body: {} },
     ]);
@@ -1352,7 +1376,7 @@ describe('the not-counted columns', () => {
       day: 10,
     });
 
-    const row = (bodyOf(calls[2]).values as string[][])[0];
+    const row = (bodyOf(calls[3]).values as string[][])[0];
     expect(row.slice(8)).toEqual(['€12.00', '']);
   });
 
