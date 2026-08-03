@@ -5,19 +5,30 @@ import type { PersonNames } from '../types/person';
 import { fetchExpenses, addExpense, updateExpense, deleteExpense } from '../services/sheets';
 
 export function useExpenses() {
-  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [items, setItems] = useState<Expense[]>([]);
   // Generic until the sheet has been read; see readPersonNames.
   const [names, setNames] = useState<PersonNames>(DEFAULT_NAMES);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /**
+   * Has the sheet been read successfully even once?
+   *
+   * Before the first read, `expenses` is an empty array that looks exactly like
+   * a sheet with no expenses on it. The recurring check reads that as "no month
+   * has ever been generated" and would offer to write every month of every rule
+   * at once. Once true this stays true: a later network blip must not re-arm
+   * that.
+   */
+  const [loadedOnce, setLoadedOnce] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const { expenses: rows, names: sheetNames } = await fetchExpenses();
-      setExpenses(rows);
+      setItems(rows);
       setNames(sheetNames);
+      setLoadedOnce(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load expenses');
     } finally {
@@ -49,5 +60,5 @@ export function useExpenses() {
     [load],
   );
 
-  return { expenses, names, loading, error, load, add, update, remove };
+  return { items, names, loading, loadedOnce, error, load, add, update, remove };
 }

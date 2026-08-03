@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { Stack, Group, Button, Alert } from '@mantine/core';
+import { Stack, Group, Button, NumberInput, Alert } from '@mantine/core';
 import { DateInput } from '@mantine/dates';
 import { IconAlertCircle } from '@tabler/icons-react';
-import type { ExpenseFormData } from '../types/expense';
+import type { RecurringFormData } from '../types/recurring';
 import type { PersonNames } from '../types/person';
 import { today, dateInputValue } from '../services/utils';
 import { ExpenseFields } from './ExpenseFields';
@@ -10,35 +10,42 @@ import { ExpenseFields } from './ExpenseFields';
 interface Props {
   /** Read from the sheet — this component never knows anyone's name itself. */
   names: PersonNames;
-  onSubmit: (data: ExpenseFormData) => Promise<void>;
-  initial?: ExpenseFormData;
+  onSubmit: (data: RecurringFormData) => Promise<void>;
+  initial?: RecurringFormData;
   submitLabel?: string;
   onCancel?: () => void;
 }
 
-const emptyForm: ExpenseFormData = {
-  date: today(),
-  amountA: '',
-  amountB: '',
-  item: '',
-  category: 'Food',
-  notes: '',
-};
+/**
+ * A function, not a constant: an installed PWA can sit open across midnight, and
+ * a module-level object would then default both the start date *and* the day of
+ * the month to whenever the bundle was first evaluated.
+ */
+function emptyForm(): RecurringFormData {
+  const start = today();
+  return {
+    start,
+    amountA: '',
+    amountB: '',
+    item: '',
+    category: 'Various',
+    notes: '',
+    day: Number(start.slice(8, 10)),
+  };
+}
 
-export function ExpenseForm({
+export function RecurringForm({
   names,
   onSubmit,
   initial,
-  submitLabel = 'Add Expense',
+  submitLabel = 'Add Recurring Payment',
   onCancel,
 }: Props) {
-  const [form, setForm] = useState<ExpenseFormData>(initial ?? emptyForm);
+  const [form, setForm] = useState<RecurringFormData>(() => initial ?? emptyForm());
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Generic in the field so each one keeps its own type — a plain `string`
-  // parameter let set('category', 'Bogus') compile.
-  const set = <K extends keyof ExpenseFormData>(field: K, value: ExpenseFormData[K]) =>
+  const set = <K extends keyof RecurringFormData>(field: K, value: RecurringFormData[K]) =>
     setForm((f) => ({ ...f, [field]: value }));
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -51,11 +58,15 @@ export function ExpenseForm({
       setError('At least one amount is required');
       return;
     }
+    if (!Number.isInteger(form.day) || form.day < 1 || form.day > 31) {
+      setError('Day of the month must be between 1 and 31');
+      return;
+    }
     setError(null);
     setSubmitting(true);
     try {
       await onSubmit(form);
-      if (!initial) setForm({ ...emptyForm, date: today() });
+      if (!initial) setForm(emptyForm());
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to submit');
     } finally {
@@ -73,19 +84,32 @@ export function ExpenseForm({
         )}
 
         <DateInput
-          label="Date"
-          value={form.date || null}
-          onChange={(d) => set('date', dateInputValue(d))}
+          // The explanation lives in the label rather than Mantine's
+          // description prop, which renders dimmed and fails the contrast rule.
+          label="Starts on (nothing is created before this date)"
+          value={form.start || null}
+          onChange={(d) => set('start', dateInputValue(d))}
           required
           valueFormat="YYYY-MM-DD"
+        />
+
+        <NumberInput
+          label="Day of the month (31 becomes the last day in shorter months)"
+          min={1}
+          max={31}
+          // Clamped as it is typed, not on blur: no month has a 45th, and a
+          // rule carrying one would simply never fall due.
+          clampBehavior="strict"
+          value={form.day}
+          onChange={(val) => set('day', typeof val === 'number' ? val : 1)}
         />
 
         <ExpenseFields
           names={names}
           value={form}
           onChange={(patch) => setForm((f) => ({ ...f, ...patch }))}
-          itemPlaceholder="e.g. Migross"
-          categoryFallback="Food"
+          itemPlaceholder="e.g. Phone bill"
+          categoryFallback="Various"
         />
 
         <Group>

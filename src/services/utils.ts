@@ -1,9 +1,10 @@
 import { parseAmount, isIsoDate } from './parsing';
-import type { Expense } from '../types/expense';
+import type { Expense, Category } from '../types/expense';
 import type { ExpenseFormData } from '../types/expense';
 import type { Transfer, TransferFormData } from '../types/transfer';
 import type { Person } from '../types/person';
 import type { Gift, GiftFormData } from '../types/gift';
+import type { RecurringRule, RecurringFormData } from '../types/recurring';
 
 // ── Date helpers ──
 
@@ -122,6 +123,185 @@ export function filterByDate<T extends { date: string }>(items: T[], params: Fil
       });
     }
   }
+}
+
+// ── Recently added ──
+
+/**
+ * How many days a row counts as newly added for, today included.
+ *
+ * Three rather than one: something entered late on a Sunday should still be
+ * findable on Monday morning.
+ */
+export const RECENTLY_ADDED_DAYS = 3;
+
+/** Step back n days from a YYYY-MM-DD. UTC only, so no zone can shift it. */
+export function daysBefore(isoDate: string, n: number): string {
+  const ms = Date.UTC(
+    Number(isoDate.slice(0, 4)),
+    Number(isoDate.slice(5, 7)) - 1,
+    Number(isoDate.slice(8, 10)) - n,
+  );
+  return new Date(ms).toISOString().slice(0, 10);
+}
+
+/**
+ * Was this row added in the last few days?
+ *
+ * The list is ordered by the date of the spending, so a purchase entered today
+ * but dated last month lands in the middle of it, where nobody looking for what
+ * they just typed would think to scroll. This is what marks it.
+ *
+ * A row with no added date is not recent — every row written before the column
+ * existed reads that way, and so does anything typed straight into Google
+ * Sheets. That is "not known", not "old", but treating it as old is the answer
+ * that never puts a badge on a years-old row.
+ *
+ * There is no upper bound on purpose: a date in the future means a device with
+ * a wrong clock wrote it, and that row is certainly new.
+ */
+export function isRecentlyAdded(
+  e: Pick<Expense, 'addedOn'>,
+  todayIso: string,
+  days: number = RECENTLY_ADDED_DAYS,
+): boolean {
+  if (!isIsoDate(todayIso)) return false;
+  return addedSince(e, recentlyAddedCutoff(todayIso, days));
+}
+
+/**
+ * The oldest added-date that still counts as recent.
+ *
+ * Separate from `isRecentlyAdded` so a caller checking many rows works it out
+ * once rather than rebuilding a Date per row: the list asks this of every row it
+ * renders, twice over, once per breakpoint.
+ */
+export function recentlyAddedCutoff(todayIso: string, days: number = RECENTLY_ADDED_DAYS): string {
+  return daysBefore(todayIso, days - 1);
+}
+
+/** The comparison itself, against a cutoff already worked out. */
+function addedSince(e: Pick<Expense, 'addedOn'>, cutoff: string): boolean {
+  return isIsoDate(e.addedOn) && e.addedOn >= cutoff;
+}
+
+// ── Expense sorting and filtering ──
+
+export type ExpenseSortKey = 'date' | 'inserted' | 'amount';
+
+export interface ExpenseSort {
+  key: ExpenseSortKey;
+  asc: boolean;
+}
+
+/**
+ * Newest first — the order a list of spending is normally read in.
+ *
+ * The list used to be shown in sheet order reversed. For a sheet filled in as
+ * the money was spent the two are the same list; they part company only where
+ * a row was back-dated, and there sorting by date is the more useful answer.
+ */
+export const DEFAULT_EXPENSE_SORT: ExpenseSort = { key: 'date', asc: false };
+
+/**
+ * What a row cost, both columns together.
+ *
+ * "Most expensive" is a property of the purchase, not of either person: a €200
+ * bill split €100/€100 outranks a €150 one paid by one of them. Comparing the
+ * two people is what the dashboard's category breakdown is for.
+ */
+export function expenseTotal(e: Pick<Expense, 'amountA' | 'amountB'>): number {
+  return toNumber(e.amountA) + toNumber(e.amountB);
+}
+
+/**
+ * Order expenses, without mutating the array handed in (it comes straight from
+ * context state).
+ *
+ * Ties break on the sheet row and follow the primary direction, which keeps the
+ * order stable across re-renders and gives the useful property that sorting by
+ * date descending reproduces the old reversed-sheet order exactly for a sheet
+ * filled in chronologically.
+ *
+ * A date the sheet could not parse never takes part in a comparison — those
+ * rows go to the end whichever way the list is sorted, so they are neither
+ * hidden at the bottom of a descending list nor falsely topping an ascending
+ * one.
+ */
+export function sortExpenses<T extends Expense>(items: T[], sort: ExpenseSort): T[] {
+  const direction = sort.asc ? 1 : -1;
+
+  // Each row's sort keys are worked out once up front rather than inside the
+  // comparator, which runs O(n log n) times. Both of the expensive ones hide
+  // behind innocent-looking calls: isIsoDate builds a Date and reads three
+  // fields off it, and expenseTotal runs two regex replaces per amount. Doing
+  // that per comparison made the default ordering the slowest thing on the
+  // screen for a sheet with a few thousand rows.
+  const keyed = items.map((item) => ({
+    item,
+    dated: sort.key === 'date' && isIsoDate(item.date),
+    total: sort.key === 'amount' ? expenseTotal(item) : 0,
+  }));
+
+  keyed.sort((a, b) => {
+    if (sort.key === 'date') {
+      if (a.dated !== b.dated) return a.dated ? -1 : 1; // unparseable last, both directions
+      if (a.dated && a.item.date !== b.item.date) {
+        return a.item.date < b.item.date ? -direction : direction;
+      }
+    } else if (sort.key === 'amount' && a.total !== b.total) {
+      return a.total < b.total ? -direction : direction;
+    }
+    return (a.item.rowIndex - b.item.rowIndex) * direction;
+  });
+
+  return keyed.map((k) => k.item);
+}
+
+export interface ExpenseFilter {
+  text: string;
+  /** A category, `''` for the rows the sheet left uncategorised, or 'all'. */
+  category: Category | '' | 'all';
+  /** Keep only what was added in the last few days. Needs `todayIso`. */
+  recentOnly?: boolean;
+  todayIso?: string;
+}
+
+/**
+ * Narrow the list by free text, category, and how recently a row was added.
+ *
+ * The text side is unchanged from what the list did inline, plus the word
+ * "recurring" matching generated rows — which is the only way to filter by
+ * provenance on the narrow layout, where there is no room for another control.
+ *
+ * `recentOnly` is ignored unless `todayIso` is a real date. Without a usable
+ * "today" nothing can be recent, and applying it anyway would answer a request
+ * to narrow the list by emptying it — which reads as "you have no expenses"
+ * rather than "the clock is wrong".
+ */
+export function filterExpenses<T extends Expense>(items: T[], filter: ExpenseFilter): T[] {
+  const text = filter.text.trim().toLowerCase();
+  const todayIso = filter.todayIso ?? '';
+  const recentOnly = !!filter.recentOnly && isIsoDate(todayIso);
+  // Worked out once rather than per row.
+  const cutoff = recentOnly ? recentlyAddedCutoff(todayIso) : '';
+
+  return items.filter((e) => {
+    if (filter.category !== 'all' && e.category !== filter.category) return false;
+    if (recentOnly && !addedSince(e, cutoff)) return false;
+    if (!text) return true;
+    return (
+      e.item.toLowerCase().includes(text) ||
+      e.category.toLowerCase().includes(text) ||
+      e.notes.toLowerCase().includes(text) ||
+      e.date.includes(text) ||
+      // Prefix, not containment: `'recurring'.includes(text)` was the wrong way
+      // round, so searching a single letter of the word matched every generated
+      // row. Three characters in before it counts, so "rec" works and "r" does
+      // not hijack an ordinary search.
+      (!!e.recurringMarker && text.length >= 3 && 'recurring'.startsWith(text))
+    );
+  });
 }
 
 // ── Expense aggregation ──
@@ -415,5 +595,25 @@ export function expenseToFormData(e: Expense): ExpenseFormData {
     item: e.item,
     category: e.category || 'Various',
     notes: e.notes,
+  };
+}
+
+/**
+ * A recurring rule as its edit form.
+ *
+ * Goes through parseAmount like the other three converters rather than
+ * stripping the symbols by hand: a cell holding something non-numeric then
+ * arrives as an empty field instead of as junk that would be written back into
+ * a rule and generate a wrong expense every month afterwards.
+ */
+export function recurringToFormData(r: RecurringRule): RecurringFormData {
+  return {
+    start: r.start,
+    amountA: parseAmount(r.amountA),
+    amountB: parseAmount(r.amountB),
+    item: r.item,
+    category: r.category || 'Various',
+    notes: r.notes,
+    day: r.day,
   };
 }

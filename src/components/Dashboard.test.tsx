@@ -26,6 +26,8 @@ function makeExpense(overrides: Partial<Expense> = {}): Expense {
     item: 'Test',
     category: 'Food',
     notes: '',
+    recurringMarker: '',
+    addedOn: '',
     ...overrides,
   };
 }

@@ -76,6 +76,15 @@ function loadSettings(): ThemeSettings {
       merged.customColorHex = DEFAULT_SETTINGS.customColorHex;
     }
 
+    // The custom colour only exists in the theme while its hex does, so a
+    // primaryColor of 'custom' without one names a colour Mantine has never
+    // heard of — and MantineProvider throws on that, taking the whole app down
+    // at startup with no way back except clearing storage by hand. Dropping a
+    // bad hex therefore has to drop the choice that depended on it.
+    if (merged.primaryColor === 'custom' && !merged.customColorHex) {
+      merged.primaryColor = DEFAULT_SETTINGS.primaryColor;
+    }
+
     return merged;
   } catch {
     /* ignore malformed stored settings */

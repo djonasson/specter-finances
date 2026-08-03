@@ -19,6 +19,12 @@ if (typeof window !== 'undefined') {
       }) as unknown as MediaQueryList;
   }
 
+  // Mantine's Combobox (Select) keeps the highlighted option in view. jsdom has
+  // no layout, so it does not implement this at all.
+  if (!Element.prototype.scrollIntoView) {
+    Element.prototype.scrollIntoView = () => {};
+  }
+
   // Mantine's ScrollArea/Table.ScrollContainer observe their container.
   if (!globalThis.ResizeObserver) {
     globalThis.ResizeObserver = class {

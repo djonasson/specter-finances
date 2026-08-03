@@ -3,7 +3,7 @@ import { fetchGifts, addGift, updateGift, deleteGift } from '../services/sheets'
 import { useMovements } from './useMovements';
 
 export function useGifts() {
-  const { items, ...rest } = useMovements<Gift, GiftRow, GiftFormData>(
+  return useMovements<Gift, GiftRow, GiftFormData>(
     {
       fetchAll: fetchGifts,
       add: addGift,
@@ -12,5 +12,4 @@ export function useGifts() {
     },
     'gifts',
   );
-  return { gifts: items, ...rest };
 }

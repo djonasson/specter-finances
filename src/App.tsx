@@ -33,7 +33,9 @@ import { useExpensesContext } from './hooks/ExpensesContext';
 import { getGrantedSheetId, setSheetAccessListener } from './services/sheetAccess';
 import { ExpenseForm } from './components/ExpenseForm';
 import type { ExpenseFormData, ExpenseRow } from './types/expense';
-import { ExpenseList } from './components/ExpenseList';
+import { ExpensesPage } from './components/ExpensesPage';
+import { RecurringForm } from './components/RecurringForm';
+import { RecurringPrompt } from './components/RecurringPrompt';
 import type { Transfer, TransferRow, TransferFormData } from './types/transfer';
 import type { Gift, GiftRow, GiftFormData } from './types/gift';
 import { MovementForm } from './components/MovementForm';
@@ -75,30 +77,16 @@ function BottomNavItem({ to, icon, label }: { to: string; icon: React.ReactNode;
 function AuthenticatedApp() {
   const { backgroundEffect } = useThemeSettings();
   const { signOut } = useAuth();
-  const {
-    names,
-    expenses,
-    loading,
-    error,
-    load,
-    add,
-    update,
-    remove,
-    transfers,
-    transfersLoading,
-    transfersError,
-    loadTransfers,
-    addTransfer,
-    updateTransfer,
-    removeTransfer,
-    gifts,
-    giftsLoading,
-    giftsError,
-    loadGifts,
-    addGift,
-    updateGift,
-    removeGift,
-  } = useExpensesContext();
+  const { names, expenses, transfers, gifts, recurring, pending } = useExpensesContext();
+  // Pulled out as locals because the dependency arrays below have to name these
+  // directly. Each is a stable useCallback, whereas the domain object holding
+  // them is rebuilt on every provider render — naming the object in the refetch
+  // effect would make it refetch forever.
+  const { load: loadExpenses, add: addExpense, remove: removeExpense } = expenses;
+  const { load: loadTransfers, add: addTransfer, remove: removeTransfer } = transfers;
+  const { load: loadGifts, add: addGift, remove: removeGift } = gifts;
+  const { load: loadRecurring, add: addRecurringRule } = recurring;
+  const { generate: generatePending } = pending;
   const [settingsOpened, setSettingsOpened] = useState(false);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const location = useLocation();
@@ -107,13 +95,14 @@ function AuthenticatedApp() {
 
   // Deliberately keyed on pathname: the sheet is the source of truth and both
   // of us edit it directly in Google Sheets, so every navigation refetches
-  // rather than trusting cached state. Three requests per navigation is
+  // rather than trusting cached state. Four requests per navigation is
   // nothing against the 60/min per-user quota at this scale.
   useEffect(() => {
-    load();
+    loadExpenses();
     loadTransfers();
     loadGifts();
-  }, [load, loadTransfers, loadGifts, location.pathname]);
+    loadRecurring();
+  }, [loadExpenses, loadTransfers, loadGifts, loadRecurring, location.pathname]);
 
   // Auto-dismiss success message
   useEffect(() => {
@@ -123,20 +112,43 @@ function AuthenticatedApp() {
   }, [successMsg]);
 
   const addAndRedirect = useCallback(
-    async (form: Parameters<typeof add>[0]) => {
-      await add(form);
+    async (form: Parameters<typeof addExpense>[0]) => {
+      await addExpense(form);
       navigate('/list');
       setSuccessMsg('Expense added');
     },
-    [add, navigate],
+    [addExpense, navigate],
   );
 
   const removeWithNotify = useCallback(
     async (rowIndex: ExpenseRow) => {
-      await remove(rowIndex);
+      await removeExpense(rowIndex);
       setSuccessMsg('Expense deleted');
     },
-    [remove],
+    [removeExpense],
+  );
+
+  const addRecurringAndRedirect = useCallback(
+    async (form: Parameters<typeof addRecurringRule>[0]) => {
+      await addRecurringRule(form);
+      navigate('/list?tab=recurring');
+      setSuccessMsg('Recurring payment added');
+    },
+    [addRecurringRule, navigate],
+  );
+
+  const confirmRecurring = useCallback(
+    async (rows: Parameters<typeof generatePending>[0]) => {
+      // The count comes back from the write, not from what was offered: a
+      // month the other device generated while the modal sat open is dropped.
+      const added = await generatePending(rows);
+      setSuccessMsg(
+        added === 0
+          ? 'Those months were already on the sheet'
+          : `${added} recurring ${added === 1 ? 'expense' : 'expenses'} added`,
+      );
+    },
+    [generatePending],
   );
 
   const addTransferAndRedirect = useCallback(
@@ -200,9 +212,9 @@ function AuthenticatedApp() {
         </AppShell.Header>
 
         <AppShell.Main>
-          {(error || transfersError || giftsError) && (
+          {(expenses.error || transfers.error || gifts.error || recurring.error) && (
             <Alert color="red" icon={<IconAlertCircle size={16} />} mb="md">
-              {error || transfersError || giftsError}
+              {expenses.error || transfers.error || gifts.error || recurring.error}
             </Alert>
           )}
 
@@ -214,16 +226,16 @@ function AuthenticatedApp() {
                   <Title order={2} mb="md">
                     Dashboard
                   </Title>
-                  {loading || transfersLoading || giftsLoading ? (
+                  {expenses.loading || transfers.loading || gifts.loading ? (
                     <Center py="xl">
                       <Loader />
                     </Center>
                   ) : (
                     <Dashboard
                       names={names}
-                      expenses={expenses}
-                      transfers={transfers}
-                      gifts={gifts}
+                      expenses={expenses.items}
+                      transfers={transfers.items}
+                      gifts={gifts.items}
                     />
                   )}
                 </>
@@ -241,6 +253,7 @@ function AuthenticatedApp() {
                       <Tabs.Tab value="expense">Expense</Tabs.Tab>
                       <Tabs.Tab value="transfer">Transfer</Tabs.Tab>
                       <Tabs.Tab value="gift">Gift</Tabs.Tab>
+                      <Tabs.Tab value="recurring">Recurring</Tabs.Tab>
                     </Tabs.List>
                     <Tabs.Panel value="expense" pt="md">
                       <RecordTypeHelp kind="expense" names={names} />
@@ -266,6 +279,9 @@ function AuthenticatedApp() {
                         onSubmit={addGiftAndRedirect}
                       />
                     </Tabs.Panel>
+                    <Tabs.Panel value="recurring" pt="md">
+                      <RecurringForm names={names} onSubmit={addRecurringAndRedirect} />
+                    </Tabs.Panel>
                   </Tabs>
                 </>
               }
@@ -277,13 +293,27 @@ function AuthenticatedApp() {
                   <Title order={2} mb="md">
                     Expenses
                   </Title>
-                  <ExpenseList
+                  <ExpensesPage
                     names={names}
-                    expenses={expenses}
-                    loading={loading}
-                    onUpdate={update}
-                    onDelete={removeWithNotify}
-                    onRefresh={load}
+                    expenses={{
+                      expenses: expenses.items,
+                      loading: expenses.loading,
+                      onUpdate: expenses.update,
+                      onDelete: removeWithNotify,
+                      onRefresh: expenses.load,
+                    }}
+                    recurring={{
+                      rules: recurring.items,
+                      loading: recurring.loading,
+                      tabMissing: recurring.tabMissing,
+                      pending: pending.pending,
+                      onUpdate: recurring.update,
+                      onDelete: recurring.remove,
+                      onAssignId: recurring.assignId,
+                      onSetUp: recurring.setUp,
+                      onGenerate: pending.request,
+                      onRefresh: recurring.load,
+                    }}
                   />
                 </>
               }
@@ -298,11 +328,11 @@ function AuthenticatedApp() {
                   <MovementList<Transfer, TransferRow, TransferFormData>
                     kind="transfer"
                     names={names}
-                    items={transfers}
-                    loading={transfersLoading}
-                    onUpdate={updateTransfer}
+                    items={transfers.items}
+                    loading={transfers.loading}
+                    onUpdate={transfers.update}
                     onDelete={removeTransferWithNotify}
-                    onRefresh={loadTransfers}
+                    onRefresh={transfers.load}
                   />
                 </>
               }
@@ -317,16 +347,25 @@ function AuthenticatedApp() {
                   <MovementList<Gift, GiftRow, GiftFormData>
                     kind="gift"
                     names={names}
-                    items={gifts}
-                    loading={giftsLoading}
-                    onUpdate={updateGift}
+                    items={gifts.items}
+                    loading={gifts.loading}
+                    onUpdate={gifts.update}
                     onDelete={removeGiftWithNotify}
-                    onRefresh={loadGifts}
+                    onRefresh={gifts.load}
                   />
                 </>
               }
             />
           </Routes>
+          {/* Outside the routes: what is due does not depend on which screen
+              the user happens to be looking at. */}
+          <RecurringPrompt
+            opened={pending.prompt}
+            names={names}
+            pending={pending.pending}
+            onConfirm={confirmRecurring}
+            onDismiss={pending.dismiss}
+          />
           {backgroundEffect === 'squirrel' && <div style={{ height: 100 }} />}
         </AppShell.Main>
 
