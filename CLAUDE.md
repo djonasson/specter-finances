@@ -26,11 +26,47 @@ they are called, never which pronouns they use.
 
 ## Testing
 
-**Hard rule: every code change ships with tests, in the same change.** The sheet is
-the couple's only record of who owes whom and there is no backend or audit trail
-behind it, so a silent sign error moves real money and stays invisible. Cover the
-new behaviour _and_ the unchanged path that proves existing rows still compute the
-same. Run `npm run test` before calling a change done, and say so if it fails.
+**Hard rule, non-negotiable: every code change ships with tests, in the same
+change. No exceptions, and no "I'll add them after".** The sheet is the couple's
+only record of who owes whom and there is no backend or audit trail behind it, so
+a silent sign error moves real money and stays invisible. There is nowhere to
+notice it later.
+
+This means, every time:
+
+- **Every new feature** — the new behaviour _and_ the unchanged path that proves
+  existing rows still compute the same.
+- **Every bug fixed, and every review finding acted on** — a test that fails
+  against the old code and passes against the new one, so it can never come back.
+  Name the failure in the test's own words ("does not resurrect a generated
+  expense the user deleted"), never "works".
+- **Every edge case discovered while working** — if it was surprising enough to
+  think about, it is surprising enough to pin.
+- **Anything touched that had no tests** — add them retroactively, covering what
+  it does today, _before_ changing it. Refactoring untested code is how behaviour
+  goes missing silently. A file with no test file is a gap to close, not a
+  precedent to follow.
+
+**Still uncovered, and the reason.** These are the only files without tests. Any
+of them being touched means writing the tests first; nothing new belongs on this
+list.
+
+- `AuthContext.tsx`, `services/picker.ts` — the GIS and Google Picker flows, both
+  of which turn on a `<script>` the browser loads and a global the page then
+  grows. Worth doing behind a fake, not yet done.
+- `InstallButton.tsx` — hangs off the `beforeinstallprompt` event.
+- `ThemeSettings.tsx`, `ThemeToggle.tsx` — controls over `ThemeContext`, which is
+  itself covered.
+- `theme/*Background.tsx` — canvas animation with no assertable output.
+- `ExpenseFields.tsx`, `useTransfers.ts`, `useGifts.ts` — no logic of their own;
+  exercised through `ExpenseForm`/`RecurringForm` and `useMovements` tests, plus
+  a wiring test proving each wrapper drives its own tab.
+
+Run `npm run test` before calling any change done, and say plainly if it fails —
+never report work as complete on a red suite. If asked whether something is
+tested, check rather than assume, and answer honestly: an admitted gap is
+recoverable, a wrong "yes" is not.
+
 Keep logic in `services/` where it can be tested directly rather than inline in a
 component.
 

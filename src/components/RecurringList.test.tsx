@@ -171,6 +171,32 @@ describe('a rule with no id', () => {
     expect(onAssignId).toHaveBeenCalledWith(2);
   });
 
+  it('surfaces a failed id assignment instead of swallowing it', async () => {
+    // Every other mutation on this screen routes its failure into the alert;
+    // this one fired a promise nobody awaited, so a failure was invisible.
+    const user = userEvent.setup();
+    renderWithMantine(
+      <RecurringList
+        names={NAMES}
+        rules={[makeRule({ id: '' })]}
+        loading={false}
+        tabMissing={false}
+        pending={[]}
+        onUpdate={vi.fn(async () => {})}
+        onDelete={vi.fn(async () => {})}
+        onAssignId={vi.fn(async () => {
+          throw new Error('Backend error');
+        })}
+        onSetUp={vi.fn(async () => {})}
+        onGenerate={vi.fn()}
+        onRefresh={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: /Give .*Phone.* an id/ }));
+    await waitFor(() => expect(screen.getByText('Backend error')).toBeInTheDocument());
+  });
+
   it('shows no next due date, because nothing will be created from it', () => {
     renderList([makeRule({ id: '' })]);
     expect(screen.getByRole('cell', { name: '—' })).toBeInTheDocument();

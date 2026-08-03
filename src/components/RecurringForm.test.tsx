@@ -92,6 +92,14 @@ describe('RecurringForm', () => {
     ).toBeInTheDocument();
   });
 
+  it('defaults the day to today, not to whenever the app was first loaded', () => {
+    // An installed PWA can sit open across midnight; a module-level default
+    // would keep handing out the day the bundle was evaluated.
+    renderForm();
+    const todayDay = String(Number(new Date().toISOString().slice(8, 10)));
+    expect(screen.getByRole('textbox', { name: /Day of the month/ })).toHaveValue(todayDay);
+  });
+
   it('says in the label that nothing is created before the start date', () => {
     renderForm();
     expect(
