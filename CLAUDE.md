@@ -119,10 +119,10 @@ Google Sheet (source of truth) ↔ `services/sheets.ts` (CRUD via Sheets REST AP
 
 The app tracks four kinds of records, each in its own sheet tab, all flowing through the same `ExpensesContext`:
 
-- **Expenses** — main sheet (`VITE_SHEET_NAME`, default `Sheet1`), read `A1:H` (rows 1–2 are the header and sub-header; data still starts at row 3). Both partners can have an amount on one row. Columns G and H are maintained by the app: G is the recurring marker (see below), H is the date the row was added.
+- **Expenses** — main sheet (`VITE_SHEET_NAME`, default `Sheet1`), read `A1:J` (rows 1–2 are the header and sub-header; data still starts at row 3). Both partners can have an amount on one row. Columns G and H are maintained by the app: G is the recurring marker (see below), H is the date the row was added. Columns I and J are the user's: the part of each amount that was only for the person who paid it.
 - **Transfers** — `Transfers` tab, range `A2:D`. One partner pays the other to settle the balance.
 - **Gifts** — `Gifts` tab, range `A2:E`. Column E is the kind: a `present` (money changed hands, no balance effect at all) or `forgiven` (no money moved, one partner let that much of the other's debt slide — the _inverse_ of a transfer). `toGiftKind` in `types/gift.ts` reads blank and unrecognised cells as `forgiven`, which is what rows written before the column existed already did, so adding it moved no balances.
-- **Recurring** — `Recurring` tab, range `A2:H`: `Start | Amount (A) | Amount (B) | Item | Category | Notes | Day | Id`. **Metadata, not money** — a recurring rule never enters `calculateBalance`; only the expense rows it produces do, and those are ordinary expenses. B–F mirror the expenses tab's B–F so `formatAmount`/`normalizeAmount`/`toCategory` are reused and generating a row is a straight copy.
+- **Recurring** — `Recurring` tab, range `A2:J`: `Start | Amount (A) | Amount (B) | Item | Category | Notes | Day | Id | Not counted (A) | Not counted (B)`. **Metadata, not money** — a recurring rule never enters `calculateBalance`; only the expense rows it produces do, and those are ordinary expenses. B–F mirror the expenses tab's B–F so `formatAmount`/`normalizeAmount`/`toCategory` are reused and generating a row is a straight copy.
 
 For Transfers and Gifts, the form captures a single `from` person + `amount`, but the sheet stores it in one of two columns (`amountA`/`amountB`); the empty column encodes direction. `transferFrom`/`giftFrom` in `utils.ts` recover the direction by checking which column is non-empty.
 
@@ -131,7 +131,7 @@ For Transfers and Gifts, the form captures a single `from` person + `amount`, bu
 Four rules hold this together. Breaking any of them moves real money.
 
 - **A generated expense is a snapshot, never a live view of its rule.** Column G holds `rec:<ruleId>:YYYY-MM` as _provenance only_. Nothing may read a marker and write back into an expense row: raising a subscription's price, renaming it or recategorising it must leave every past row byte-identical, because those rows record what was actually paid.
-- **The expenses read/write ranges are deliberately asymmetric**: read `A1:H`, append `A:H`, update `A{n}:F{n}`. A PUT rewrites its whole range, so widening `updateExpense` past F would blank the marker on any generated expense the user edits — the month would then read as never generated and be created a second time. Keeping the PUT narrow makes both app-written columns unerasable by construction, and is also the right answer for H (correcting an amount does not change when the row was added). Appending writes the full `A:H` because the row is new: there is no marker to protect. `ExpenseFormData` has neither field, which is also why Duplicate yields a fresh, unmarked, freshly-stamped row.
+- **The expenses read/write ranges are deliberately asymmetric**: read `A1:J`, append `A:J`, update two ranges. A PUT rewrites its whole range, so a single `A{n}:J{n}` would blank G and H on every edit — the month would read as never generated and be created a second time, and the added-date would be lost. `updateExpense` therefore sends one `values:batchUpdate` covering `A{n}:F{n}` and `I{n}:J{n}` and skipping over the two in between, which keeps both unerasable by construction while still letting the user edit I and J. Appending writes the full `A:J` because the row is new: there is no marker to protect. `ExpenseFormData` has neither field, which is also why Duplicate yields a fresh, unmarked, freshly-stamped row.
 - **Generate forward from the last month already generated, do not backfill holes.** Deleting a generated expense is a decision; an app that quietly recreates it next launch is worse than one that misses a month. A month is due only once `dueDate(month, day) <= today`, which covers both the current month and the rule's start month. Capped at `MAX_CATCH_UP_MONTHS` (24).
 - **Ids live in the sheet, not in the row number.** Deleting any row renumbers `rowIndex`, so a marker keyed on it would point at a different rule. A rule with a blank `Id` (added by hand) is listed but never generated from.
 
@@ -148,7 +148,27 @@ It works in two steps. First the spending **gap**, where anything that changes w
 
 Then `owedToA = gapA / 2`, because expenses are shared 50/50 and the gap is therefore twice the debt: €1000 spent against €500 is a €500 gap but only €250 owed. Reporting the gap was the earlier behaviour and it read as double every settlement.
 
-Changing these signs, coefficients or the halving changes who owes whom and by how much — touch with care.
+### Spending that is not shared
+
+Columns I and J hold the part of each amount that was only for the person who
+paid it — €100 spent with €10 of it for one of them alone.
+
+Only the **shared** part reaches the gap: `sharedA = totalA − notCountedA`, and
+the formula above is otherwise untouched. So that row is still €100 of spending
+in the totals and the charts, but €90 of sharing, and the other owes €45 rather
+than €50.
+
+`notCounted` is a **slice of the amount beside it, never a figure on top**. More
+than the whole would make the shared part negative and pay the wrong person, so
+`notCountedProblem` in `utils.ts` refuses it in both forms _and_ `calculateBalance`
+clamps with `Math.min` — the form covers what is typed in the app, the clamp
+covers what is typed into Google Sheets.
+
+A recurring rule carries the same two columns, so a payment that is partly
+personal every month does not have to be corrected on each generated expense.
+
+Changing these signs, coefficients or the halving changes who owes whom and by
+how much — touch with care.
 
 ### Key details
 

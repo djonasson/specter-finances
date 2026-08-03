@@ -17,6 +17,9 @@ fully owned by you.
   that falls due monthly on a day you choose; the app offers the months that are
   due, including any you missed while it was closed, and never adds anything
   without asking (see [Recurring payments](#recurring-payments)).
+- **Not counted** — part of an expense that was only for the person who paid it.
+  Spend €100 with €10 of it just for you and the sheet still records €100 spent,
+  but the other person is only asked to share the €90.
 - **Settlement math** — automatically computes who owes whom from all three record
   types.
 - **Sorting and filtering** — order the expense list by date, by the order rows
@@ -143,6 +146,28 @@ Because a caught-up payment is dated the month it belonged to, it would land far
 down a list ordered by date. It is marked **New** for a few days after it is
 created, so you can see what just appeared.
 
+## Spending that is not shared
+
+Sometimes a single purchase is not really shared. You do one shop for €100, and
+€10 of it is a book only you will read. The €100 was spent and the sheet should
+say so — but the other person should not be asked to pay half of the book.
+
+Fill in **Not counted** and that is what happens: the row still records €100 of
+spending, so the charts and totals are unchanged, but only €90 counts as shared.
+The other owes €45 instead of €50.
+
+It is a **slice of the amount, never an extra charge**. Not counted can be
+anything from nothing up to the whole amount — a purchase entirely for one of you
+simply has the two equal, and then nobody owes anything for it. More than the
+amount is refused, because it would quietly pay the wrong person.
+
+The dashboard shows a **Not counted** row between the spending and the balance,
+so the step from one to the other is visible rather than mysterious.
+
+Recurring payments carry it too. A phone bill where one line is yours alone is
+set up once, and every month it creates gets the same split without you touching
+it.
+
 ## Who the app calls you
 
 The two people are `A` and `B` in the code — positional, matching the two amount
@@ -250,8 +275,8 @@ the 1-based sheet row number.
 - **Expenses** (the `VITE_SHEET_NAME` tab, range `A3:G`) — row 1 is a header, row 2
   a sub-header, and data starts at row 3:
 
-  | Date | Amount (partner A) | Amount (partner B) | Item | Category | Notes | Recurring | Added |
-  | ---- | ------------------ | ------------------ | ---- | -------- | ----- | --------- | ----- |
+  | Date | Amount (partner A) | Amount (partner B) | Item | Category | Notes | Recurring | Added | Not counted (A) | Not counted (B) |
+  | ---- | ------------------ | ------------------ | ---- | -------- | ----- | --------- | ----- | --------------- | --------------- |
 
   The two amount headers are also where the app reads the partners' display names
   from (see [Who the app calls you](#who-the-app-calls-you)).
@@ -267,8 +292,14 @@ the 1-based sheet row number.
     added today but dated last month still be marked **New**. Editing a row
     never changes it.
 
+  **Not counted** is yours to fill in, and blank on almost every row. It is the
+  part of the amount beside it that was only for the person who paid — a slice of
+  that amount, never a figure on top (see
+  [Spending that is not shared](#spending-that-is-not-shared)).
+
   Rows from before these columns existed simply have nothing in them, which reads
-  as "not known" rather than "old" — no badge, no recurring payment.
+  as "not known" rather than "old" — no badge, no recurring payment, nothing set
+  aside.
 
 - **Transfers** (`Transfers` tab, range `A2:D`) — one header row, data from row 2:
 

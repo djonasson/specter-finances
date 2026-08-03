@@ -2,7 +2,7 @@ import { parseAmount, isIsoDate } from './parsing';
 import type { Expense, Category } from '../types/expense';
 import type { ExpenseFormData } from '../types/expense';
 import type { Transfer, TransferFormData } from '../types/transfer';
-import type { Person } from '../types/person';
+import type { Person, PersonNames } from '../types/person';
 import type { Gift, GiftFormData } from '../types/gift';
 import type { RecurringRule, RecurringFormData } from '../types/recurring';
 
@@ -123,6 +123,30 @@ export function filterByDate<T extends { date: string }>(items: T[], params: Fil
       });
     }
   }
+}
+
+/**
+ * Why a "not counted" amount cannot be accepted, or null when it can.
+ *
+ * "Not counted" is a slice of the amount beside it, never a figure on top. More
+ * than the whole would make the shared part negative and swing the balance the
+ * wrong way, which on this sheet is real money — so both forms refuse it, and
+ * calculateBalance clamps as well for rows typed straight into the spreadsheet.
+ */
+export function notCountedProblem(
+  values: Pick<ExpenseFormData, 'amountA' | 'amountB' | 'notCountedA' | 'notCountedB'>,
+  names: PersonNames,
+): string | null {
+  const over = (amount: string, notCounted: string) =>
+    toNum(notCounted) !== '' && Number(toNum(notCounted)) > Number(toNum(amount) || 0);
+
+  if (over(values.amountA, values.notCountedA)) {
+    return `Not counted cannot be more than what ${names.a} paid`;
+  }
+  if (over(values.amountB, values.notCountedB)) {
+    return `Not counted cannot be more than what ${names.b} paid`;
+  }
+  return null;
 }
 
 // ── Recently added ──
@@ -410,8 +434,12 @@ export function monthlyBars(
 // ── Balance calculation ──
 
 export interface BalanceResult {
+  /** Everything spent, including what only one of them got the benefit of. */
   totalA: number;
   totalB: number;
+  /** The part of that spending that was only for one of them. */
+  notCountedA: number;
+  notCountedB: number;
   transferA: number;
   transferB: number;
   /** Gifts marked `forgiven` — the only ones that move the balance. */
@@ -435,6 +463,17 @@ export function calculateBalance(
   gifts: Gift[] = [],
 ): BalanceResult {
   const { totalA, totalB } = aggregateExpenses(expenses);
+
+  // The part of the spending that was only for one of them. Clamped to the
+  // amount beside it: it is a slice of that amount, and a value larger than the
+  // whole would push the shared figure negative and swing the balance the wrong
+  // way. The form refuses to enter one, but the sheet can be edited by hand.
+  let notCountedA = 0;
+  let notCountedB = 0;
+  for (const e of expenses) {
+    notCountedA += Math.min(toNumber(e.notCountedA), toNumber(e.amountA));
+    notCountedB += Math.min(toNumber(e.notCountedB), toNumber(e.amountB));
+  }
 
   let transferA = 0;
   let transferB = 0;
@@ -461,6 +500,14 @@ export function calculateBalance(
     }
   }
 
+  // Only the SHARED part of the spending reaches the gap. Something bought for
+  // one person alone was really spent — it stays in the totals and the charts —
+  // but the other never had it, so it must not appear in what they owe. €100
+  // spent with €10 of it personal is €90 shared, and the other owes €45 of it
+  // rather than €50.
+  const sharedA = totalA - notCountedA;
+  const sharedB = totalB - notCountedB;
+
   // First the spending GAP: how much more one has put in than the other.
   //
   // A transfer or a forgiveness of €X swings it by 2×X, because it moves both
@@ -468,7 +515,7 @@ export function calculateBalance(
   // close the gap (+2x), forgiveness is the inverse (-2x). Presents are
   // deliberately absent: that money was a present rather than part of the
   // shared pot, so it must leave the gap exactly where it was.
-  const gapA = totalA - totalB + 2 * (transferA - transferB) - 2 * (forgivenA - forgivenB);
+  const gapA = sharedA - sharedB + 2 * (transferA - transferB) - 2 * (forgivenA - forgivenB);
 
   // Then halve it, because the gap is twice the debt: spending €1000 against
   // the other's €500 is a €500 gap, but only €250 changes hands to square up —
@@ -481,6 +528,8 @@ export function calculateBalance(
   return {
     totalA,
     totalB,
+    notCountedA,
+    notCountedB,
     transferA,
     transferB,
     forgivenA,
@@ -592,6 +641,8 @@ export function expenseToFormData(e: Expense): ExpenseFormData {
     date: e.date,
     amountA: parseAmount(e.amountA),
     amountB: parseAmount(e.amountB),
+    notCountedA: parseAmount(e.notCountedA),
+    notCountedB: parseAmount(e.notCountedB),
     item: e.item,
     category: e.category || 'Various',
     notes: e.notes,
@@ -611,6 +662,8 @@ export function recurringToFormData(r: RecurringRule): RecurringFormData {
     start: r.start,
     amountA: parseAmount(r.amountA),
     amountB: parseAmount(r.amountB),
+    notCountedA: parseAmount(r.notCountedA),
+    notCountedB: parseAmount(r.notCountedB),
     item: r.item,
     category: r.category || 'Various',
     notes: r.notes,

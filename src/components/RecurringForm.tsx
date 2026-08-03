@@ -4,7 +4,7 @@ import { DateInput } from '@mantine/dates';
 import { IconAlertCircle } from '@tabler/icons-react';
 import type { RecurringFormData } from '../types/recurring';
 import type { PersonNames } from '../types/person';
-import { today, dateInputValue } from '../services/utils';
+import { today, dateInputValue, notCountedProblem } from '../services/utils';
 import { ExpenseFields } from './ExpenseFields';
 
 interface Props {
@@ -27,6 +27,8 @@ function emptyForm(): RecurringFormData {
     start,
     amountA: '',
     amountB: '',
+    notCountedA: '',
+    notCountedB: '',
     item: '',
     category: 'Various',
     notes: '',
@@ -60,6 +62,11 @@ export function RecurringForm({
     }
     if (!Number.isInteger(form.day) || form.day < 1 || form.day > 31) {
       setError('Day of the month must be between 1 and 31');
+      return;
+    }
+    const problem = notCountedProblem(form, names);
+    if (problem) {
+      setError(problem);
       return;
     }
     setError(null);

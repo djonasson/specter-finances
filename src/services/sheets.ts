@@ -207,14 +207,15 @@ export interface ExpensesResult {
  * data: rows 1 and 2 are the header and sub-header, and data still starts at
  * sheet row 3.
  *
- * It reads through H to pick up the two columns the app maintains itself: the
- * recurring marker (G, see services/recurring.ts) and the date the row was added
- * (H). Sheets trims trailing blanks, so a row written before either column
- * existed comes back six cells long and reads as having neither.
+ * It reads through J: G and H are the two columns the app maintains itself (the
+ * recurring marker, see services/recurring.ts, and the date the row was added),
+ * and I and J are the part of each amount that was only for that person. Sheets
+ * trims trailing blanks, so a row written before any of them existed comes back
+ * six cells long and reads as having none.
  */
 export async function fetchExpenses(): Promise<ExpensesResult> {
   const { spreadsheetId, sheetName } = getConfig();
-  const range = encodeURIComponent(`${sheetName}!A1:H`);
+  const range = encodeURIComponent(`${sheetName}!A1:J`);
   const data = await sheetsRequest(
     `/${spreadsheetId}/values/${range}?valueRenderOption=UNFORMATTED_VALUE`,
   );
@@ -236,6 +237,8 @@ export async function fetchExpenses(): Promise<ExpensesResult> {
       // every row written before this column existed, and warning about each
       // one would bury the warnings that mean something.
       addedOn: row[7] ? normalizeDate(row[7]) : '',
+      notCountedA: normalizeAmount(row[8]),
+      notCountedB: normalizeAmount(row[9]),
     })),
   };
 }
@@ -250,7 +253,7 @@ export async function fetchExpenses(): Promise<ExpensesResult> {
  */
 export async function addExpense(form: ExpenseFormData): Promise<void> {
   const { spreadsheetId, sheetName } = getConfig();
-  const range = encodeURIComponent(`${sheetName}!A:H`);
+  const range = encodeURIComponent(`${sheetName}!A:J`);
   const row = [
     form.date,
     formatAmount(form.amountA),
@@ -260,6 +263,8 @@ export async function addExpense(form: ExpenseFormData): Promise<void> {
     form.notes,
     '',
     today(),
+    formatAmount(form.notCountedA),
+    formatAmount(form.notCountedB),
   ];
 
   await sheetsRequest(`/${spreadsheetId}/values/${range}:append?valueInputOption=USER_ENTERED`, {
@@ -271,32 +276,44 @@ export async function addExpense(form: ExpenseFormData): Promise<void> {
 /**
  * Update an existing expense row.
  *
- * The range stops at F on purpose, and must keep stopping at F. A PUT rewrites
- * every cell in its range, so widening this to G would blank the recurring
- * marker on any generated expense the user edits — and a month with no marker
- * reads as never generated, so the next check would propose it again and the
- * sheet would end up with the payment twice.
+ * Two ranges, deliberately, rather than one spanning A to J: a PUT rewrites
+ * every cell in its range, and G and H are not the user's to change. Blanking G
+ * would strip a generated expense of its provenance, the month would read as
+ * never generated, and the next check would write the payment a second time.
+ * Blanking H would forget when the row was added, which correcting an amount
+ * plainly does not change.
  *
- * Leaving G and H outside the range makes both unerasable by construction
- * rather than by remembering to carry them through the form. It is also the
- * right answer for H: correcting an amount does not change the day the row was
- * added.
+ * Skipping over them makes both unerasable by construction rather than by
+ * remembering to carry them through the form — which is why `ExpenseFormData`
+ * has neither field. One batchUpdate keeps it to a single request.
  */
 export async function updateExpense(rowIndex: ExpenseRow, form: ExpenseFormData): Promise<void> {
   const { spreadsheetId, sheetName } = getConfig();
-  const range = encodeURIComponent(`${sheetName}!A${rowIndex}:F${rowIndex}`);
-  const row = [
-    form.date,
-    formatAmount(form.amountA),
-    formatAmount(form.amountB),
-    form.item,
-    form.category,
-    form.notes,
-  ];
 
-  await sheetsRequest(`/${spreadsheetId}/values/${range}?valueInputOption=USER_ENTERED`, {
-    method: 'PUT',
-    body: JSON.stringify({ values: [row] }),
+  await sheetsRequest(`/${spreadsheetId}/values:batchUpdate`, {
+    method: 'POST',
+    body: JSON.stringify({
+      valueInputOption: 'USER_ENTERED',
+      data: [
+        {
+          range: `${sheetName}!A${rowIndex}:F${rowIndex}`,
+          values: [
+            [
+              form.date,
+              formatAmount(form.amountA),
+              formatAmount(form.amountB),
+              form.item,
+              form.category,
+              form.notes,
+            ],
+          ],
+        },
+        {
+          range: `${sheetName}!I${rowIndex}:J${rowIndex}`,
+          values: [[formatAmount(form.notCountedA), formatAmount(form.notCountedB)]],
+        },
+      ],
+    }),
   });
 }
 
@@ -474,6 +491,8 @@ const RECURRING_HEADER = [
   'Notes',
   'Day',
   'Id',
+  'Not counted (A)',
+  'Not counted (B)',
 ];
 
 /**
@@ -505,6 +524,8 @@ function recurringRow(form: RecurringFormData, id: string): string[] {
     form.notes,
     String(form.day),
     id,
+    formatAmount(form.notCountedA),
+    formatAmount(form.notCountedB),
   ];
 }
 
@@ -516,7 +537,7 @@ export interface RecurringResult {
 
 export async function fetchRecurring(): Promise<RecurringResult> {
   const { spreadsheetId } = getConfig();
-  const range = encodeURIComponent(`${RECURRING_SHEET}!A2:H`);
+  const range = encodeURIComponent(`${RECURRING_SHEET}!A2:J`);
 
   let data;
   try {
@@ -561,6 +582,8 @@ export async function fetchRecurring(): Promise<RecurringResult> {
         notes: String(row[5] || ''),
         day,
         id: String(row[7] || '').trim(),
+        notCountedA: normalizeAmount(row[8]),
+        notCountedB: normalizeAmount(row[9]),
       };
     })
     // Filtered after mapping so rowIndex still matches the physical sheet row.
@@ -667,7 +690,7 @@ export async function ensureRecurringSetup(): Promise<void> {
 
       await sheetsRequest(
         `/${spreadsheetId}/values/${encodeURIComponent(
-          `${RECURRING_SHEET}!A1:H1`,
+          `${RECURRING_SHEET}!A1:J1`,
         )}?valueInputOption=USER_ENTERED`,
         { method: 'PUT', body: JSON.stringify({ values: [RECURRING_HEADER] }) },
       );
@@ -681,7 +704,7 @@ export async function ensureRecurringSetup(): Promise<void> {
 export async function addRecurring(form: RecurringFormData): Promise<void> {
   await ensureRecurringSetup();
   const { spreadsheetId } = getConfig();
-  const range = encodeURIComponent(`${RECURRING_SHEET}!A:H`);
+  const range = encodeURIComponent(`${RECURRING_SHEET}!A:J`);
   await sheetsRequest(`/${spreadsheetId}/values/${range}:append?valueInputOption=USER_ENTERED`, {
     method: 'POST',
     body: JSON.stringify({ values: [recurringRow(form, newRuleId())] }),
@@ -701,7 +724,7 @@ export async function updateRecurring(
   id: string,
 ): Promise<void> {
   const { spreadsheetId } = getConfig();
-  const range = encodeURIComponent(`${RECURRING_SHEET}!A${rowIndex}:H${rowIndex}`);
+  const range = encodeURIComponent(`${RECURRING_SHEET}!A${rowIndex}:J${rowIndex}`);
   await sheetsRequest(`/${spreadsheetId}/values/${range}?valueInputOption=USER_ENTERED`, {
     method: 'PUT',
     body: JSON.stringify({ values: [recurringRow(form, id)] }),
@@ -736,7 +759,7 @@ export async function deleteRecurring(rowIndex: RecurringRow): Promise<void> {
 export async function appendGeneratedExpenses(pending: PendingExpense[]): Promise<void> {
   if (pending.length === 0) return;
   const { spreadsheetId, sheetName } = getConfig();
-  const range = encodeURIComponent(`${sheetName}!A:H`);
+  const range = encodeURIComponent(`${sheetName}!A:J`);
   const addedOn = today();
   const values = pending.map((p) => [
     p.date,
@@ -750,6 +773,8 @@ export async function appendGeneratedExpenses(pending: PendingExpense[]): Promis
     // for two months ago is dated two months ago, so it lands far down a list
     // ordered by date and would otherwise be invisible.
     addedOn,
+    p.notCountedA,
+    p.notCountedB,
   ]);
 
   await sheetsRequest(

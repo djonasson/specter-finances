@@ -17,6 +17,8 @@ function makePending(overrides: Partial<PendingExpense> = {}): PendingExpense {
     date: `${month}-10`,
     amountA: '€12.99',
     amountB: '',
+    notCountedA: '',
+    notCountedB: '',
     item: 'Phone',
     category: 'Various',
     notes: '',

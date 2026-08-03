@@ -190,8 +190,18 @@ export function Dashboard({ names, expenses, transfers, gifts }: Props) {
   const filteredGifts = useMemo(() => filterByDate(gifts, filterParams), [gifts, filterParams]);
 
   const { totalA, totalB, byCategory, byMonth } = aggregateExpenses(filtered);
-  const { owedToA, owedToB, transferA, transferB, forgivenA, forgivenB, presentA, presentB } =
-    calculateBalance(filtered, filteredTransfers, filteredGifts);
+  const {
+    owedToA,
+    owedToB,
+    transferA,
+    transferB,
+    forgivenA,
+    forgivenB,
+    presentA,
+    presentB,
+    notCountedA,
+    notCountedB,
+  } = calculateBalance(filtered, filteredTransfers, filteredGifts);
 
   const categoryLabels = Object.keys(byCategory).sort();
   const categoryTotals = categoryLabels.map((c) => byCategory[c].a + byCategory[c].b);
@@ -307,6 +317,23 @@ export function Dashboard({ names, expenses, transfers, gifts }: Props) {
                   €{fmt(totalB)}
                 </Table.Td>
               </Table.Tr>
+              {/*
+                Shown between the spending and the balance, because it is the
+                step from one to the other: the Expenses row is everything that
+                was spent, and this is the part of it the other person was never
+                asked to share.
+              */}
+              {(notCountedA > 0 || notCountedB > 0) && (
+                <Table.Tr>
+                  <Table.Td>Not counted</Table.Td>
+                  <Table.Td ta="right" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                    {notCountedA > 0 ? `€${fmt(notCountedA)}` : '—'}
+                  </Table.Td>
+                  <Table.Td ta="right" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                    {notCountedB > 0 ? `€${fmt(notCountedB)}` : '—'}
+                  </Table.Td>
+                </Table.Tr>
+              )}
               {(transferA > 0 || transferB > 0) && (
                 <Table.Tr>
                   <Table.Td>Transfers</Table.Td>

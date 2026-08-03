@@ -21,6 +21,8 @@ function makeRule(overrides: Partial<RecurringRule> = {}): RecurringRule {
     start: '2026-01-10',
     amountA: '€12.99',
     amountB: '',
+    notCountedA: '',
+    notCountedB: '',
     item: 'Phone',
     category: 'Various',
     notes: '',
@@ -267,6 +269,14 @@ describe('pendingRecurring', () => {
     ]);
   });
 
+  it('carries what the rule sets aside into every month it creates', () => {
+    // A phone line only one of them uses repeats every month; without this it
+    // would have to be corrected on the generated expense each time.
+    const rule = makeRule({ amountA: '€30.00', notCountedA: '€12.00' });
+    const [pending] = pendingRecurring([rule], [], '2026-01-10');
+    expect(pending).toMatchObject({ amountA: '€30.00', notCountedA: '€12.00', notCountedB: '' });
+  });
+
   it('copies the rule amounts through untouched, so no cent is lost to reformatting', () => {
     const rule = makeRule({ amountA: '€1,234.50', amountB: '€0.01' });
     const [pending] = pendingRecurring([rule], [], '2026-01-10');
@@ -308,6 +318,8 @@ describe('generated expenses are snapshots', () => {
         date: '2026-01-10',
         amountA: '€12.99',
         amountB: '',
+        notCountedA: '',
+        notCountedB: '',
         item: 'Phone',
         category: 'Various',
         notes: '',

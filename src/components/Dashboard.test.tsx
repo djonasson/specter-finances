@@ -23,6 +23,8 @@ function makeExpense(overrides: Partial<Expense> = {}): Expense {
     date: '2026-01-15',
     amountA: '',
     amountB: '',
+    notCountedA: '',
+    notCountedB: '',
     item: 'Test',
     category: 'Food',
     notes: '',
@@ -129,6 +131,42 @@ describe('gift rows', () => {
     expect(row('Gifts')).toEqual(['Gifts', '€50.00', '—']);
     // 200 owed less the €20 transferred; the present contributes nothing.
     expect(row('Balance')).toEqual(['Balance', '+€180.00', '-€180.00']);
+  });
+});
+
+// ── Spending that is not shared ──
+//
+// The charts and totals keep showing everything that was spent; this row is the
+// step from that to the balance, so the drop is visible rather than mysterious.
+
+describe('the not counted row', () => {
+  it('stays hidden when everything was shared', () => {
+    renderDashboard([makeExpense({ amountA: '€100.00' })]);
+    expect(screen.queryByRole('cell', { name: 'Not counted' })).not.toBeInTheDocument();
+  });
+
+  it('shows what each of them set aside', () => {
+    renderDashboard([
+      makeExpense({ amountA: '€100.00', notCountedA: '€10.00' }),
+      makeExpense({ rowIndex: 4 as ExpenseRow, amountB: '€60.00', notCountedB: '€5.00' }),
+    ]);
+    expect(row('Not counted')).toEqual(['Not counted', '€10.00', '€5.00']);
+  });
+
+  it('keeps reporting the full amount as spent', () => {
+    renderDashboard([makeExpense({ amountA: '€100.00', notCountedA: '€10.00' })]);
+    expect(row('Expenses')).toEqual(['Expenses', '€100.00', '€0.00']);
+  });
+
+  it('takes it out of the balance underneath', () => {
+    renderDashboard([makeExpense({ amountA: '€100.00', notCountedA: '€10.00' })]);
+    // €90 shared, so half of it rather than half of €100.
+    expect(row('Balance')).toEqual(['Balance', '+€45.00', '-€45.00']);
+  });
+
+  it('shows a dash for the person who set nothing aside', () => {
+    renderDashboard([makeExpense({ amountA: '€100.00', notCountedA: '€10.00' })]);
+    expect(row('Not counted')).toEqual(['Not counted', '€10.00', '—']);
   });
 });
 

@@ -22,6 +22,8 @@ const filled: ExpenseFormData = {
   date: '2026-01-10',
   amountA: '12.99',
   amountB: '',
+  notCountedA: '',
+  notCountedB: '',
   item: 'Bread',
   category: 'Food',
   notes: 'sourdough',
@@ -149,6 +151,61 @@ describe('ExpenseForm', () => {
     await user.click(submit());
 
     expect(await screen.findByText('Backend error')).toBeInTheDocument();
+  });
+
+  // ── Not counted ──
+  //
+  // A slice of the amount above it, for something only the person who paid it
+  // got. The money was still spent; the other just does not owe half of it.
+
+  it('records what was only for one of them', async () => {
+    const user = userEvent.setup();
+    const { onSubmit } = renderForm();
+    await user.type(screen.getByRole('textbox', { name: 'Item' }), 'Shop');
+    await user.type(screen.getByRole('textbox', { name: 'Ada (€)' }), '100');
+    await user.type(screen.getByRole('textbox', { name: 'Ada — not counted (€)' }), '10');
+    await user.click(submit());
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    expect(onSubmit.mock.calls[0]![0]).toMatchObject({ amountA: '100.00', notCountedA: '10.00' });
+  });
+
+  it('leaves it empty on an ordinary shared expense', async () => {
+    const user = userEvent.setup();
+    const { onSubmit } = renderForm();
+    await user.type(screen.getByRole('textbox', { name: 'Item' }), 'Bread');
+    await user.type(screen.getByRole('textbox', { name: 'Ada (€)' }), '12.99');
+    await user.click(submit());
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    expect(onSubmit.mock.calls[0]![0]).toMatchObject({ notCountedA: '', notCountedB: '' });
+  });
+
+  // More than the whole would make the shared part negative and pay the wrong
+  // person — so the form refuses it rather than writing it to the sheet.
+  it('refuses more set aside than was paid, naming whose figure it is', async () => {
+    const user = userEvent.setup();
+    const { onSubmit } = renderForm();
+    await user.type(screen.getByRole('textbox', { name: 'Item' }), 'Shop');
+    await user.type(screen.getByRole('textbox', { name: 'Ada (€)' }), '100');
+    await user.type(screen.getByRole('textbox', { name: 'Ada — not counted (€)' }), '150');
+    await user.click(submit());
+
+    expect(
+      await screen.findByText('Not counted cannot be more than what Ada paid'),
+    ).toBeInTheDocument();
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it('accepts a purchase that was entirely for one of them', async () => {
+    const user = userEvent.setup();
+    const { onSubmit } = renderForm();
+    await user.type(screen.getByRole('textbox', { name: 'Item' }), 'Book');
+    await user.type(screen.getByRole('textbox', { name: 'Ada (€)' }), '20');
+    await user.type(screen.getByRole('textbox', { name: 'Ada — not counted (€)' }), '20');
+    await user.click(submit());
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
   });
 
   it('shows no Cancel when there is nothing to cancel back to', () => {

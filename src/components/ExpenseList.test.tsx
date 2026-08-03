@@ -17,6 +17,8 @@ function makeExpense(overrides: Partial<Expense> = {}): Expense {
     date: '2026-01-15',
     amountA: '€10.00',
     amountB: '',
+    notCountedA: '',
+    notCountedB: '',
     item: 'Test',
     category: 'Food',
     notes: '',
@@ -173,6 +175,8 @@ describe('filtering', () => {
     rowIndex: 5 as ExpenseRow,
     item: 'Phone',
     category: 'Various',
+    notCountedA: '',
+    notCountedB: '',
     recurringMarker: 'rec:r1:2026-01',
   });
 
