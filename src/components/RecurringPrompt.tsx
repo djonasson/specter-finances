@@ -13,7 +13,7 @@ import {
 import { IconAlertCircle } from '@tabler/icons-react';
 import type { PendingExpense } from '../services/recurring';
 import type { PersonNames } from '../types/person';
-import { toNum, fromNum } from '../services/utils';
+import { toNum, fromNum, notCountedProblem } from '../services/utils';
 import { formatAmount, parseAmount } from '../services/parsing';
 
 interface Props {
@@ -83,10 +83,41 @@ export function RecurringPrompt({ opened, names, pending, onConfirm, onDismiss }
   const chosen = pending.filter(isChosen);
   const skipped = pending.filter((p) => !isChosen(p));
 
+  /**
+   * A corrected amount can strand the slice a rule sets aside against it.
+   *
+   * Correct €30 down to €10 and the rule's €12 "not counted" is suddenly more
+   * than the whole; move the amount to the other person and it is stranded on
+   * an empty column. Either way `calculateBalance` clamps it to nothing, so the
+   * month settles as fully shared with nothing on screen to say why — which is
+   * exactly what the two forms refuse, and this is the one write path that did
+   * not.
+   */
+  const impossible = chosen
+    .map((p) => {
+      const value = amountsFor(p);
+      // Pending rows carry display amounts ("€12.00"); the validator works in
+      // the raw form the forms use, and hands NaN back for anything else.
+      return {
+        p,
+        problem: notCountedProblem(
+          {
+            amountA: parseAmount(value.amountA),
+            amountB: parseAmount(value.amountB),
+            notCountedA: parseAmount(p.notCountedA),
+            notCountedB: parseAmount(p.notCountedB),
+          },
+          names,
+        ),
+      };
+    })
+    .filter((r) => r.problem !== null);
+
   const handleConfirm = async () => {
     setSubmitting(true);
     setError(null);
     try {
+      if (impossible.length > 0) return;
       await onConfirm(chosen.map((p) => ({ ...p, ...amountsFor(p) })));
       // Dismiss exactly what was left behind. Working it out here rather than
       // letting the hook read its own state avoids persisting the set as it was
@@ -157,7 +188,18 @@ export function RecurringPrompt({ opened, names, pending, onConfirm, onDismiss }
                       />
                     </Table.Td>
                     <Table.Td style={{ whiteSpace: 'nowrap' }}>{p.date}</Table.Td>
-                    <Table.Td>{p.item}</Table.Td>
+                    <Table.Td>
+                      {p.item}
+                      {/*
+                        Shown because a corrected amount can invalidate it, and
+                        blocking on a figure the user cannot see is a dead end.
+                      */}
+                      {(p.notCountedA || p.notCountedB) && (
+                        <Text size="xs">
+                          not counted: {p.notCountedA || '—'} / {p.notCountedB || '—'}
+                        </Text>
+                      )}
+                    </Table.Td>
                     <Table.Td>
                       <NumberInput
                         aria-label={`${names.a} for ${p.item} on ${p.date}`}
@@ -199,13 +241,25 @@ export function RecurringPrompt({ opened, names, pending, onConfirm, onDismiss }
           </Table>
         </Table.ScrollContainer>
 
+        {impossible.length > 0 && (
+          <Alert color="red" variant="light" icon={<IconAlertCircle size={16} />}>
+            {impossible[0].problem} — {impossible[0].p.item} on {impossible[0].p.date} sets aside
+            more than the amount now says. Correct the amount, or untick that month and change the
+            payment itself.
+          </Alert>
+        )}
+
         <Text size="sm">
           Unticking a month leaves it and every later month of that payment for next time. Nothing
           is written for them and nothing is recorded, so they will be offered again.
         </Text>
 
         <Group>
-          <Button loading={submitting} disabled={chosen.length === 0} onClick={handleConfirm}>
+          <Button
+            loading={submitting}
+            disabled={chosen.length === 0 || impossible.length > 0}
+            onClick={handleConfirm}
+          >
             Add {chosen.length} {chosen.length === 1 ? 'expense' : 'expenses'}
           </Button>
           <Button variant="light" onClick={() => onDismiss()}>

@@ -277,7 +277,7 @@ npm run preview  # preview the production build locally
 The app expects up to four tabs in the spreadsheet. `rowIndex` everywhere refers to
 the 1-based sheet row number.
 
-- **Expenses** (the `VITE_SHEET_NAME` tab, range `A3:G`) — row 1 is a header, row 2
+- **Expenses** (the `VITE_SHEET_NAME` tab, range `A3:J`) — row 1 is a header, row 2
   a sub-header, and data starts at row 3:
 
   | Date | Amount (partner A) | Amount (partner B) | Item | Category | Notes | Recurring | Added | Not counted (A) | Not counted (B) |
@@ -286,7 +286,7 @@ the 1-based sheet row number.
   The two amount headers are also where the app reads the partners' display names
   from (see [Who the app calls you](#who-the-app-calls-you)).
 
-  The last two columns are written by the app, never by you:
+  **Recurring** and **Added** are written by the app, never by you:
 
   - **Recurring** records which recurring payment and which month produced the
     row, as `rec:<id>:YYYY-MM`, and is blank on everything you enter yourself
@@ -319,7 +319,7 @@ the 1-based sheet row number.
   `Kind` is `present` or `forgiven`; anything else, blank included, reads as
   `forgiven` (see [Transfers vs. gifts](#transfers-vs-gifts)).
 
-- **Recurring** (`Recurring` tab, range `A2:H`) — one header row, data from row 2.
+- **Recurring** (`Recurring` tab, range `A2:J`) — one header row, data from row 2.
   Created by the app when you set the feature up, so an existing spreadsheet will
   not have it until then:
 
@@ -334,7 +334,9 @@ the 1-based sheet row number.
   the start date's own day is used. `Id` is how a created expense is traced back
   to its rule — it is last so the familiar columns stay where you expect them, and
   it lives in the cell rather than being the row number, because deleting any row
-  renumbers everything below it. A rule you add by hand with no `Id` is listed but
+  renumbers everything below it. The last two columns work exactly as they do on
+  the expenses tab, so a payment that is partly personal every month says so
+  once. A rule you add by hand with no `Id` is listed but
   nothing is created from it until you give it one, which the app offers to do.
 
 For transfers and gifts, the form captures a single payer + amount, but the value

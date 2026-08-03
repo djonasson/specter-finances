@@ -52,9 +52,16 @@ export function toNumber(formatted: string): number {
   return raw ? parseFloat(raw) : 0;
 }
 
-/** Format a number with 2 decimal places */
+/**
+ * A money amount, always to the cent.
+ *
+ * Both bounds are set on purpose. Without a maximum, toLocaleString allows
+ * three decimals, and a half-cent balance — €10.00 against €0.01 splits to
+ * 4.995 — rendered as "+€4.995", which is not a sum of money anyone can hand
+ * over.
+ */
 export function fmt(n: number): string {
-  return n.toLocaleString('en-US', { minimumFractionDigits: 2 });
+  return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 /**

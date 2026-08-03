@@ -776,7 +776,7 @@ describe('setting up the Recurring tab', () => {
     const calls = mockFetchStatuses([
       { body: { sheets: [{ properties: { title: 'Recurring', sheetId: 7 } }] } },
       { body: { values: [['Not counted (A)', 'Not counted (B)']] } },
-      { body: { values: [['Recurring', 'Added']] } },
+      { body: { values: [['Recurring', 'Added', 'Not counted (A)', 'Not counted (B)']] } },
     ]);
 
     await ensureRecurringSetup();
@@ -793,13 +793,14 @@ describe('setting up the Recurring tab', () => {
       { body: { sheets: [{ properties: { title: 'Recurring', sheetId: 7 } }] } },
       { body: {} }, // I1:J1 blank
       { body: {} },
-      { body: { values: [['Recurring', 'Added']] } },
+      { body: { values: [['Recurring', 'Added', 'Not counted (A)', 'Not counted (B)']] } },
     ]);
 
     await ensureRecurringSetup();
 
-    expect(urls(calls)[2]).toContain('Recurring!I1:J1');
-    expect(bodyOf(calls[2]).values).toEqual([['Not counted (A)', 'Not counted (B)']]);
+    const data = (bodyOf(calls[2]) as { data: { range: string; values: string[][] }[] }).data;
+    expect(data.map((d) => d.range)).toEqual(['Recurring!I1:I1', 'Recurring!J1:J1']);
+    expect(data.map((d) => d.values[0][0])).toEqual(['Not counted (A)', 'Not counted (B)']);
   });
 
   it('labels the expense columns even when the tab is already there', async () => {
@@ -809,33 +810,35 @@ describe('setting up the Recurring tab', () => {
     const calls = mockFetchStatuses([
       { body: { sheets: [{ properties: { title: 'Recurring', sheetId: 7 } }] } },
       { body: { values: [['Not counted (A)', 'Not counted (B)']] } },
-      { body: {} }, // G2:H2 blank
+      { body: {} }, // expense labels blank
       { body: {} },
     ]);
 
     await ensureRecurringSetup();
 
-    expect(urls(calls)[3]).toContain('Sheet1!G2:H2');
-    expect(bodyOf(calls[3]).values).toEqual([['Recurring', 'Added']]);
+    // The Recurring labels are already in place, so its read makes no write.
+    expect(urls(calls)[2]).toContain('Sheet1!G2:J2');
+    const written = (bodyOf(calls[3]) as { data: { range: string }[] }).data;
+    expect(written).toHaveLength(4);
   });
 
   it('asks the spreadsheet only once per session whether the tab exists', async () => {
     const first = mockFetchStatuses([
       { body: { sheets: [{ properties: { title: 'Recurring', sheetId: 7 } }] } },
       { body: { values: [['Not counted (A)', 'Not counted (B)']] } },
-      { body: { values: [['Recurring', 'Added']] } },
+      { body: { values: [['Recurring', 'Added', 'Not counted (A)', 'Not counted (B)']] } },
     ]);
     await ensureRecurringSetup();
     expect(first).toHaveLength(3);
 
     const second = mockFetchStatuses([
       { body: { values: [['Not counted (A)', 'Not counted (B)']] } },
-      { body: { values: [['Recurring', 'Added']] } },
+      { body: { values: [['Recurring', 'Added', 'Not counted (A)', 'Not counted (B)']] } },
     ]);
     await ensureRecurringSetup();
     // Only the label checks — the tab lookup is not repeated.
     expect(second).toHaveLength(2);
-    expect(urls(second)[1]).toContain('Sheet1!G2:H2');
+    expect(urls(second)[1]).toContain('Sheet1!G2:J2');
   });
 });
 
@@ -844,7 +847,7 @@ describe('writing recurring rules', () => {
     const calls = mockFetchStatuses([
       { body: { sheets: [{ properties: { title: 'Recurring', sheetId: 7 } }] } },
       { body: { values: [['Not counted (A)', 'Not counted (B)']] } },
-      { body: { values: [['Recurring', 'Added']] } }, // labels already in place
+      { body: { values: [['Recurring', 'Added', 'Not counted (A)', 'Not counted (B)']] } }, // labels already in place
       { body: {} },
     ]);
 
@@ -1205,38 +1208,44 @@ describe('the added-on column', () => {
     expect(body.data.map((d) => d.range)).toEqual(['Sheet1!A5:F5', 'Sheet1!I5:J5']);
   });
 
-  it('labels both app-written columns when they are blank', async () => {
+  it('labels every app-written column when they are blank', async () => {
     const calls = mockFetchStatuses([{ body: {} }, { body: {} }]);
 
     await ensureExpenseColumnLabels();
 
-    expect(urls(calls)[0]).toContain('Sheet1!G2:H2');
-    expect(bodyOf(calls[1]).values).toEqual([['Recurring', 'Added']]);
+    expect(urls(calls)[0]).toContain('Sheet1!G2:J2');
+    const data = (bodyOf(calls[1]) as { data: { range: string; values: string[][] }[] }).data;
+    expect(data.map((d) => d.range)).toEqual([
+      'Sheet1!G2:G2',
+      'Sheet1!H2:H2',
+      'Sheet1!I2:I2',
+      'Sheet1!J2:J2',
+    ]);
+    expect(data.map((d) => d.values[0][0])).toEqual([
+      'Recurring',
+      'Added',
+      'Not counted (A)',
+      'Not counted (B)',
+    ]);
   });
 
-  it('writes only the missing label, leaving the occupied cell untouched', async () => {
-    // Not merely "writes the same value back": these are cells in someone's own
-    // spreadsheet, and re-writing one that holds a formula would replace it with
-    // whatever it happened to render to at the time.
-    const calls = mockFetchStatuses([{ body: { values: [['Repeats']] } }, { body: {} }]);
+  // One entry per blank cell rather than one span: a span from the first blank
+  // to the last would write over anything filled in between, which is the one
+  // thing this must never do.
+  it('leaves a label the user chose alone, even between two blanks', async () => {
+    const calls = mockFetchStatuses([{ body: { values: [['', 'Mine', '', '']] } }, { body: {} }]);
 
     await ensureExpenseColumnLabels();
 
-    expect(urls(calls)[1]).toContain('Sheet1!H2:H2');
-    expect(bodyOf(calls[1]).values).toEqual([['Added']]);
+    const data = (bodyOf(calls[1]) as { data: { range: string }[] }).data;
+    expect(data.map((d) => d.range)).toEqual(['Sheet1!G2:G2', 'Sheet1!I2:I2', 'Sheet1!J2:J2']);
+    expect(data.some((d) => d.range.includes('H2'))).toBe(false);
   });
 
-  it('writes only the first label when the second is the one already taken', async () => {
-    const calls = mockFetchStatuses([{ body: { values: [['', 'Entered']] } }, { body: {} }]);
-
-    await ensureExpenseColumnLabels();
-
-    expect(urls(calls)[1]).toContain('Sheet1!G2:G2');
-    expect(bodyOf(calls[1]).values).toEqual([['Recurring']]);
-  });
-
-  it('writes nothing at all when both are already there', async () => {
-    const calls = mockFetchStatuses([{ body: { values: [['Recurring', 'Added']] } }]);
+  it('writes nothing at all when every label is already there', async () => {
+    const calls = mockFetchStatuses([
+      { body: { values: [['Recurring', 'Added', 'Not counted (A)', 'Not counted (B)']] } },
+    ]);
     await ensureExpenseColumnLabels();
     expect(calls).toHaveLength(1);
   });
@@ -1360,7 +1369,7 @@ describe('the not-counted columns', () => {
     const calls = mockFetchStatuses([
       { body: { sheets: [{ properties: { title: 'Recurring', sheetId: 7 } }] } },
       { body: { values: [['Not counted (A)', 'Not counted (B)']] } },
-      { body: { values: [['Recurring', 'Added']] } },
+      { body: { values: [['Recurring', 'Added', 'Not counted (A)', 'Not counted (B)']] } },
       { body: {} },
     ]);
 

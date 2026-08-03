@@ -622,7 +622,7 @@ export async function fetchRecurring(): Promise<RecurringResult> {
 }
 
 /** Sub-header labels for the two columns the app writes to the expenses tab. */
-export const EXPENSE_COLUMN_LABELS = ['Recurring', 'Added'];
+export const EXPENSE_COLUMN_LABELS = ['Recurring', 'Added', 'Not counted (A)', 'Not counted (B)'];
 
 /**
  * Fill in blank heading cells over a range, leaving anything already there.
@@ -638,16 +638,23 @@ async function ensureLabels(sheet: string, row: number, columns: string[], label
   const existing = await sheetsRequest(`/${spreadsheetId}/values/${encodeURIComponent(span)}`);
   const current = (existing.values?.[0] ?? []) as unknown[];
 
-  const blank = labels.map((_, i) => !String(current[i] ?? '').trim());
-  const first = blank.indexOf(true);
-  if (first === -1) return;
-  const last = blank.lastIndexOf(true);
+  // One entry per blank cell rather than one span across them: a span from the
+  // first blank to the last would write over anything filled in between, which
+  // is the single thing this function promises not to do. Still one request.
+  const data = labels
+    .map((label, i) => ({ label, column: columns[i], filled: String(current[i] ?? '').trim() }))
+    .filter((cell) => !cell.filled)
+    .map((cell) => ({
+      range: `${sheet}!${cell.column}${row}:${cell.column}${row}`,
+      values: [[cell.label]],
+    }));
 
-  const writeRange = `${sheet}!${columns[first]}${row}:${columns[last]}${row}`;
-  await sheetsRequest(
-    `/${spreadsheetId}/values/${encodeURIComponent(writeRange)}?valueInputOption=USER_ENTERED`,
-    { method: 'PUT', body: JSON.stringify({ values: [labels.slice(first, last + 1)] }) },
-  );
+  if (data.length === 0) return;
+
+  await sheetsRequest(`/${spreadsheetId}/values:batchUpdate`, {
+    method: 'POST',
+    body: JSON.stringify({ valueInputOption: 'USER_ENTERED', data }),
+  });
 }
 
 /**
@@ -664,7 +671,7 @@ async function ensureLabels(sheet: string, row: number, columns: string[], label
  * themselves outranks ours, and writing a cell back even with the value we just
  * read would replace a formula there with whatever it currently renders to.
  */
-const EXPENSE_LABEL_COLUMNS = ['G', 'H'];
+const EXPENSE_LABEL_COLUMNS = ['G', 'H', 'I', 'J'];
 
 export async function ensureExpenseColumnLabels(): Promise<void> {
   const { sheetName } = getConfig();
