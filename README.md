@@ -274,6 +274,12 @@ npm run preview  # preview the production build locally
 
 ## Sheet layout
 
+**Before you point this at an existing spreadsheet:** the app writes columns G
+to J of the expenses tab (and I to J of the Recurring tab). Make sure those are
+free. Anything already there is read as though the app had written it — a number
+in column I becomes a "not counted" amount and quietly changes the balance — and
+the next edit of that row overwrites it. Columns A to F are the ones you fill in.
+
 The app expects up to four tabs in the spreadsheet. `rowIndex` everywhere refers to
 the 1-based sheet row number.
 

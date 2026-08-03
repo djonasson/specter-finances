@@ -183,6 +183,8 @@ how much — touch with care.
 - **Auth:** `services/auth.ts` dynamically loads the GIS script and manages the OAuth token client. `AuthContext` wraps the app. The scope is **`drive.file`**, not `spreadsheets` — the token authorises only files the user picked, so a leaked token cannot touch the rest of the account's Drive.
 - **Picker app id:** the picker must be given the Cloud project number (`setAppId`) or no per-file grant is created — the pick appears to succeed and every later Sheets call 404s. It is derived from `VITE_GOOGLE_CLIENT_ID` (`getProjectNumber` in `services/auth.ts`), not configured separately, because a mistyped number is still a number and fails silently.
 - **Sheet selection:** because `drive.file` grants per file, the target spreadsheet is chosen through the Google Picker (`services/picker.ts`) and remembered in localStorage (`services/sheetAccess.ts`). `App` renders `SheetGate` until a sheet is granted, which also keeps the fetching effect from running without one. A 403/404 from the Sheets API drops the grant and returns to the picker.
+- **Service worker updates:** `services/swUpdates.ts` checks on foreground (`visibilitychange`/`focus`) with a one-minute floor, not on a timer. The old `setInterval` re-fetched the worker and revalidated the ~1 MB precache every minute for as long as the tab existed — an installed PWA is left open for days, so nearly all of that happened while nobody was looking.
+- **Claiming columns:** the app owns expenses G–J and Recurring I–J. Nothing verifies they were free before it starts writing them, so pointing this at an existing spreadsheet with content there reads it as money and overwrites it on the next edit. This is documented as a warning in the README rather than enforced in code; if that ever needs enforcing, gate ownership on the labels in the sub-header the way the Recurring tab gates on its own existence.
 - **Deployment:** GitHub Pages — `vite.config.ts` sets `base` to `/specter-finances/` when `GITHUB_ACTIONS` env is set.
 
 ### Provider hierarchy (main.tsx)
@@ -195,7 +197,7 @@ Mantine v8 component library with Tabler icons. Five routes: `/` (Dashboard with
 
 The `/list` tab lives in the **query string** (`/list?tab=recurring`), not the path: `BottomNavItem` marks the current screen with an exact `pathname ===` match, so a sub-route would unlight Expenses — and a path change fires the four-request refetch on every tab switch.
 
-A standing banner on the `/list` expenses tab reports months waiting, because the
+Not counted is shown under the amount it came out of, on both layouts: it decides who owes whom, so a stale figure has to be catchable by scanning rather than only by opening the edit form. A standing banner on the `/list` expenses tab reports months waiting, because the
 confirmation is a one-shot dialog: a rule that has not created anything yet lives
 on the other tab and its expenses do not exist, so without the banner setting one
 up looks like nothing happened. `RecurringPrompt` is rendered once in
