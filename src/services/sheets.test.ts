@@ -197,7 +197,7 @@ describe('person names', () => {
   it('asks for both header rows in the same request as the data', async () => {
     const calls = mockFetch([{ values: [] }]);
     await fetchExpenses();
-    expect(decodeURIComponent(calls[0].url)).toContain('Sheet1!A1:H');
+    expect(decodeURIComponent(calls[0].url)).toContain('Sheet1!A1:J');
     expect(calls).toHaveLength(1);
   });
 
@@ -415,11 +415,14 @@ describe('expense writes', () => {
       date: '2026-02-01',
       amountA: '10',
       amountB: '',
+      notCountedA: '',
+      notCountedB: '',
       item: 'Bread',
       category: 'Food',
       notes: '',
     });
-    expect(decodeURIComponent(calls[0].url)).toContain('Sheet1!A5:F5');
+    const body = bodyOf(calls[0]) as { data: { range: string }[] };
+    expect(body.data.map((d) => d.range)).toEqual(['Sheet1!A5:F5', 'Sheet1!I5:J5']);
   });
 });
 
@@ -617,7 +620,7 @@ describe('SheetsApiError', () => {
 // ── Recurring payments ──
 
 describe('recurring rules', () => {
-  it('numbers recurring rows from sheet row 2 and reads through column H', async () => {
+  it('numbers recurring rows from sheet row 2 and reads through column J', async () => {
     const calls = mockFetchStatuses([
       {
         body: {
@@ -632,7 +635,7 @@ describe('recurring rules', () => {
     const { rules, tabMissing } = await fetchRecurring();
 
     expect(tabMissing).toBe(false);
-    expect(urls(calls)[0]).toContain('Recurring!A2:H');
+    expect(urls(calls)[0]).toContain('Recurring!A2:J');
     expect(rules.map((r) => r.rowIndex)).toEqual([2, 3]);
   });
 
@@ -677,7 +680,7 @@ describe('recurring rules', () => {
 
   it('reports a tab that does not exist as an empty state, not a failure', async () => {
     const calls = mockFetchStatuses([
-      { status: 400, body: { error: { message: 'Unable to parse range: Recurring!A2:H' } } },
+      { status: 400, body: { error: { message: 'Unable to parse range: Recurring!A2:J' } } },
       { body: { sheets: [{ properties: { title: 'Sheet1', sheetId: 0 } }] } },
     ]);
 
@@ -689,14 +692,14 @@ describe('recurring rules', () => {
     // Every navigation reloads every domain. Without this, a sheet that has not
     // opted in pays a doomed read AND a metadata lookup, on every single one.
     const first = mockFetchStatuses([
-      { status: 400, body: { error: { message: 'Unable to parse range: Recurring!A2:H' } } },
+      { status: 400, body: { error: { message: 'Unable to parse range: Recurring!A2:J' } } },
       { body: { sheets: [{ properties: { title: 'Sheet1', sheetId: 0 } }] } },
     ]);
     await expect(fetchRecurring()).resolves.toEqual({ rules: [], tabMissing: true });
     expect(first).toHaveLength(2);
 
     const second = mockFetchStatuses([
-      { status: 400, body: { error: { message: 'Unable to parse range: Recurring!A2:H' } } },
+      { status: 400, body: { error: { message: 'Unable to parse range: Recurring!A2:J' } } },
     ]);
     await expect(fetchRecurring()).resolves.toEqual({ rules: [], tabMissing: true });
     expect(second).toHaveLength(1); // the classification is not re-derived
@@ -706,7 +709,7 @@ describe('recurring rules', () => {
     // A dropped grant sends the user back to the picker without the module ever
     // unloading, and the sheet they pick next owes the first one nothing.
     mockFetchStatuses([
-      { status: 400, body: { error: { message: 'Unable to parse range: Recurring!A2:H' } } },
+      { status: 400, body: { error: { message: 'Unable to parse range: Recurring!A2:J' } } },
       { body: { sheets: [{ properties: { title: 'Sheet1', sheetId: 0 } }] } },
     ]);
     await expect(fetchRecurring()).resolves.toEqual({ rules: [], tabMissing: true });
@@ -752,23 +755,52 @@ describe('setting up the Recurring tab', () => {
     expect(bodyOf(calls[1])).toEqual({
       requests: [{ addSheet: { properties: { title: 'Recurring' } } }],
     });
-    expect(urls(calls)[2]).toContain('Recurring!A1:H1');
+    expect(urls(calls)[2]).toContain('Recurring!A1:J1');
     expect(bodyOf(calls[2]).values).toEqual([
-      ['Start', 'Amount (A)', 'Amount (B)', 'Item', 'Category', 'Notes', 'Day', 'Id'],
+      [
+        'Start',
+        'Amount (A)',
+        'Amount (B)',
+        'Item',
+        'Category',
+        'Notes',
+        'Day',
+        'Id',
+        'Not counted (A)',
+        'Not counted (B)',
+      ],
     ]);
   });
 
   it('creates nothing when the tab already exists', async () => {
     const calls = mockFetchStatuses([
       { body: { sheets: [{ properties: { title: 'Recurring', sheetId: 7 } }] } },
-      { body: { values: [['Recurring', 'Added']] } }, // labels already in place
+      { body: { values: [['Not counted (A)', 'Not counted (B)']] } },
+      { body: { values: [['Recurring', 'Added', 'Not counted (A)', 'Not counted (B)']] } },
     ]);
 
     await ensureRecurringSetup();
 
-    // The tab lookup and the label check, and no writes of any kind.
-    expect(calls).toHaveLength(2);
+    // The tab lookup and the two label checks, and no writes of any kind.
+    expect(calls).toHaveLength(3);
     expect(calls.every((c) => (c.options.method ?? 'GET') === 'GET')).toBe(true);
+  });
+
+  // A tab created before the not-counted columns existed keeps an eight-cell
+  // header while the app writes ten, leaving two columns of money unlabelled.
+  it('labels the recurring columns added after the tab was created', async () => {
+    const calls = mockFetchStatuses([
+      { body: { sheets: [{ properties: { title: 'Recurring', sheetId: 7 } }] } },
+      { body: {} }, // I1:J1 blank
+      { body: {} },
+      { body: { values: [['Recurring', 'Added', 'Not counted (A)', 'Not counted (B)']] } },
+    ]);
+
+    await ensureRecurringSetup();
+
+    const data = (bodyOf(calls[2]) as { data: { range: string; values: string[][] }[] }).data;
+    expect(data.map((d) => d.range)).toEqual(['Recurring!I1:I1', 'Recurring!J1:J1']);
+    expect(data.map((d) => d.values[0][0])).toEqual(['Not counted (A)', 'Not counted (B)']);
   });
 
   it('labels the expense columns even when the tab is already there', async () => {
@@ -777,29 +809,36 @@ describe('setting up the Recurring tab', () => {
     // every added expense writes that column regardless.
     const calls = mockFetchStatuses([
       { body: { sheets: [{ properties: { title: 'Recurring', sheetId: 7 } }] } },
-      { body: {} }, // G2:H2 blank
+      { body: { values: [['Not counted (A)', 'Not counted (B)']] } },
+      { body: {} }, // expense labels blank
       { body: {} },
     ]);
 
     await ensureRecurringSetup();
 
-    expect(urls(calls)[2]).toContain('Sheet1!G2:H2');
-    expect(bodyOf(calls[2]).values).toEqual([['Recurring', 'Added']]);
+    // The Recurring labels are already in place, so its read makes no write.
+    expect(urls(calls)[2]).toContain('Sheet1!G2:J2');
+    const written = (bodyOf(calls[3]) as { data: { range: string }[] }).data;
+    expect(written).toHaveLength(4);
   });
 
   it('asks the spreadsheet only once per session whether the tab exists', async () => {
     const first = mockFetchStatuses([
       { body: { sheets: [{ properties: { title: 'Recurring', sheetId: 7 } }] } },
-      { body: { values: [['Recurring', 'Added']] } },
+      { body: { values: [['Not counted (A)', 'Not counted (B)']] } },
+      { body: { values: [['Recurring', 'Added', 'Not counted (A)', 'Not counted (B)']] } },
     ]);
     await ensureRecurringSetup();
-    expect(first).toHaveLength(2);
+    expect(first).toHaveLength(3);
 
-    const second = mockFetchStatuses([{ body: { values: [['Recurring', 'Added']] } }]);
+    const second = mockFetchStatuses([
+      { body: { values: [['Not counted (A)', 'Not counted (B)']] } },
+      { body: { values: [['Recurring', 'Added', 'Not counted (A)', 'Not counted (B)']] } },
+    ]);
     await ensureRecurringSetup();
-    // Only the label check — the tab lookup is not repeated.
-    expect(second).toHaveLength(1);
-    expect(urls(second)[0]).toContain('Sheet1!G2:H2');
+    // Only the label checks — the tab lookup is not repeated.
+    expect(second).toHaveLength(2);
+    expect(urls(second)[1]).toContain('Sheet1!G2:J2');
   });
 });
 
@@ -807,7 +846,8 @@ describe('writing recurring rules', () => {
   it('gives a new rule an id, so what it generates can be traced back', async () => {
     const calls = mockFetchStatuses([
       { body: { sheets: [{ properties: { title: 'Recurring', sheetId: 7 } }] } },
-      { body: { values: [['Recurring', 'Added']] } }, // labels already in place
+      { body: { values: [['Not counted (A)', 'Not counted (B)']] } },
+      { body: { values: [['Recurring', 'Added', 'Not counted (A)', 'Not counted (B)']] } }, // labels already in place
       { body: {} },
     ]);
 
@@ -815,13 +855,15 @@ describe('writing recurring rules', () => {
       start: '2026-01-10',
       amountA: '12.99',
       amountB: '',
+      notCountedA: '',
+      notCountedB: '',
       item: 'Phone',
       category: 'Various',
       notes: '',
       day: 10,
     });
 
-    const row = (bodyOf(calls[2]).values as string[][])[0];
+    const row = (bodyOf(calls[3]).values as string[][])[0];
     expect(row.slice(0, 7)).toEqual(['2026-01-10', '€12.99', '', 'Phone', 'Various', '', '10']);
     expect(row[7]).toMatch(/^r[a-z0-9]+$/);
   });
@@ -842,6 +884,8 @@ describe('writing recurring rules', () => {
         start: '2026-01-10',
         amountA: '15.00',
         amountB: '',
+        notCountedA: '',
+        notCountedB: '',
         item: 'Phone',
         category: 'Various',
         notes: '',
@@ -851,7 +895,7 @@ describe('writing recurring rules', () => {
     );
 
     expect(calls).toHaveLength(1);
-    expect(urls(calls)[0]).toContain('Recurring!A4:H4');
+    expect(urls(calls)[0]).toContain('Recurring!A4:J4');
     expect(urls(calls).some((u) => u.includes('Sheet1'))).toBe(false);
     // The id is carried through, not regenerated — otherwise every edit would
     // orphan the rule's own history.
@@ -893,6 +937,8 @@ describe('writing generated expenses', () => {
       date: '2026-02-10',
       amountA: '€12.99',
       amountB: '',
+      notCountedA: '',
+      notCountedB: '',
       item: 'Phone',
       category: 'Various',
       notes: '',
@@ -904,6 +950,8 @@ describe('writing generated expenses', () => {
       date: '2026-03-10',
       amountA: '€12.99',
       amountB: '',
+      notCountedA: '',
+      notCountedB: '',
       item: 'Phone',
       category: 'Various',
       notes: '',
@@ -985,20 +1033,30 @@ describe('the recurring marker column', () => {
     expect(names).toEqual({ a: 'Ada', b: 'Bo' });
   });
 
-  it('editing an expense writes only A to F, so a generated row keeps its provenance', async () => {
+  it('editing an expense skips over the columns it does not own', async () => {
+    // Two ranges in one request, deliberately: G holds the recurring provenance
+    // and H the day the row was added, and a PUT spanning them would blank both
+    // — the month would read as never generated and be written a second time.
     const calls = mockFetchStatuses([{ body: {} }]);
 
     await updateExpense(5 as ExpenseRow, {
       date: '2026-02-10',
       amountA: '14.00',
       amountB: '',
+      notCountedA: '4.00',
+      notCountedB: '',
       item: 'Phone',
       category: 'Various',
       notes: 'price went up',
     });
 
-    expect(urls(calls)[0]).toContain('Sheet1!A5:F5');
-    expect((bodyOf(calls[0]).values as string[][])[0]).toHaveLength(6);
+    expect(calls).toHaveLength(1);
+    const body = bodyOf(calls[0]) as { data: { range: string; values: string[][] }[] };
+    expect(body.data.map((d) => d.range)).toEqual(['Sheet1!A5:F5', 'Sheet1!I5:J5']);
+    expect(body.data[0].values[0]).toHaveLength(6);
+    expect(body.data[1].values[0]).toEqual(['€4.00', '']);
+    // Neither G nor H appears in any range it writes.
+    expect(body.data.some((d) => /G|H/.test(d.range.split('!')[1]))).toBe(false);
   });
 
   it('adding an expense by hand leaves the marker column empty', async () => {
@@ -1008,6 +1066,8 @@ describe('the recurring marker column', () => {
       date: '2026-02-10',
       amountA: '14.00',
       amountB: '',
+      notCountedA: '',
+      notCountedB: '',
       item: 'Bread',
       category: 'Food',
       notes: '',
@@ -1024,10 +1084,10 @@ describe('the recurring marker column', () => {
 // dated last month can be pointed out in a list ordered by date.
 
 describe('the added-on column', () => {
-  it('reads the expenses through column H', async () => {
+  it('reads the expenses through column J', async () => {
     const calls = mockFetchStatuses([{ body: { values: [] } }]);
     await fetchExpenses();
-    expect(urls(calls)[0]).toContain('Sheet1!A1:H');
+    expect(urls(calls)[0]).toContain('Sheet1!A1:J');
   });
 
   it('reads a row written before the column existed as not knowing', async () => {
@@ -1053,6 +1113,8 @@ describe('the added-on column', () => {
         date: '2026-01-01',
         amountA: '€10.00',
         amountB: '',
+        notCountedA: '',
+        notCountedB: '',
         item: 'Bread',
         category: 'Food',
         notes: 'sourdough',
@@ -1085,17 +1147,20 @@ describe('the added-on column', () => {
       date: '2026-01-05', // deliberately back-dated
       amountA: '14.00',
       amountB: '',
+      notCountedA: '',
+      notCountedB: '',
       item: 'Bread',
       category: 'Food',
       notes: '',
     });
 
-    expect(urls(calls)[0]).toContain('Sheet1!A:H');
+    expect(urls(calls)[0]).toContain('Sheet1!A:J');
     const row = (bodyOf(calls[0]).values as string[][])[0];
-    expect(row).toHaveLength(8);
+    expect(row).toHaveLength(10);
     expect(row[6]).toBe(''); // hand-entered: no recurring marker
     expect(row[7]).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(row[7]).not.toBe(row[0]); // when it was typed, not when it was spent
+    expect(row.slice(8)).toEqual(['', '']); // nothing set aside
   });
 
   it('stamps every caught-up recurring expense too, which is where it matters most', async () => {
@@ -1109,13 +1174,15 @@ describe('the added-on column', () => {
         date: '2026-02-10',
         amountA: '€12.99',
         amountB: '',
+        notCountedA: '',
+        notCountedB: '',
         item: 'Phone',
         category: 'Various',
         notes: '',
       },
     ]);
 
-    expect(urls(calls)[0]).toContain('Sheet1!A:H');
+    expect(urls(calls)[0]).toContain('Sheet1!A:J');
     const row = (bodyOf(calls[0]).values as string[][])[0];
     expect(row[6]).toBe('rec:r1:2026-02');
     expect(row[7]).toMatch(/^\d{4}-\d{2}-\d{2}$/);
@@ -1130,48 +1197,213 @@ describe('the added-on column', () => {
       date: '2026-02-10',
       amountA: '14.00',
       amountB: '',
+      notCountedA: '',
+      notCountedB: '',
       item: 'Phone',
       category: 'Various',
       notes: 'corrected',
     });
 
-    expect(urls(calls)[0]).toContain('Sheet1!A5:F5');
-    expect((bodyOf(calls[0]).values as string[][])[0]).toHaveLength(6);
+    const body = bodyOf(calls[0]) as { data: { range: string }[] };
+    expect(body.data.map((d) => d.range)).toEqual(['Sheet1!A5:F5', 'Sheet1!I5:J5']);
   });
 
-  it('labels both app-written columns when they are blank', async () => {
+  it('labels every app-written column when they are blank', async () => {
     const calls = mockFetchStatuses([{ body: {} }, { body: {} }]);
 
     await ensureExpenseColumnLabels();
 
-    expect(urls(calls)[0]).toContain('Sheet1!G2:H2');
-    expect(bodyOf(calls[1]).values).toEqual([['Recurring', 'Added']]);
+    expect(urls(calls)[0]).toContain('Sheet1!G2:J2');
+    const data = (bodyOf(calls[1]) as { data: { range: string; values: string[][] }[] }).data;
+    expect(data.map((d) => d.range)).toEqual([
+      'Sheet1!G2:G2',
+      'Sheet1!H2:H2',
+      'Sheet1!I2:I2',
+      'Sheet1!J2:J2',
+    ]);
+    expect(data.map((d) => d.values[0][0])).toEqual([
+      'Recurring',
+      'Added',
+      'Not counted (A)',
+      'Not counted (B)',
+    ]);
   });
 
-  it('writes only the missing label, leaving the occupied cell untouched', async () => {
-    // Not merely "writes the same value back": these are cells in someone's own
-    // spreadsheet, and re-writing one that holds a formula would replace it with
-    // whatever it happened to render to at the time.
-    const calls = mockFetchStatuses([{ body: { values: [['Repeats']] } }, { body: {} }]);
+  // One entry per blank cell rather than one span: a span from the first blank
+  // to the last would write over anything filled in between, which is the one
+  // thing this must never do.
+  it('leaves a label the user chose alone, even between two blanks', async () => {
+    const calls = mockFetchStatuses([{ body: { values: [['', 'Mine', '', '']] } }, { body: {} }]);
 
     await ensureExpenseColumnLabels();
 
-    expect(urls(calls)[1]).toContain('Sheet1!H2:H2');
-    expect(bodyOf(calls[1]).values).toEqual([['Added']]);
+    const data = (bodyOf(calls[1]) as { data: { range: string }[] }).data;
+    expect(data.map((d) => d.range)).toEqual(['Sheet1!G2:G2', 'Sheet1!I2:I2', 'Sheet1!J2:J2']);
+    expect(data.some((d) => d.range.includes('H2'))).toBe(false);
   });
 
-  it('writes only the first label when the second is the one already taken', async () => {
-    const calls = mockFetchStatuses([{ body: { values: [['', 'Entered']] } }, { body: {} }]);
-
-    await ensureExpenseColumnLabels();
-
-    expect(urls(calls)[1]).toContain('Sheet1!G2:G2');
-    expect(bodyOf(calls[1]).values).toEqual([['Recurring']]);
-  });
-
-  it('writes nothing at all when both are already there', async () => {
-    const calls = mockFetchStatuses([{ body: { values: [['Recurring', 'Added']] } }]);
+  it('writes nothing at all when every label is already there', async () => {
+    const calls = mockFetchStatuses([
+      { body: { values: [['Recurring', 'Added', 'Not counted (A)', 'Not counted (B)']] } },
+    ]);
     await ensureExpenseColumnLabels();
     expect(calls).toHaveLength(1);
+  });
+});
+
+// ── The not-counted columns ──
+//
+// Columns I and J hold the part of each amount that was only for the person who
+// paid it. They are the user's to edit, unlike G and H, so the update path has
+// to reach them without reaching the two beside them.
+
+describe('the not-counted columns', () => {
+  it('reads a row written before the columns existed as nothing set aside', async () => {
+    mockFetchStatuses([
+      {
+        body: {
+          values: [
+            ['Date', 'Ada', 'Bo', 'Item', 'Category', 'Notes'],
+            ['', 'Ada', 'Bo', '', '', ''],
+            ['2026-01-01', 10, '', 'Bread', 'Food', 'sourdough'],
+          ],
+        },
+      },
+    ]);
+
+    const { expenses } = await fetchExpenses();
+
+    // The whole record: proof that widening the range to J changed nothing
+    // about how an existing row reads.
+    expect(expenses).toEqual([
+      {
+        rowIndex: 3,
+        date: '2026-01-01',
+        amountA: '€10.00',
+        amountB: '',
+        item: 'Bread',
+        category: 'Food',
+        notes: 'sourdough',
+        recurringMarker: '',
+        addedOn: '',
+        notCountedA: '',
+        notCountedB: '',
+      },
+    ]);
+  });
+
+  it('reads what was set aside', async () => {
+    mockFetchStatuses([
+      {
+        body: {
+          values: [
+            [
+              'Date',
+              'Ada',
+              'Bo',
+              'Item',
+              'Category',
+              'Notes',
+              'Recurring',
+              'Added',
+              'NC A',
+              'NC B',
+            ],
+            ['', 'Ada', 'Bo', '', '', '', '', '', '', ''],
+            ['2026-01-01', 100, '', 'Shop', 'Food', '', '', '2026-01-01', 10, ''],
+          ],
+        },
+      },
+    ]);
+    const { expenses } = await fetchExpenses();
+    expect(expenses[0]).toMatchObject({
+      amountA: '€100.00',
+      notCountedA: '€10.00',
+      notCountedB: '',
+    });
+  });
+
+  it('writes what was set aside on a new expense', async () => {
+    const calls = mockFetchStatuses([{ body: {} }]);
+
+    await addExpense({
+      date: '2026-01-05',
+      amountA: '100',
+      amountB: '',
+      notCountedA: '10',
+      notCountedB: '',
+      item: 'Shop',
+      category: 'Food',
+      notes: '',
+    });
+
+    const row = (bodyOf(calls[0]).values as string[][])[0];
+    expect(row.slice(8)).toEqual(['€10.00', '']);
+  });
+
+  it('carries a rule’s share through to every expense it creates', async () => {
+    const calls = mockFetchStatuses([{ body: {} }]);
+
+    await appendGeneratedExpenses([
+      {
+        ruleId: 'r1',
+        month: '2026-02',
+        marker: 'rec:r1:2026-02',
+        date: '2026-02-10',
+        amountA: '€30.00',
+        amountB: '',
+        notCountedA: '€12.00',
+        notCountedB: '',
+        item: 'Phone',
+        category: 'Various',
+        notes: '',
+      },
+    ]);
+
+    const row = (bodyOf(calls[0]).values as string[][])[0];
+    expect(row).toHaveLength(10);
+    expect(row.slice(8)).toEqual(['€12.00', '']);
+  });
+
+  it('keeps a rule’s share on the Recurring tab', async () => {
+    const calls = mockFetchStatuses([
+      { body: { sheets: [{ properties: { title: 'Recurring', sheetId: 7 } }] } },
+      { body: { values: [['Not counted (A)', 'Not counted (B)']] } },
+      { body: { values: [['Recurring', 'Added', 'Not counted (A)', 'Not counted (B)']] } },
+      { body: {} },
+    ]);
+
+    await addRecurring({
+      start: '2026-01-10',
+      amountA: '30',
+      amountB: '',
+      notCountedA: '12',
+      notCountedB: '',
+      item: 'Phone',
+      category: 'Various',
+      notes: '',
+      day: 10,
+    });
+
+    const row = (bodyOf(calls[3]).values as string[][])[0];
+    expect(row.slice(8)).toEqual(['€12.00', '']);
+  });
+
+  it('reads a rule’s share back off the Recurring tab', async () => {
+    mockFetchStatuses([
+      {
+        body: { values: [['2026-01-10', 30, '', 'Phone', 'Various', '', 10, 'r1', 12, '']] },
+      },
+    ]);
+    const { rules } = await fetchRecurring();
+    expect(rules[0]).toMatchObject({ notCountedA: '€12.00', notCountedB: '' });
+  });
+
+  it('reads a rule written before the columns existed as nothing set aside', async () => {
+    mockFetchStatuses([
+      { body: { values: [['2026-01-10', 30, '', 'Phone', 'Various', '', 10, 'r1']] } },
+    ]);
+    const { rules } = await fetchRecurring();
+    expect(rules[0]).toMatchObject({ notCountedA: '', notCountedB: '' });
   });
 });

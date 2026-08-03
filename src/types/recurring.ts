@@ -29,6 +29,14 @@ export interface RecurringRule {
   start: string;
   amountA: string; // display form, e.g. "€12.99" or ""
   amountB: string;
+  /**
+   * The slice of the amount beside it that is only for that person — a phone
+   * line on a shared bill, one person's add-on to a subscription. Carried by
+   * the rule so it does not have to be re-entered on the generated expense
+   * every single month.
+   */
+  notCountedA: string;
+  notCountedB: string;
   item: string;
   category: Category | '';
   notes: string;
@@ -47,6 +55,8 @@ export interface RecurringFormData {
   start: string;
   amountA: string; // raw number string, e.g. "12.99"
   amountB: string;
+  notCountedA: string;
+  notCountedB: string;
   item: string;
   category: Category;
   notes: string;

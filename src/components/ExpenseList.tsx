@@ -279,9 +279,24 @@ export function ExpenseList({ names, expenses, loading, onUpdate, onDelete, onRe
         </Table.Td>
         <Table.Td ta="right" style={TABULAR}>
           {expense.amountA}
+          {/*
+            Under the amount it belongs to, on both layouts. It changes who owes
+            whom, so a stale or mistyped figure has to be catchable by scanning
+            the list — the same argument the recurring rows earned a badge on.
+          */}
+          {expense.notCountedA && (
+            <Text size="xs" style={TABULAR}>
+              −{expense.notCountedA} not counted
+            </Text>
+          )}
         </Table.Td>
         <Table.Td ta="right" style={TABULAR}>
           {expense.amountB}
+          {expense.notCountedB && (
+            <Text size="xs" style={TABULAR}>
+              −{expense.notCountedB} not counted
+            </Text>
+          )}
         </Table.Td>
         <Table.Td style={ELLIPSIS}>
           {isMobile ? (

@@ -18,6 +18,8 @@ import { toNum, fromNum } from '../services/utils';
 export interface ExpenseFieldValues {
   amountA: string;
   amountB: string;
+  notCountedA: string;
+  notCountedB: string;
   item: string;
   category: Category;
   notes: string;
@@ -63,6 +65,32 @@ export function ExpenseFields({
           placeholder="0.00"
           value={toNum(value.amountB)}
           onChange={(val) => onChange({ amountB: fromNum(val as number | '') })}
+        />
+      </Group>
+
+      {/*
+        Below the amounts, because that is what they are part of: a slice of the
+        figure directly above, not an extra charge. Left blank on almost every
+        row, so they carry no placeholder inviting a number.
+      */}
+      <Group grow>
+        <NumberInput
+          label={`${names.a} — not counted (€)`}
+          prefix="€ "
+          decimalScale={2}
+          fixedDecimalScale
+          min={0}
+          value={toNum(value.notCountedA)}
+          onChange={(val) => onChange({ notCountedA: fromNum(val as number | '') })}
+        />
+        <NumberInput
+          label={`${names.b} — not counted (€)`}
+          prefix="€ "
+          decimalScale={2}
+          fixedDecimalScale
+          min={0}
+          value={toNum(value.notCountedB)}
+          onChange={(val) => onChange({ notCountedB: fromNum(val as number | '') })}
         />
       </Group>
 

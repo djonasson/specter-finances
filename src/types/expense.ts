@@ -32,6 +32,19 @@ export interface Expense {
   category: Category | '';
   notes: string;
   /**
+   * Columns I and J: how much of each person's amount was only for them.
+   *
+   * A €100 shop with €10 of it bought for one person alone is still €100 spent
+   * — the sheet should say so — but only €90 of it is shared. These carry that
+   * €10, so the spending stays honest and the balance does not make the other
+   * person pay half of something they never had.
+   *
+   * Part of the amount beside it, never on top: `notCountedA` is a slice of
+   * `amountA`, so it can never exceed it.
+   */
+  notCountedA: string;
+  notCountedB: string;
+  /**
    * Column G: which recurring rule and month produced this row, if any —
    * `rec:<ruleId>:YYYY-MM`. Empty on every hand-entered expense.
    *
@@ -68,6 +81,9 @@ export interface ExpenseFormData {
   date: string;
   amountA: string; // raw number string, e.g. "123.45"
   amountB: string;
+  /** The slice of the amount beside it that was only for that person. */
+  notCountedA: string;
+  notCountedB: string;
   item: string;
   category: Category;
   notes: string;

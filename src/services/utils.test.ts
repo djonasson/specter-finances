@@ -32,6 +32,7 @@ import {
   daysBefore,
   isRecentlyAdded,
   recurringToFormData,
+  notCountedProblem,
 } from './utils';
 import { formatAmount } from './parsing';
 
@@ -43,6 +44,8 @@ function makeExpense(overrides: Partial<Expense> = {}): Expense {
     date: '2026-01-15',
     amountA: '',
     amountB: '',
+    notCountedA: '',
+    notCountedB: '',
     item: 'Test',
     category: 'Food',
     notes: '',
@@ -781,6 +784,8 @@ describe('expenseToFormData', () => {
       date: '2026-01-15',
       amountA: '100.00',
       amountB: '50.00',
+      notCountedA: '',
+      notCountedB: '',
       item: 'Groceries',
       category: 'Food',
       notes: 'Weekly shop',
@@ -1222,6 +1227,8 @@ describe('filterExpenses', () => {
     rowIndex: 6 as ExpenseRow,
     item: 'Phone',
     category: 'Various',
+    notCountedA: '',
+    notCountedB: '',
     recurringMarker: 'rec:r1:2026-02',
   });
   const all = [bread, petrol, mystery, phone];
@@ -1283,6 +1290,8 @@ describe('filterExpenses', () => {
       category: 'Health',
       notes: '',
       date: '2026-01-15',
+      notCountedA: '',
+      notCountedB: '',
       recurringMarker: 'rec:r1:2026-01',
     });
     expect(filterExpenses([gym], { ...noFilter, text: 'r' })).toEqual([]);
@@ -1447,6 +1456,8 @@ describe('recurringToFormData', () => {
     start: '2026-01-10',
     amountA: '€1,234.50',
     amountB: '',
+    notCountedA: '',
+    notCountedB: '',
     item: 'Phone',
     category: 'Various' as const,
     notes: 'monthly',
@@ -1472,5 +1483,161 @@ describe('recurringToFormData', () => {
       notes: 'monthly',
       day: 10,
     });
+  });
+});
+
+// ── Not counted ──
+//
+// Part of an amount that was only for the person who paid it. The money was
+// really spent, so it stays in the totals and the charts; it just never reaches
+// the gap, because the other person did not have it. Getting this wrong makes
+// one of them pay half of something they never received.
+
+describe('spending that is not shared', () => {
+  const noneShared = { transferA: 0, transferB: 0 };
+
+  it('leaves every existing row exactly where it was', () => {
+    // Every row on the sheet today has these columns blank. If this moves, the
+    // feature has re-priced history.
+    const expenses = [
+      makeExpense({ amountA: '€1,000.00' }),
+      makeExpense({ rowIndex: 4 as ExpenseRow, amountB: '€500.00' }),
+    ];
+    expect(calculateBalance(expenses, [], []).owedToA).toBe(250);
+  });
+
+  it('takes the personal part out of what the other owes', () => {
+    // €100 spent, €10 of it only for A → €90 shared, so B owes €45 not €50.
+    const expenses = [makeExpense({ amountA: '€100.00', notCountedA: '€10.00' })];
+    expect(calculateBalance(expenses, [], []).owedToA).toBe(45);
+  });
+
+  it('still reports the whole amount as spent', () => {
+    const expenses = [makeExpense({ amountA: '€100.00', notCountedA: '€10.00' })];
+    const balance = calculateBalance(expenses, [], []);
+    expect(balance.totalA).toBe(100);
+    expect(balance.notCountedA).toBe(10);
+  });
+
+  it('squares up when one of them buys only for themselves', () => {
+    // Nothing was shared, so nobody owes anybody.
+    const expenses = [makeExpense({ amountA: '€80.00', notCountedA: '€80.00' })];
+    expect(calculateBalance(expenses, [], []).owedToA).toBe(0);
+  });
+
+  it('nets the two sides against each other', () => {
+    const expenses = [
+      makeExpense({ amountA: '€100.00', notCountedA: '€20.00' }),
+      makeExpense({ rowIndex: 4 as ExpenseRow, amountB: '€60.00', notCountedB: '€10.00' }),
+    ];
+    // Shared: 80 against 50 → a 30 gap → 15 owed.
+    expect(calculateBalance(expenses, [], []).owedToA).toBe(15);
+  });
+
+  it('handles both people setting something aside on one row', () => {
+    const expenses = [
+      makeExpense({
+        amountA: '€100.00',
+        amountB: '€100.00',
+        notCountedA: '€40.00',
+        notCountedB: '€10.00',
+      }),
+    ];
+    const balance = calculateBalance(expenses, [], []);
+    expect(balance.notCountedA).toBe(40);
+    expect(balance.notCountedB).toBe(10);
+    // Shared 60 against 90 → B is owed 15.
+    expect(balance.owedToA).toBe(-15);
+  });
+
+  it('still lets a transfer settle what is left', () => {
+    const expenses = [makeExpense({ amountA: '€100.00', notCountedA: '€10.00' })];
+    const transfers = [makeTransfer({ amountB: '€45.00' })];
+    // B owed 45 and paid it.
+    expect(calculateBalance(expenses, transfers, []).owedToA).toBe(0);
+  });
+
+  // A slice cannot be bigger than what it is a slice of. The forms refuse it,
+  // but the sheet is hand-editable, and taken at face value it would push the
+  // shared figure negative and pay the wrong person.
+  it('refuses to let a hand-typed excess swing the balance the wrong way', () => {
+    const expenses = [makeExpense({ amountA: '€100.00', notCountedA: '€500.00' })];
+    const balance = calculateBalance(expenses, [], []);
+    expect(balance.notCountedA).toBe(100);
+    expect(balance.owedToA).toBe(0);
+  });
+
+  it('ignores an amount set aside against a column nobody paid into', () => {
+    const expenses = [makeExpense({ amountA: '€100.00', notCountedB: '€30.00' })];
+    expect(calculateBalance(expenses, [], []).owedToA).toBe(50);
+  });
+
+  it('reads a blank column as nothing set aside, not as missing data', () => {
+    const expenses = [makeExpense({ amountA: '€100.00', notCountedA: '' })];
+    expect(calculateBalance(expenses, [], []).notCountedA).toBe(0);
+    expect(noneShared.transferA).toBe(0);
+  });
+});
+
+describe('notCountedProblem', () => {
+  const NAMES = { a: 'Ada', b: 'Bo' };
+  const base = { amountA: '100', amountB: '100', notCountedA: '', notCountedB: '' };
+
+  it('accepts nothing set aside', () => {
+    expect(notCountedProblem(base, NAMES)).toBeNull();
+  });
+
+  it('accepts a slice smaller than the amount', () => {
+    expect(notCountedProblem({ ...base, notCountedA: '10' }, NAMES)).toBeNull();
+  });
+
+  it('accepts the whole amount, since a purchase can be entirely personal', () => {
+    expect(notCountedProblem({ ...base, notCountedA: '100' }, NAMES)).toBeNull();
+  });
+
+  it('names the person whose figure does not add up', () => {
+    expect(notCountedProblem({ ...base, notCountedA: '150' }, NAMES)).toBe(
+      'Not counted cannot be more than what Ada paid',
+    );
+    expect(notCountedProblem({ ...base, notCountedB: '150' }, NAMES)).toBe(
+      'Not counted cannot be more than what Bo paid',
+    );
+  });
+
+  it('refuses anything set aside against a column nobody paid into', () => {
+    expect(notCountedProblem({ ...base, amountA: '', notCountedA: '10' }, NAMES)).not.toBeNull();
+  });
+});
+
+// ── Both ends of the clamp ──
+//
+// The shared figure subtracts what was set aside, so the guard has to hold at
+// both ends. Too much pushes sharing negative; too little — a negative — adds to
+// it, and the dashboard row is hidden below zero, so the balance would move with
+// nothing on screen to explain why.
+
+describe('a not-counted figure the sheet should not hold', () => {
+  it('ignores a negative rather than letting it inflate what the other owes', () => {
+    const expenses = [makeExpense({ amountA: '€100.00', notCountedA: '€-50.00' })];
+    const balance = calculateBalance(expenses, [], []);
+    expect(balance.notCountedA).toBe(0);
+    // Unchanged from the same row with the column blank.
+    expect(balance.owedToA).toBe(50);
+  });
+
+  it('ignores an excess rather than letting it pay the wrong person', () => {
+    const expenses = [makeExpense({ amountA: '€100.00', notCountedA: '€500.00' })];
+    expect(calculateBalance(expenses, [], []).owedToA).toBe(0);
+  });
+
+  it('refuses a negative in the form, so the two guards agree', () => {
+    const NAMES = { a: 'Ada', b: 'Bo' };
+    const base = { amountA: '100', amountB: '100', notCountedA: '', notCountedB: '' };
+    expect(notCountedProblem({ ...base, notCountedA: '-50' }, NAMES)).toBe(
+      'Not counted cannot be negative',
+    );
+    expect(notCountedProblem({ ...base, notCountedB: '-1' }, NAMES)).toBe(
+      'Not counted cannot be negative',
+    );
   });
 });

@@ -2,7 +2,7 @@ import { parseAmount, isIsoDate } from './parsing';
 import type { Expense, Category } from '../types/expense';
 import type { ExpenseFormData } from '../types/expense';
 import type { Transfer, TransferFormData } from '../types/transfer';
-import type { Person } from '../types/person';
+import type { Person, PersonNames } from '../types/person';
 import type { Gift, GiftFormData } from '../types/gift';
 import type { RecurringRule, RecurringFormData } from '../types/recurring';
 
@@ -52,9 +52,16 @@ export function toNumber(formatted: string): number {
   return raw ? parseFloat(raw) : 0;
 }
 
-/** Format a number with 2 decimal places */
+/**
+ * A money amount, always to the cent.
+ *
+ * Both bounds are set on purpose. Without a maximum, toLocaleString allows
+ * three decimals, and a half-cent balance — €10.00 against €0.01 splits to
+ * 4.995 — rendered as "+€4.995", which is not a sum of money anyone can hand
+ * over.
+ */
 export function fmt(n: number): string {
-  return n.toLocaleString('en-US', { minimumFractionDigits: 2 });
+  return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 /**
@@ -123,6 +130,34 @@ export function filterByDate<T extends { date: string }>(items: T[], params: Fil
       });
     }
   }
+}
+
+/**
+ * Why a "not counted" amount cannot be accepted, or null when it can.
+ *
+ * "Not counted" is a slice of the amount beside it, never a figure on top. More
+ * than the whole would make the shared part negative and swing the balance the
+ * wrong way, which on this sheet is real money — so both forms refuse it, and
+ * calculateBalance clamps as well for rows typed straight into the spreadsheet.
+ */
+export function notCountedProblem(
+  values: Pick<ExpenseFormData, 'amountA' | 'amountB' | 'notCountedA' | 'notCountedB'>,
+  names: PersonNames,
+): string | null {
+  const check = (amount: string, notCounted: string, who: string) => {
+    const aside = toNum(notCounted);
+    if (aside === '') return null;
+    // Negative as well as excessive: the balance subtracts this figure, so a
+    // negative one silently increases what the other person owes.
+    if (aside < 0) return `Not counted cannot be negative`;
+    if (aside > (toNum(amount) || 0)) return `Not counted cannot be more than what ${who} paid`;
+    return null;
+  };
+
+  return (
+    check(values.amountA, values.notCountedA, names.a) ??
+    check(values.amountB, values.notCountedB, names.b)
+  );
 }
 
 // ── Recently added ──
@@ -410,8 +445,12 @@ export function monthlyBars(
 // ── Balance calculation ──
 
 export interface BalanceResult {
+  /** Everything spent, including what only one of them got the benefit of. */
   totalA: number;
   totalB: number;
+  /** The part of that spending that was only for one of them. */
+  notCountedA: number;
+  notCountedB: number;
   transferA: number;
   transferB: number;
   /** Gifts marked `forgiven` — the only ones that move the balance. */
@@ -435,6 +474,26 @@ export function calculateBalance(
   gifts: Gift[] = [],
 ): BalanceResult {
   const { totalA, totalB } = aggregateExpenses(expenses);
+
+  // The part of the spending that was only for one of them, held to both ends
+  // of what it can be: no less than nothing, no more than the amount it is a
+  // slice of.
+  //
+  // Both bounds move money if they are missing. Over the amount pushes the
+  // shared figure negative; under zero *adds* to it, because the shared figure
+  // subtracts this — a refund typed as -50 against a €100 row would have the
+  // other owing €75 instead of €50, with the dashboard showing no Not counted
+  // row at all to explain it. The forms refuse both, but a spreadsheet cell can
+  // hold anything, and a formula that goes negative gets here by accident.
+  const slice = (notCounted: string, amount: string) =>
+    Math.max(0, Math.min(toNumber(notCounted), toNumber(amount)));
+
+  let notCountedA = 0;
+  let notCountedB = 0;
+  for (const e of expenses) {
+    notCountedA += slice(e.notCountedA, e.amountA);
+    notCountedB += slice(e.notCountedB, e.amountB);
+  }
 
   let transferA = 0;
   let transferB = 0;
@@ -461,6 +520,14 @@ export function calculateBalance(
     }
   }
 
+  // Only the SHARED part of the spending reaches the gap. Something bought for
+  // one person alone was really spent — it stays in the totals and the charts —
+  // but the other never had it, so it must not appear in what they owe. €100
+  // spent with €10 of it personal is €90 shared, and the other owes €45 of it
+  // rather than €50.
+  const sharedA = totalA - notCountedA;
+  const sharedB = totalB - notCountedB;
+
   // First the spending GAP: how much more one has put in than the other.
   //
   // A transfer or a forgiveness of €X swings it by 2×X, because it moves both
@@ -468,7 +535,7 @@ export function calculateBalance(
   // close the gap (+2x), forgiveness is the inverse (-2x). Presents are
   // deliberately absent: that money was a present rather than part of the
   // shared pot, so it must leave the gap exactly where it was.
-  const gapA = totalA - totalB + 2 * (transferA - transferB) - 2 * (forgivenA - forgivenB);
+  const gapA = sharedA - sharedB + 2 * (transferA - transferB) - 2 * (forgivenA - forgivenB);
 
   // Then halve it, because the gap is twice the debt: spending €1000 against
   // the other's €500 is a €500 gap, but only €250 changes hands to square up —
@@ -481,6 +548,8 @@ export function calculateBalance(
   return {
     totalA,
     totalB,
+    notCountedA,
+    notCountedB,
     transferA,
     transferB,
     forgivenA,
@@ -592,6 +661,8 @@ export function expenseToFormData(e: Expense): ExpenseFormData {
     date: e.date,
     amountA: parseAmount(e.amountA),
     amountB: parseAmount(e.amountB),
+    notCountedA: parseAmount(e.notCountedA),
+    notCountedB: parseAmount(e.notCountedB),
     item: e.item,
     category: e.category || 'Various',
     notes: e.notes,
@@ -611,6 +682,8 @@ export function recurringToFormData(r: RecurringRule): RecurringFormData {
     start: r.start,
     amountA: parseAmount(r.amountA),
     amountB: parseAmount(r.amountB),
+    notCountedA: parseAmount(r.notCountedA),
+    notCountedB: parseAmount(r.notCountedB),
     item: r.item,
     category: r.category || 'Various',
     notes: r.notes,

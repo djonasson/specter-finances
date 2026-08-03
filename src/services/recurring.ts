@@ -98,6 +98,9 @@ export interface PendingExpense {
   date: string;
   amountA: string; // display form, copied from the rule as it stands now
   amountB: string;
+  /** The slice of each amount that is only for that person. */
+  notCountedA: string;
+  notCountedB: string;
   item: string;
   category: Category | '';
   notes: string;
@@ -178,6 +181,8 @@ export function pendingRecurring(
         date,
         amountA: rule.amountA,
         amountB: rule.amountB,
+        notCountedA: rule.notCountedA,
+        notCountedB: rule.notCountedB,
         item: rule.item,
         category: rule.category,
         notes: rule.notes,

@@ -107,6 +107,32 @@ describe('RecurringForm', () => {
     ).toBeInTheDocument();
   });
 
+  it('carries a share that is only for one of them, so it repeats every month', async () => {
+    const user = userEvent.setup();
+    const { onSubmit } = renderForm();
+    await user.type(screen.getByRole('textbox', { name: 'Item' }), 'Phone bill');
+    await user.type(screen.getByRole('textbox', { name: 'Ada (€)' }), '30');
+    await user.type(screen.getByRole('textbox', { name: 'Ada — not counted (€)' }), '12');
+    await user.click(submit());
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    expect(onSubmit.mock.calls[0]![0]).toMatchObject({ amountA: '30.00', notCountedA: '12.00' });
+  });
+
+  it('refuses more set aside than the payment itself', async () => {
+    const user = userEvent.setup();
+    const { onSubmit } = renderForm();
+    await user.type(screen.getByRole('textbox', { name: 'Item' }), 'Phone bill');
+    await user.type(screen.getByRole('textbox', { name: 'Ada (€)' }), '30');
+    await user.type(screen.getByRole('textbox', { name: 'Ada — not counted (€)' }), '50');
+    await user.click(submit());
+
+    expect(
+      await screen.findByText('Not counted cannot be more than what Ada paid'),
+    ).toBeInTheDocument();
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
   it('submits a complete rule', async () => {
     const user = userEvent.setup();
     const { onSubmit } = renderForm();
@@ -124,6 +150,8 @@ describe('RecurringForm', () => {
       start: '2026-01-10',
       amountA: '12.99',
       amountB: '',
+      notCountedA: '',
+      notCountedB: '',
       item: 'Phone',
       category: 'Various',
       notes: 'monthly',

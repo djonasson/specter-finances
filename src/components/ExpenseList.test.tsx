@@ -17,6 +17,8 @@ function makeExpense(overrides: Partial<Expense> = {}): Expense {
     date: '2026-01-15',
     amountA: '€10.00',
     amountB: '',
+    notCountedA: '',
+    notCountedB: '',
     item: 'Test',
     category: 'Food',
     notes: '',
@@ -173,6 +175,8 @@ describe('filtering', () => {
     rowIndex: 5 as ExpenseRow,
     item: 'Phone',
     category: 'Various',
+    notCountedA: '',
+    notCountedB: '',
     recurringMarker: 'rec:r1:2026-01',
   });
 
@@ -380,6 +384,63 @@ describe('the recently-added filter', () => {
     await user.click(checkbox());
     expect(itemsInOrder()).toEqual([]);
     expect(screen.getByText('Showing 0 of 0 expenses')).toBeInTheDocument();
+  });
+});
+
+// ── Not counted, in the list ──
+//
+// It changes who owes whom, so a stale or mistyped figure has to be catchable by
+// scanning rather than only by opening the edit form.
+
+describe('what a row does not share', () => {
+  it('shows it under the amount it came out of', () => {
+    renderList([makeExpense({ amountA: '€100.00', notCountedA: '€10.00' })]);
+    expect(screen.getAllByText('−€10.00 not counted').length).toBeGreaterThan(0);
+  });
+
+  it('says nothing on an ordinary shared row', () => {
+    renderList([makeExpense({ amountA: '€100.00' })]);
+    expect(screen.queryByText(/not counted/)).toBeNull();
+  });
+
+  it('puts each figure under its own person', () => {
+    renderList([
+      makeExpense({
+        amountA: '€100.00',
+        amountB: '€60.00',
+        notCountedA: '€10.00',
+        notCountedB: '€5.00',
+      }),
+    ]);
+    const desktop = screen.getAllByRole('table')[0];
+    const cells = within(desktop).getAllByRole('row')[1].querySelectorAll('td');
+    expect(cells[1].textContent).toContain('−€10.00');
+    expect(cells[2].textContent).toContain('−€5.00');
+  });
+
+  it('shows it on the narrow layout too, where the amounts are also shown', () => {
+    renderList([makeExpense({ amountA: '€100.00', notCountedA: '€10.00' })]);
+    const mobile = screen.getAllByRole('table')[1];
+    expect(within(mobile).getByText('−€10.00 not counted')).toBeInTheDocument();
+  });
+
+  it('does not change how the row ranks by amount', async () => {
+    // Sorting is on what the row cost, which is the whole amount — the personal
+    // part was still spent, it just was not shared.
+    const user = userEvent.setup();
+    const big = makeExpense({
+      rowIndex: 3 as ExpenseRow,
+      item: 'Big',
+      amountA: '€100.00',
+      notCountedA: '€99.00',
+    });
+    const small = makeExpense({ rowIndex: 4 as ExpenseRow, item: 'Small', amountA: '€50.00' });
+    renderList([small, big]);
+
+    await user.click(screen.getByRole('textbox', { name: 'Sort by' }));
+    await user.click(await screen.findByRole('option', { name: 'Largest amount' }));
+
+    expect(itemsInOrder()).toEqual(['Big', 'Small']);
   });
 });
 

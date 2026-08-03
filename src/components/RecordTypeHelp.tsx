@@ -24,6 +24,7 @@ function explanationsFor({ a, b }: PersonNames): Record<RecordKind, Explanation>
       body: [
         'Something one of you bought. Enter what each of you actually paid, not what either of you owes — the split is worked out for you.',
         `Example: ${a} pays €40 for groceries → €40 in their column, nothing in ${b}’s. If you split the bill at the till, fill in both.`,
+        `If part of it was only for one of you, put that part in their “not counted” field. It stays in the totals as money spent, but the other is not asked to share it: €100 with €10 not counted is €90 shared, so the other owes €45 rather than €50.`,
       ],
     },
     transfer: {

@@ -17,6 +17,8 @@ function makePending(overrides: Partial<PendingExpense> = {}): PendingExpense {
     date: `${month}-10`,
     amountA: '€12.99',
     amountB: '',
+    notCountedA: '',
+    notCountedB: '',
     item: 'Phone',
     category: 'Various',
     notes: '',
@@ -207,5 +209,53 @@ describe('RecurringPrompt', () => {
     const dialog = within(screen.getByRole('dialog'));
     expect(dialog.getByText(/every later month of that payment/i)).toBeInTheDocument();
     expect(dialog.getByText(/offered again/i)).toBeInTheDocument();
+  });
+});
+
+// ── A corrected amount and the slice set aside against it ──
+//
+// The rule carries a not-counted figure; correcting the amount here can leave
+// that figure larger than the whole. calculateBalance would clamp it, so the
+// month would settle as fully personal with nothing on screen to say why —
+// which is exactly what both forms refuse.
+
+describe('when a correction strands what the rule sets aside', () => {
+  const withSlice = makePending({ month: '2026-02', amountA: '€30.00', notCountedA: '€12.00' });
+
+  it('shows what the payment sets aside, so the figure is not invisible', () => {
+    renderPrompt([withSlice]);
+    expect(screen.getByText(/not counted: €12.00/)).toBeInTheDocument();
+  });
+
+  it('refuses a correction that leaves more set aside than was paid', async () => {
+    const user = userEvent.setup();
+    const { onConfirm } = renderPrompt([withSlice]);
+
+    const input = screen.getByRole('textbox', { name: 'Ada for Phone on 2026-02-10' });
+    await user.clear(input);
+    await user.type(input, '8');
+
+    expect(
+      await screen.findByText(/Not counted cannot be more than what Ada paid/),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Add 1 expense$/ })).toBeDisabled();
+    await user.click(screen.getByRole('button', { name: /^Add 1 expense$/ }));
+    expect(onConfirm).not.toHaveBeenCalled();
+  });
+
+  it('accepts a correction that still leaves room for it', async () => {
+    const user = userEvent.setup();
+    const { onConfirm } = renderPrompt([withSlice]);
+
+    const input = screen.getByRole('textbox', { name: 'Ada for Phone on 2026-02-10' });
+    await user.clear(input);
+    await user.type(input, '20');
+    await user.click(screen.getByRole('button', { name: /^Add 1 expense$/ }));
+
+    await waitFor(() => expect(onConfirm).toHaveBeenCalled());
+    expect(onConfirm.mock.calls[0]![0][0]).toMatchObject({
+      amountA: '€20.00',
+      notCountedA: '€12.00',
+    });
   });
 });

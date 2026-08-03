@@ -4,7 +4,7 @@ import { DateInput } from '@mantine/dates';
 import { IconAlertCircle } from '@tabler/icons-react';
 import type { ExpenseFormData } from '../types/expense';
 import type { PersonNames } from '../types/person';
-import { today, dateInputValue } from '../services/utils';
+import { today, dateInputValue, notCountedProblem } from '../services/utils';
 import { ExpenseFields } from './ExpenseFields';
 
 interface Props {
@@ -20,6 +20,8 @@ const emptyForm: ExpenseFormData = {
   date: today(),
   amountA: '',
   amountB: '',
+  notCountedA: '',
+  notCountedB: '',
   item: '',
   category: 'Food',
   notes: '',
@@ -49,6 +51,11 @@ export function ExpenseForm({
     }
     if (!form.amountA && !form.amountB) {
       setError('At least one amount is required');
+      return;
+    }
+    const problem = notCountedProblem(form, names);
+    if (problem) {
+      setError(problem);
       return;
     }
     setError(null);
