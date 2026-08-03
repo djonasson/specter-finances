@@ -152,10 +152,37 @@ describe('listing the rules', () => {
     expect(onGenerate).toHaveBeenCalled();
   });
 
-  it('says plainly when everything is up to date', () => {
-    renderList([makeRule()], { pending: [] });
-    expect(screen.getByText('Every payment up to this month has been added')).toBeInTheDocument();
+  // "Everything has been added" is only true when something has. A payment that
+  // falls on the 25th, set up on the 3rd, has created nothing and is not due to
+  // — and saying otherwise reads as a bug, because the expense the user goes
+  // looking for is not there while the app claims it should be.
+  it('says nothing is due yet, and when it will be, rather than claiming it was added', () => {
+    renderList([makeRule({ day: 25, start: '2026-01-10' })], { pending: [] });
+    expect(
+      screen.getByText(/Nothing is due yet — the next expense is created on/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/has been added/)).toBeNull();
     expect(screen.queryByRole('button', { name: /Add \d+ due/ })).toBeNull();
+  });
+
+  it('names the soonest date across several payments', () => {
+    renderList(
+      [
+        makeRule({ rowIndex: 2 as RecurringRow, id: 'r1', day: 25, start: '2026-01-10' }),
+        makeRule({ rowIndex: 3 as RecurringRow, id: 'r2', day: 5, start: '2026-01-10' }),
+      ],
+      { pending: [] },
+    );
+    // Whichever comes first, not whichever is listed first.
+    const line = screen.getByText(/the next expense is created on/).textContent ?? '';
+    const shown = line.slice(line.lastIndexOf(' ') + 1);
+    const others = screen.getAllByRole('cell').map((c) => c.textContent ?? '');
+    expect(others).toContain(shown);
+  });
+
+  it('says nothing at all when there are no payments to report on', () => {
+    renderList([], { pending: [] });
+    expect(screen.queryByText(/Nothing is due yet/)).toBeNull();
   });
 });
 

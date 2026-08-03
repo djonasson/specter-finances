@@ -70,13 +70,37 @@ export function RecurringList({
    * What this payment does next.
    *
    * A rule with months already waiting is behind, so the honest answer is the
-   * oldest of those rather than a future date that implies nothing is outstanding.
+   * oldest of those rather than a future date that implies nothing is
+   * outstanding.
    */
   const nextFor = (rule: RecurringRule) => {
     if (!rule.id) return '—';
     const waiting = pending.filter((p) => p.ruleId === rule.id);
     return waiting.length > 0 ? waiting[0].date : nextDueDate(rule, today());
   };
+
+  /**
+   * What is actually going on, in one line.
+   *
+   * "Everything has been added" is only true when something has. A payment that
+   * falls on the 25th, set up on the 3rd, has created nothing and is not due to
+   * — claiming it had been added read as a bug, because the expense the user
+   * went looking for was not there and the app said it should be.
+   */
+  const upcoming = rules
+    .filter((r) => r.id)
+    .map(nextFor)
+    .sort();
+
+  const statusLine =
+    dueCount > 0
+      ? `${dueCount} ${dueCount === 1 ? 'payment is' : 'payments are'} waiting to be added`
+      : upcoming.length > 0
+        ? `Nothing is due yet — the next expense is created on ${upcoming[0]}`
+        : // Nothing set up, or nothing that can be created from: the empty state
+          // and the no-id warning below already say so.
+          '';
+
   const [editingRow, setEditingRow] = useState<number | null>(null);
   const [deletingRow, setDeletingRow] = useState<number | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<RecurringRule | null>(null);
@@ -152,11 +176,7 @@ export function RecurringList({
   return (
     <Stack gap="md">
       <Group>
-        <Text style={{ flex: 1 }}>
-          {dueCount > 0
-            ? `${dueCount} ${dueCount === 1 ? 'payment is' : 'payments are'} waiting to be added`
-            : 'Every payment up to this month has been added'}
-        </Text>
+        <Text style={{ flex: 1 }}>{statusLine}</Text>
         {dueCount > 0 && <Button onClick={onGenerate}>Add {dueCount} due</Button>}
         <Button variant="light" loading={loading} onClick={onRefresh}>
           Refresh
