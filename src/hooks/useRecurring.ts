@@ -19,7 +19,7 @@ import {
  * which is an empty state and not an error.
  */
 export function useRecurring() {
-  const [rules, setRules] = useState<RecurringRule[]>([]);
+  const [items, setItems] = useState<RecurringRule[]>([]);
   const [tabMissing, setTabMissing] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -29,7 +29,7 @@ export function useRecurring() {
     setError(null);
     try {
       const result = await fetchRecurring();
-      setRules(result.rules);
+      setItems(result.rules);
       setTabMissing(result.tabMissing);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load recurring payments');
@@ -77,5 +77,5 @@ export function useRecurring() {
     await load();
   }, [load]);
 
-  return { rules, tabMissing, loading, error, load, add, update, remove, assignId, setUp };
+  return { items, tabMissing, loading, error, load, add, update, remove, assignId, setUp };
 }

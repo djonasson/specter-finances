@@ -3,7 +3,7 @@ import { fetchTransfers, addTransfer, updateTransfer, deleteTransfer } from '../
 import { useMovements } from './useMovements';
 
 export function useTransfers() {
-  const { items, ...rest } = useMovements<Transfer, TransferRow, TransferFormData>(
+  return useMovements<Transfer, TransferRow, TransferFormData>(
     {
       fetchAll: fetchTransfers,
       add: addTransfer,
@@ -12,5 +12,4 @@ export function useTransfers() {
     },
     'transfers',
   );
-  return { transfers: items, ...rest };
 }

@@ -70,17 +70,24 @@ export function dueDate(month: string, day: number): string {
 }
 
 /**
- * The next date a rule falls due, on or after today.
+ * The next date a rule would fall due, on or after today.
  *
- * Shown in the list so it is clear what the app is going to do next. This
- * month's date counts if it has not passed yet; otherwise it is next month's.
- * A rule that has not started yet reports its start date, which is the honest
- * answer to "when does this first happen".
+ * Shown in the list so it is clear what the app will do next. This month's date
+ * counts if it has not passed yet; otherwise it is next month's.
+ *
+ * A rule that has not started counts from its start date rather than from
+ * today, and still lands on the rule's own day — a payment starting on the 25th
+ * that falls due on the 5th first happens the following month, not on the 25th,
+ * because that is the date an expense would actually carry.
+ *
+ * This answers "when next", not "what is outstanding": a rule with months
+ * already waiting to be confirmed is behind, and the list shows the earliest of
+ * those instead.
  */
 export function nextDueDate(rule: Pick<RecurringRule, 'day' | 'start'>, todayIso: string): string {
-  if (rule.start > todayIso) return rule.start;
-  const thisMonth = dueDate(monthKey(todayIso), rule.day);
-  return thisMonth >= todayIso ? thisMonth : dueDate(addMonths(monthKey(todayIso), 1), rule.day);
+  const from = rule.start > todayIso ? rule.start : todayIso;
+  const thisMonth = dueDate(monthKey(from), rule.day);
+  return thisMonth >= from ? thisMonth : dueDate(addMonths(monthKey(from), 1), rule.day);
 }
 
 /** An expense a rule says is due but the sheet does not have yet. */

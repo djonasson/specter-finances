@@ -5,7 +5,7 @@ import type { PersonNames } from '../types/person';
 import { fetchExpenses, addExpense, updateExpense, deleteExpense } from '../services/sheets';
 
 export function useExpenses() {
-  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [items, setItems] = useState<Expense[]>([]);
   // Generic until the sheet has been read; see readPersonNames.
   const [names, setNames] = useState<PersonNames>(DEFAULT_NAMES);
   const [loading, setLoading] = useState(false);
@@ -26,7 +26,7 @@ export function useExpenses() {
     setError(null);
     try {
       const { expenses: rows, names: sheetNames } = await fetchExpenses();
-      setExpenses(rows);
+      setItems(rows);
       setNames(sheetNames);
       setLoadedOnce(true);
     } catch (e) {
@@ -60,5 +60,5 @@ export function useExpenses() {
     [load],
   );
 
-  return { expenses, names, loading, loadedOnce, error, load, add, update, remove };
+  return { items, names, loading, loadedOnce, error, load, add, update, remove };
 }

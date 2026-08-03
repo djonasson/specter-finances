@@ -26,7 +26,7 @@ function makePending(overrides: Partial<PendingExpense> = {}): PendingExpense {
 
 function renderPrompt(pending: PendingExpense[]) {
   const onConfirm = vi.fn<(rows: PendingExpense[]) => Promise<void>>(async () => {});
-  const onDismiss = vi.fn();
+  const onDismiss = vi.fn<(signature?: string) => void>();
   renderWithMantine(
     <RecurringPrompt
       opened
@@ -65,25 +65,82 @@ describe('RecurringPrompt', () => {
     expect(onConfirm.mock.calls[0]![0].map((p) => p.month)).toEqual(['2026-02', '2026-03']);
   });
 
-  it('leaves out a month the user unticked', async () => {
+  it('leaves out the last month when the user unticks it', async () => {
     const user = userEvent.setup();
     const { onConfirm } = renderPrompt([feb, mar]);
-    await user.click(screen.getByRole('checkbox', { name: 'Add Phone for 2026-02-10' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Add Phone for 2026-03-10' }));
     await user.click(screen.getByRole('button', { name: 'Add 1 expense' }));
     await waitFor(() => expect(onConfirm).toHaveBeenCalled());
-    expect(onConfirm.mock.calls[0]![0].map((p) => p.month)).toEqual(['2026-03']);
+    expect(onConfirm.mock.calls[0]![0].map((p) => p.month)).toEqual(['2026-02']);
   });
 
-  // Skipping must record nothing at all. If it wrote a marker, "not this month"
-  // would quietly become "never", with no way back short of editing the sheet.
+  // The bug this shape exists to prevent. Generation resumes from the last month
+  // written, so writing March while skipping February would mean February is
+  // never offered again — a month of real spending gone, silently, from the only
+  // ledger the two of them have.
+  it('will not let a month be skipped while a later one is written', async () => {
+    const user = userEvent.setup();
+    const { onConfirm } = renderPrompt([feb, mar]);
+
+    await user.click(screen.getByRole('checkbox', { name: 'Add Phone for 2026-02-10' }));
+
+    // March came off with it, so no hole can be left behind.
+    expect(screen.getByRole('checkbox', { name: 'Add Phone for 2026-03-10' })).not.toBeChecked();
+    expect(screen.getByRole('button', { name: /^Add 0 expenses$/ })).toBeDisabled();
+    expect(onConfirm).not.toHaveBeenCalled();
+  });
+
+  it('brings the earlier months back when a later one is ticked again', async () => {
+    const user = userEvent.setup();
+    renderPrompt([feb, mar]);
+
+    await user.click(screen.getByRole('checkbox', { name: 'Add Phone for 2026-02-10' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Add Phone for 2026-03-10' }));
+
+    expect(screen.getByRole('checkbox', { name: 'Add Phone for 2026-02-10' })).toBeChecked();
+    expect(screen.getByRole('button', { name: 'Add 2 expenses' })).toBeEnabled();
+  });
+
+  it('stops one payment without touching another', async () => {
+    const user = userEvent.setup();
+    const gym = makePending({ ruleId: 'r2', month: '2026-03', item: 'Gym' });
+    const { onConfirm } = renderPrompt([feb, mar, gym]);
+
+    await user.click(screen.getByRole('checkbox', { name: 'Add Phone for 2026-02-10' }));
+    await user.click(screen.getByRole('button', { name: 'Add 1 expense' }));
+
+    await waitFor(() => expect(onConfirm).toHaveBeenCalled());
+    expect(onConfirm.mock.calls[0]![0].map((p) => p.item)).toEqual(['Gym']);
+  });
+
   it('records nothing for a skipped month, so it can be offered again', async () => {
     const user = userEvent.setup();
     const { onConfirm } = renderPrompt([feb, mar]);
-    await user.click(screen.getByRole('checkbox', { name: 'Add Phone for 2026-02-10' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Add Phone for 2026-03-10' }));
     await user.click(screen.getByRole('button', { name: 'Add 1 expense' }));
     await waitFor(() => expect(onConfirm).toHaveBeenCalled());
     const markers = onConfirm.mock.calls[0]![0].map((p) => p.marker);
-    expect(markers).not.toContain('rec:r1:2026-02');
+    expect(markers).not.toContain('rec:r1:2026-03');
+  });
+
+  // Without this the modal reopens the instant the user presses Add: the set it
+  // was holding is stale by then, because writing reloads the expenses and
+  // recomputes what is pending.
+  it('stops asking about exactly what was left behind, not what it opened with', async () => {
+    const user = userEvent.setup();
+    const { onConfirm, onDismiss } = renderPrompt([feb, mar]);
+    await user.click(screen.getByRole('checkbox', { name: 'Add Phone for 2026-03-10' }));
+    await user.click(screen.getByRole('button', { name: 'Add 1 expense' }));
+
+    await waitFor(() => expect(onConfirm).toHaveBeenCalled());
+    expect(onDismiss).toHaveBeenCalledWith('rec:r1:2026-03');
+  });
+
+  it('asks the hook to use its own idea of what is pending when merely closed', async () => {
+    const user = userEvent.setup();
+    const { onDismiss } = renderPrompt([feb]);
+    await user.click(screen.getByRole('button', { name: 'Later' }));
+    expect(onDismiss).toHaveBeenCalledWith();
   });
 
   // The price-change case. A rule holds one amount and no history, so months
@@ -145,10 +202,10 @@ describe('RecurringPrompt', () => {
     expect(onDismiss).not.toHaveBeenCalled();
   });
 
-  it('says plainly that an unticked month is not recorded either', () => {
+  it('says plainly that unticking leaves the later months too', () => {
     renderPrompt([feb]);
-    expect(
-      within(screen.getByRole('dialog')).getByText(/offered\s+again next time/i),
-    ).toBeInTheDocument();
+    const dialog = within(screen.getByRole('dialog'));
+    expect(dialog.getByText(/every later month of that payment/i)).toBeInTheDocument();
+    expect(dialog.getByText(/offered again/i)).toBeInTheDocument();
   });
 });

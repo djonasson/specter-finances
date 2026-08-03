@@ -5,6 +5,7 @@ import userEvent from '@testing-library/user-event';
 import { renderWithMantine } from '../test-utils';
 import { RecurringList } from './RecurringList';
 import type { RecurringRule, RecurringRow, RecurringFormData } from '../types/recurring';
+import type { PendingExpense } from '../services/recurring';
 
 const NAMES = { a: 'Ada', b: 'Bo' };
 
@@ -25,10 +26,29 @@ function makeRule(overrides: Partial<RecurringRule> = {}): RecurringRule {
 
 interface Options {
   tabMissing?: boolean;
-  dueCount?: number;
+  /** Months waiting, as the page would hand them over. */
+  pending?: PendingExpense[];
 }
 
-function renderList(rules: RecurringRule[], { tabMissing = false, dueCount = 0 }: Options = {}) {
+/** N months waiting for the default rule, oldest first. */
+function duePending(n: number, ruleId = 'r1'): PendingExpense[] {
+  return Array.from({ length: n }, (_, i) => {
+    const month = `2026-${String(i + 1).padStart(2, '0')}`;
+    return {
+      ruleId,
+      month,
+      marker: `rec:${ruleId}:${month}`,
+      date: `${month}-10`,
+      amountA: '€12.99',
+      amountB: '',
+      item: 'Phone',
+      category: 'Various' as const,
+      notes: '',
+    };
+  });
+}
+
+function renderList(rules: RecurringRule[], { tabMissing = false, pending = [] }: Options = {}) {
   const handlers = {
     onUpdate: vi.fn<(rowIndex: RecurringRow, data: RecurringFormData, id: string) => Promise<void>>(
       async () => {},
@@ -45,7 +65,7 @@ function renderList(rules: RecurringRule[], { tabMissing = false, dueCount = 0 }
       rules={rules}
       loading={false}
       tabMissing={tabMissing}
-      dueCount={dueCount}
+      pending={pending}
       {...handlers}
     />,
   );
@@ -83,7 +103,7 @@ describe('when the tab does not exist yet', () => {
         rules={[]}
         loading={false}
         tabMissing
-        dueCount={0}
+        pending={[]}
         onUpdate={vi.fn(async () => {})}
         onDelete={vi.fn(async () => {})}
         onAssignId={vi.fn(async () => {})}
@@ -122,14 +142,14 @@ describe('listing the rules', () => {
 
   it('offers to add the months that are waiting', async () => {
     const user = userEvent.setup();
-    const { onGenerate } = renderList([makeRule()], { dueCount: 3 });
+    const { onGenerate } = renderList([makeRule()], { pending: duePending(3) });
     expect(screen.getByText('3 payments are waiting to be added')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Add 3 due' }));
     expect(onGenerate).toHaveBeenCalled();
   });
 
   it('says plainly when everything is up to date', () => {
-    renderList([makeRule()], { dueCount: 0 });
+    renderList([makeRule()], { pending: [] });
     expect(screen.getByText('Every payment up to this month has been added')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Add \d+ due/ })).toBeNull();
   });
@@ -220,7 +240,7 @@ describe('changing a rule', () => {
         rules={[makeRule()]}
         loading={false}
         tabMissing={false}
-        dueCount={0}
+        pending={[]}
         onUpdate={vi.fn(async () => {})}
         onDelete={vi.fn(async () => {
           throw new Error('Backend error');

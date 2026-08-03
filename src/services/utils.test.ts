@@ -1268,6 +1268,31 @@ describe('filterExpenses', () => {
     expect(filterExpenses([bread], { ...noFilter, text: 'recurring' })).toEqual([]);
   });
 
+  it('matches a shortened form of the word', () => {
+    expect(filterExpenses(all, { ...noFilter, text: 'rec' }).map((e) => e.item)).toEqual(['Phone']);
+  });
+
+  // The containment used to run the other way round, so any single letter of
+  // "recurring" pulled in every generated row and swamped an ordinary search.
+  // The fixture deliberately carries no "r" of its own, so the only thing that
+  // could match it is the provenance branch.
+  it('does not treat a stray letter as a search for recurring rows', () => {
+    const gym = makeExpense({
+      rowIndex: 7 as ExpenseRow,
+      item: 'Gym',
+      category: 'Health',
+      notes: '',
+      date: '2026-01-15',
+      recurringMarker: 'rec:r1:2026-01',
+    });
+    expect(filterExpenses([gym], { ...noFilter, text: 'r' })).toEqual([]);
+    expect(filterExpenses([gym], { ...noFilter, text: 'rec' })).toHaveLength(1);
+  });
+
+  it('ignores whitespace around a date the same way it does elsewhere', () => {
+    expect(filterExpenses(all, { ...noFilter, text: '  2026-01  ' })).toHaveLength(4);
+  });
+
   it('narrows rather than widens when a category and text are combined', () => {
     expect(filterExpenses(all, { text: 'Bread', category: 'Car' })).toEqual([]);
   });

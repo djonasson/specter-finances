@@ -523,16 +523,20 @@ export async function fetchRecurring(): Promise<RecurringResult> {
     data = await sheetsRequest(
       `/${spreadsheetId}/values/${range}?valueRenderOption=UNFORMATTED_VALUE`,
     );
-    recurringTabPresent = true;
+    rememberTabPresence(spreadsheetId, true);
   } catch (e) {
     // Once this session has seen the tab missing, a repeat 400 needs no second
     // opinion: the metadata lookup that classifies it would otherwise run on
     // every navigation, for every user who has not opted in.
-    if (recurringTabPresent === false && e instanceof SheetsApiError && e.status === 400) {
+    if (
+      knownTabPresence(spreadsheetId) === false &&
+      e instanceof SheetsApiError &&
+      e.status === 400
+    ) {
       return { rules: [], tabMissing: true };
     }
     if (await isMissingTab(e, RECURRING_SHEET)) {
-      recurringTabPresent = false;
+      rememberTabPresence(spreadsheetId, false);
       return { rules: [], tabMissing: true };
     }
     throw e;
@@ -567,15 +571,6 @@ export async function fetchRecurring(): Promise<RecurringResult> {
 
 /** Sub-header labels for the two columns the app writes to the expenses tab. */
 export const EXPENSE_COLUMN_LABELS = ['Recurring', 'Added'];
-
-/**
- * Are G2/H2 still blank? Answered from the header rows `fetchExpenses` already
- * read, so asking costs nothing.
- */
-export function expenseColumnsUnlabelled(rows: unknown[][]): boolean {
-  const subHeader = rows[1] ?? [];
-  return EXPENSE_COLUMN_LABELS.some((_, i) => !String(subHeader[6 + i] ?? '').trim());
-}
 
 /**
  * Put a heading over the two columns the app maintains on the expenses tab.
@@ -623,10 +618,29 @@ export async function ensureExpenseColumnLabels(): Promise<void> {
  * another lookup to confirm what the last load had just proved.
  */
 let recurringTabPresent: boolean | null = null;
+/** Which spreadsheet the answer above is about. */
+let recurringTabCachedFor: string | null = null;
 
-/** Forget what we know about the tab — for tests, and after creating it. */
+/** Forget what we know about the tab. */
 export function resetRecurringTabCache(): void {
   recurringTabPresent = null;
+  recurringTabCachedFor = null;
+}
+
+/**
+ * The cached answer, but only if it is about the sheet being asked about.
+ *
+ * A grant can be dropped and a different spreadsheet picked without the module
+ * ever unloading, and the second sheet is under no obligation to have the same
+ * tabs as the first.
+ */
+function knownTabPresence(spreadsheetId: string): boolean | null {
+  return recurringTabCachedFor === spreadsheetId ? recurringTabPresent : null;
+}
+
+function rememberTabPresence(spreadsheetId: string, present: boolean): void {
+  recurringTabCachedFor = spreadsheetId;
+  recurringTabPresent = present;
 }
 
 /**
@@ -641,7 +655,7 @@ export function resetRecurringTabCache(): void {
 export async function ensureRecurringSetup(): Promise<void> {
   const { spreadsheetId } = getConfig();
 
-  if (recurringTabPresent !== true) {
+  if (knownTabPresence(spreadsheetId) !== true) {
     const sheets = await listSheets();
     if (!sheets.some((s) => s.title === RECURRING_SHEET)) {
       await sheetsRequest(`/${spreadsheetId}:batchUpdate`, {
@@ -658,7 +672,7 @@ export async function ensureRecurringSetup(): Promise<void> {
         { method: 'PUT', body: JSON.stringify({ values: [RECURRING_HEADER] }) },
       );
     }
-    recurringTabPresent = true;
+    rememberTabPresence(spreadsheetId, true);
   }
 
   await ensureExpenseColumnLabels();

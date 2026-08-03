@@ -1,12 +1,11 @@
 import { useState } from 'react';
-import { Stack, Group, Button, TextInput, NumberInput, Select, Alert } from '@mantine/core';
-import { CategoryIcon } from './CategoryIcon';
+import { Stack, Group, Button, NumberInput, Alert } from '@mantine/core';
 import { DateInput } from '@mantine/dates';
 import { IconAlertCircle } from '@tabler/icons-react';
-import { CATEGORIES, toCategory } from '../types/expense';
 import type { RecurringFormData } from '../types/recurring';
 import type { PersonNames } from '../types/person';
-import { today, dateInputValue, toNum, fromNum } from '../services/utils';
+import { today, dateInputValue } from '../services/utils';
+import { ExpenseFields } from './ExpenseFields';
 
 interface Props {
   /** Read from the sheet — this component never knows anyone's name itself. */
@@ -105,57 +104,12 @@ export function RecurringForm({
           onChange={(val) => set('day', typeof val === 'number' ? val : 1)}
         />
 
-        <Group grow>
-          <NumberInput
-            label={`${names.a} (€)`}
-            prefix="€ "
-            decimalScale={2}
-            fixedDecimalScale
-            min={0}
-            placeholder="0.00"
-            value={toNum(form.amountA)}
-            onChange={(val) => set('amountA', fromNum(val as number | ''))}
-          />
-          <NumberInput
-            label={`${names.b} (€)`}
-            prefix="€ "
-            decimalScale={2}
-            fixedDecimalScale
-            min={0}
-            placeholder="0.00"
-            value={toNum(form.amountB)}
-            onChange={(val) => set('amountB', fromNum(val as number | ''))}
-          />
-        </Group>
-
-        <TextInput
-          label="Item"
-          value={form.item}
-          onChange={(e) => set('item', e.currentTarget.value)}
-          placeholder="e.g. Phone bill"
-          required
-        />
-
-        <Select
-          label="Category"
-          value={form.category}
-          onChange={(val) => set('category', toCategory(val ?? '') || 'Various')}
-          data={CATEGORIES as unknown as string[]}
-          allowDeselect={false}
-          leftSection={<CategoryIcon category={form.category} size={16} />}
-          renderOption={({ option }) => (
-            <Group gap="xs">
-              <CategoryIcon category={option.value} size={16} />
-              {option.value}
-            </Group>
-          )}
-        />
-
-        <TextInput
-          label="Notes"
-          value={form.notes}
-          onChange={(e) => set('notes', e.currentTarget.value)}
-          placeholder="Optional"
+        <ExpenseFields
+          names={names}
+          value={form}
+          onChange={(patch) => setForm((f) => ({ ...f, ...patch }))}
+          itemPlaceholder="e.g. Phone bill"
+          categoryFallback="Various"
         />
 
         <Group>

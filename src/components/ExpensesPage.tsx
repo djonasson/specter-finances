@@ -1,30 +1,22 @@
+import type { ComponentProps } from 'react';
 import { Tabs } from '@mantine/core';
 import { useSearchParams } from 'react-router-dom';
-import type { Expense, ExpenseFormData, ExpenseRow } from '../types/expense';
-import type { RecurringRule, RecurringFormData, RecurringRow } from '../types/recurring';
 import type { PersonNames } from '../types/person';
 import { ExpenseList } from './ExpenseList';
 import { RecurringList } from './RecurringList';
 
+/**
+ * Each tab's props, exactly as its list declares them.
+ *
+ * Spelled this way rather than as two flat sets so this component stops being a
+ * renaming layer: every recurring prop used to be written three times under two
+ * names on its way from the context to the table.
+ */
 interface Props {
   /** Read from the sheet — this component never knows anyone's name itself. */
   names: PersonNames;
-  expenses: Expense[];
-  loading: boolean;
-  onUpdate: (rowIndex: ExpenseRow, data: ExpenseFormData) => Promise<void>;
-  onDelete: (rowIndex: ExpenseRow) => Promise<void>;
-  onRefresh: () => void;
-
-  rules: RecurringRule[];
-  recurringLoading: boolean;
-  recurringTabMissing: boolean;
-  dueCount: number;
-  onUpdateRule: (rowIndex: RecurringRow, data: RecurringFormData, id: string) => Promise<void>;
-  onDeleteRule: (rowIndex: RecurringRow) => Promise<void>;
-  onAssignRuleId: (rowIndex: RecurringRow) => Promise<void>;
-  onSetUpRecurring: () => Promise<void>;
-  onGenerate: () => void;
-  onRefreshRules: () => void;
+  expenses: Omit<ComponentProps<typeof ExpenseList>, 'names'>;
+  recurring: Omit<ComponentProps<typeof RecurringList>, 'names'>;
 }
 
 /**
@@ -35,24 +27,7 @@ interface Props {
  * switching tabs does not count as a navigation, which in this app refetches
  * every domain.
  */
-export function ExpensesPage({
-  names,
-  expenses,
-  loading,
-  onUpdate,
-  onDelete,
-  onRefresh,
-  rules,
-  recurringLoading,
-  recurringTabMissing,
-  dueCount,
-  onUpdateRule,
-  onDeleteRule,
-  onAssignRuleId,
-  onSetUpRecurring,
-  onGenerate,
-  onRefreshRules,
-}: Props) {
+export function ExpensesPage({ names, expenses, recurring }: Props) {
   const [searchParams, setSearchParams] = useSearchParams();
   const tab = searchParams.get('tab') === 'recurring' ? 'recurring' : 'expenses';
 
@@ -67,35 +42,18 @@ export function ExpensesPage({
       <Tabs.List>
         <Tabs.Tab value="expenses">Expenses</Tabs.Tab>
         <Tabs.Tab value="recurring">
-          {dueCount > 0 ? `Recurring (${dueCount} due)` : 'Recurring'}
+          {recurring.pending.length > 0
+            ? `Recurring (${recurring.pending.length} due)`
+            : 'Recurring'}
         </Tabs.Tab>
       </Tabs.List>
 
       <Tabs.Panel value="expenses" pt="md">
-        <ExpenseList
-          names={names}
-          expenses={expenses}
-          loading={loading}
-          onUpdate={onUpdate}
-          onDelete={onDelete}
-          onRefresh={onRefresh}
-        />
+        <ExpenseList names={names} {...expenses} />
       </Tabs.Panel>
 
       <Tabs.Panel value="recurring" pt="md">
-        <RecurringList
-          names={names}
-          rules={rules}
-          loading={recurringLoading}
-          tabMissing={recurringTabMissing}
-          dueCount={dueCount}
-          onUpdate={onUpdateRule}
-          onDelete={onDeleteRule}
-          onAssignId={onAssignRuleId}
-          onSetUp={onSetUpRecurring}
-          onGenerate={onGenerate}
-          onRefresh={onRefreshRules}
-        />
+        <RecurringList names={names} {...recurring} />
       </Tabs.Panel>
     </Tabs>
   );

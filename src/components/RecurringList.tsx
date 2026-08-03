@@ -24,6 +24,7 @@ import type { PersonNames } from '../types/person';
 import { RecurringForm } from './RecurringForm';
 import { CategoryIcon } from './CategoryIcon';
 import { nextDueDate } from '../services/recurring';
+import type { PendingExpense } from '../services/recurring';
 import { today, recurringToFormData } from '../services/utils';
 
 interface Props {
@@ -33,8 +34,8 @@ interface Props {
   loading: boolean;
   /** The tab has not been created yet. */
   tabMissing: boolean;
-  /** How many months are waiting to be confirmed. */
-  dueCount: number;
+  /** Months waiting to be confirmed, across all rules. */
+  pending: PendingExpense[];
   onUpdate: (rowIndex: RecurringRow, data: RecurringFormData, id: string) => Promise<void>;
   onDelete: (rowIndex: RecurringRow) => Promise<void>;
   onAssignId: (rowIndex: RecurringRow) => Promise<void>;
@@ -51,7 +52,7 @@ export function RecurringList({
   rules,
   loading,
   tabMissing,
-  dueCount,
+  pending,
   onUpdate,
   onDelete,
   onAssignId,
@@ -63,6 +64,19 @@ export function RecurringList({
   // Rules someone typed straight into the spreadsheet, so nothing generated from
   // them could be traced back. Worked out once — four places ask.
   const unidentified = rules.filter((r) => !r.id);
+  const dueCount = pending.length;
+
+  /**
+   * What this payment does next.
+   *
+   * A rule with months already waiting is behind, so the honest answer is the
+   * oldest of those rather than a future date that implies nothing is outstanding.
+   */
+  const nextFor = (rule: RecurringRule) => {
+    if (!rule.id) return '—';
+    const waiting = pending.filter((p) => p.ruleId === rule.id);
+    return waiting.length > 0 ? waiting[0].date : nextDueDate(rule, today());
+  };
   const [editingRow, setEditingRow] = useState<number | null>(null);
   const [deletingRow, setDeletingRow] = useState<number | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<RecurringRule | null>(null);
@@ -80,6 +94,15 @@ export function RecurringList({
       setActionError(err instanceof Error ? err.message : 'Failed to delete recurring payment');
     } finally {
       setDeletingRow(null);
+    }
+  };
+
+  const handleAssignId = async (rowIndex: RecurringRow) => {
+    setActionError(null);
+    try {
+      await onAssignId(rowIndex);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Failed to give the payment an id');
     }
   };
 
@@ -235,7 +258,7 @@ export function RecurringList({
                         {rule.category}
                       </Group>
                     </Table.Td>
-                    <Table.Td style={NOWRAP}>{rule.id ? nextDueDate(rule, today()) : '—'}</Table.Td>
+                    <Table.Td style={NOWRAP}>{nextFor(rule)}</Table.Td>
                     <Table.Td>
                       <Group gap={4} wrap="nowrap">
                         <ActionIcon
@@ -279,7 +302,7 @@ export function RecurringList({
                   size="xs"
                   variant="light"
                   mr="xs"
-                  onClick={() => onAssignId(r.rowIndex)}
+                  onClick={() => handleAssignId(r.rowIndex)}
                 >
                   Give “{r.item || `row ${r.rowIndex}`}” an id
                 </Button>

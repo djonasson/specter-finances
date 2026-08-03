@@ -22,15 +22,12 @@ interface Props {
   names: PersonNames;
   pending: PendingExpense[];
   onConfirm: (rows: PendingExpense[]) => Promise<void>;
-  /** Not now, and stop asking about exactly these months. */
-  onDismiss: () => void;
-}
-
-/** Editable state per pending row, keyed by marker. */
-interface Draft {
-  amountA: string;
-  amountB: string;
-  skip: boolean;
+  /**
+   * Stop asking. Given a signature, that exact set is what stops being asked
+   * about — passed explicitly after a write, because by then the pending set has
+   * changed and the set this modal was opened with is no longer the right one.
+   */
+  onDismiss: (signature?: string) => void;
 }
 
 /**
@@ -42,43 +39,64 @@ interface Draft {
  * changed in between — and on a sheet that is the only record of who owes whom,
  * a plausible wrong figure is worse than a question.
  *
- * Skipping a month writes nothing at all, not even a marker. If it did, "not
- * this month" would quietly become "never", and there would be no way back
- * short of editing the spreadsheet by hand.
+ * Unticking a month is a **stopping point, not a hole**: it unticks every later
+ * month of the same payment too. That is not a UI nicety — generation resumes
+ * from the last month written, so a hole punched in the middle would never be
+ * offered again and a month of real spending would vanish silently. A trailing
+ * run can be left for next time; an interior month cannot be, so it is not
+ * offered as a choice.
  */
 export function RecurringPrompt({ opened, names, pending, onConfirm, onDismiss }: Props) {
-  const [drafts, setDrafts] = useState<Record<string, Draft>>({});
+  const [amounts, setAmounts] = useState<Record<string, { amountA: string; amountB: string }>>({});
+  /** Per rule, the earliest month being left for next time. */
+  const [stopAt, setStopAt] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    setDrafts(
-      Object.fromEntries(
-        pending.map((p) => [p.marker, { amountA: p.amountA, amountB: p.amountB, skip: false }]),
-      ),
-    );
+    setAmounts({});
+    setStopAt({});
     setError(null);
   }, [pending]);
 
-  const draftFor = (p: PendingExpense): Draft =>
-    drafts[p.marker] ?? { amountA: p.amountA, amountB: p.amountB, skip: false };
+  const amountsFor = (p: PendingExpense) =>
+    amounts[p.marker] ?? { amountA: p.amountA, amountB: p.amountB };
+  const isChosen = (p: PendingExpense) => !(p.ruleId in stopAt) || p.month < stopAt[p.ruleId];
 
-  const setDraft = (marker: string, patch: Partial<Draft>) =>
-    setDrafts((d) => ({ ...d, [marker]: { ...d[marker], ...patch } }));
+  /** The months of one payment, in order — the run a stopping point cuts. */
+  const monthsOf = (ruleId: string) =>
+    pending.filter((p) => p.ruleId === ruleId).map((p) => p.month);
 
-  const chosen = pending.filter((p) => !draftFor(p).skip);
+  const setChosen = (p: PendingExpense, chosen: boolean) =>
+    setStopAt((s) => {
+      const next = { ...s };
+      if (!chosen) {
+        next[p.ruleId] = p.month; // this month and everything after it
+      } else {
+        const after = monthsOf(p.ruleId).filter((m) => m > p.month);
+        if (after.length === 0) delete next[p.ruleId];
+        else next[p.ruleId] = after[0];
+      }
+      return next;
+    });
+
+  const chosen = pending.filter(isChosen);
+  const skipped = pending.filter((p) => !isChosen(p));
 
   const handleConfirm = async () => {
     setSubmitting(true);
     setError(null);
     try {
-      await onConfirm(
-        chosen.map((p) => {
-          const draft = draftFor(p);
-          return { ...p, amountA: draft.amountA, amountB: draft.amountB };
-        }),
+      await onConfirm(chosen.map((p) => ({ ...p, ...amountsFor(p) })));
+      // Dismiss exactly what was left behind. Working it out here rather than
+      // letting the hook read its own state avoids persisting the set as it was
+      // before the write, which would reopen this modal immediately.
+      onDismiss(
+        skipped
+          .map((p) => p.marker)
+          .sort()
+          .join('|'),
       );
-      onDismiss();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to add the recurring expenses');
     } finally {
@@ -92,7 +110,12 @@ export function RecurringPrompt({ opened, names, pending, onConfirm, onDismiss }
   const amountFromInput = (val: number | string) => formatAmount(fromNum(val as number | ''));
 
   return (
-    <Modal opened={opened} onClose={onDismiss} title="Add these recurring payments?" size="lg">
+    <Modal
+      opened={opened}
+      onClose={() => onDismiss()}
+      title="Add these recurring payments?"
+      size="lg"
+    >
       <Stack gap="md">
         <Text>
           These months are due and are not on the sheet yet. Check the amounts before adding them —
@@ -122,14 +145,15 @@ export function RecurringPrompt({ opened, names, pending, onConfirm, onDismiss }
             </Table.Thead>
             <Table.Tbody>
               {pending.map((p) => {
-                const draft = draftFor(p);
+                const included = isChosen(p);
+                const value = amountsFor(p);
                 return (
                   <Table.Tr key={p.marker}>
                     <Table.Td>
                       <Checkbox
-                        checked={!draft.skip}
+                        checked={included}
                         aria-label={`Add ${p.item} for ${p.date}`}
-                        onChange={(e) => setDraft(p.marker, { skip: !e.currentTarget.checked })}
+                        onChange={(e) => setChosen(p, e.currentTarget.checked)}
                       />
                     </Table.Td>
                     <Table.Td style={{ whiteSpace: 'nowrap' }}>{p.date}</Table.Td>
@@ -141,9 +165,14 @@ export function RecurringPrompt({ opened, names, pending, onConfirm, onDismiss }
                         decimalScale={2}
                         fixedDecimalScale
                         min={0}
-                        disabled={draft.skip}
-                        value={amountValue(draft.amountA)}
-                        onChange={(val) => setDraft(p.marker, { amountA: amountFromInput(val) })}
+                        disabled={!included}
+                        value={amountValue(value.amountA)}
+                        onChange={(val) =>
+                          setAmounts((a) => ({
+                            ...a,
+                            [p.marker]: { ...value, amountA: amountFromInput(val) },
+                          }))
+                        }
                       />
                     </Table.Td>
                     <Table.Td>
@@ -153,9 +182,14 @@ export function RecurringPrompt({ opened, names, pending, onConfirm, onDismiss }
                         decimalScale={2}
                         fixedDecimalScale
                         min={0}
-                        disabled={draft.skip}
-                        value={amountValue(draft.amountB)}
-                        onChange={(val) => setDraft(p.marker, { amountB: amountFromInput(val) })}
+                        disabled={!included}
+                        value={amountValue(value.amountB)}
+                        onChange={(val) =>
+                          setAmounts((a) => ({
+                            ...a,
+                            [p.marker]: { ...value, amountB: amountFromInput(val) },
+                          }))
+                        }
                       />
                     </Table.Td>
                   </Table.Tr>
@@ -166,15 +200,15 @@ export function RecurringPrompt({ opened, names, pending, onConfirm, onDismiss }
         </Table.ScrollContainer>
 
         <Text size="sm">
-          Anything you leave unticked is not added and not recorded — it will be offered again next
-          time.
+          Unticking a month leaves it and every later month of that payment for next time. Nothing
+          is written for them and nothing is recorded, so they will be offered again.
         </Text>
 
         <Group>
           <Button loading={submitting} disabled={chosen.length === 0} onClick={handleConfirm}>
             Add {chosen.length} {chosen.length === 1 ? 'expense' : 'expenses'}
           </Button>
-          <Button variant="light" onClick={onDismiss}>
+          <Button variant="light" onClick={() => onDismiss()}>
             Later
           </Button>
         </Group>

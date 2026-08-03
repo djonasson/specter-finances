@@ -702,6 +702,26 @@ describe('recurring rules', () => {
     expect(second).toHaveLength(1); // the classification is not re-derived
   });
 
+  it('does not carry what it learned about one spreadsheet over to another', async () => {
+    // A dropped grant sends the user back to the picker without the module ever
+    // unloading, and the sheet they pick next owes the first one nothing.
+    mockFetchStatuses([
+      { status: 400, body: { error: { message: 'Unable to parse range: Recurring!A2:H' } } },
+      { body: { sheets: [{ properties: { title: 'Sheet1', sheetId: 0 } }] } },
+    ]);
+    await expect(fetchRecurring()).resolves.toEqual({ rules: [], tabMissing: true });
+
+    setGrantedSheetId('a-different-sheet');
+    const calls = mockFetchStatuses([
+      { body: { values: [['2026-01-10', 12.99, '', 'Phone', 'Various', '', 10, 'r1']] } },
+    ]);
+    const { rules, tabMissing } = await fetchRecurring();
+
+    expect(tabMissing).toBe(false);
+    expect(rules).toHaveLength(1);
+    expect(urls(calls)[0]).toContain('a-different-sheet');
+  });
+
   it('lets a genuine 400 through rather than reporting no rules', async () => {
     // The tab is there, so whatever the 400 was, it was real.
     mockFetchStatuses([

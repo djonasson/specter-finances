@@ -7,6 +7,7 @@ import { renderWithMantine } from '../test-utils';
 import { ExpensesPage } from './ExpensesPage';
 import type { Expense, ExpenseRow } from '../types/expense';
 import type { RecurringRule, RecurringRow } from '../types/recurring';
+import type { PendingExpense } from '../services/recurring';
 
 const NAMES = { a: 'Ada', b: 'Bo' };
 
@@ -21,6 +22,23 @@ const expense: Expense = {
   recurringMarker: '',
   addedOn: '',
 };
+
+function duePending(n: number): PendingExpense[] {
+  return Array.from({ length: n }, (_, i) => {
+    const month = `2026-${String(i + 1).padStart(2, '0')}`;
+    return {
+      ruleId: 'r1',
+      month,
+      marker: `rec:r1:${month}`,
+      date: `${month}-10`,
+      amountA: '€12.99',
+      amountB: '',
+      item: 'Phone',
+      category: 'Various' as const,
+      notes: '',
+    };
+  });
+}
 
 const rule: RecurringRule = {
   rowIndex: 2 as RecurringRow,
@@ -45,21 +63,25 @@ function renderPage(initialEntry = '/list', dueCount = 0) {
     <MemoryRouter initialEntries={[initialEntry]}>
       <ExpensesPage
         names={NAMES}
-        expenses={[expense]}
-        loading={false}
-        onUpdate={vi.fn(async () => {})}
-        onDelete={vi.fn(async () => {})}
-        onRefresh={vi.fn()}
-        rules={[rule]}
-        recurringLoading={false}
-        recurringTabMissing={false}
-        dueCount={dueCount}
-        onUpdateRule={vi.fn(async () => {})}
-        onDeleteRule={vi.fn(async () => {})}
-        onAssignRuleId={vi.fn(async () => {})}
-        onSetUpRecurring={vi.fn(async () => {})}
-        onGenerate={vi.fn()}
-        onRefreshRules={vi.fn()}
+        expenses={{
+          expenses: [expense],
+          loading: false,
+          onUpdate: vi.fn(async () => {}),
+          onDelete: vi.fn(async () => {}),
+          onRefresh: vi.fn(),
+        }}
+        recurring={{
+          rules: [rule],
+          loading: false,
+          tabMissing: false,
+          pending: duePending(dueCount),
+          onUpdate: vi.fn(async () => {}),
+          onDelete: vi.fn(async () => {}),
+          onAssignId: vi.fn(async () => {}),
+          onSetUp: vi.fn(async () => {}),
+          onGenerate: vi.fn(),
+          onRefresh: vi.fn(),
+        }}
       />
       <LocationProbe />
     </MemoryRouter>,

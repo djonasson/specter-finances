@@ -294,8 +294,12 @@ export function filterExpenses<T extends Expense>(items: T[], filter: ExpenseFil
       e.item.toLowerCase().includes(text) ||
       e.category.toLowerCase().includes(text) ||
       e.notes.toLowerCase().includes(text) ||
-      e.date.includes(filter.text) ||
-      (!!e.recurringMarker && 'recurring'.includes(text))
+      e.date.includes(text) ||
+      // Prefix, not containment: `'recurring'.includes(text)` was the wrong way
+      // round, so searching a single letter of the word matched every generated
+      // row. Three characters in before it counts, so "rec" works and "r" does
+      // not hijack an ordinary search.
+      (!!e.recurringMarker && text.length >= 3 && 'recurring'.startsWith(text))
     );
   });
 }

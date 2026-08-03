@@ -43,8 +43,12 @@ export interface RecurringPendingState {
   pending: PendingExpense[];
   /** Show the confirmation now, unprompted. */
   prompt: boolean;
-  /** Stop asking about exactly this set of months. */
-  dismiss: () => void;
+  /**
+   * Stop asking. Defaults to the set pending right now; callers that have just
+   * written some of them pass what is left, because by then "right now" is
+   * whatever this hook has recomputed and may not be what they decided about.
+   */
+  dismiss: (signature?: string) => void;
   /** Open it anyway, however it was dismissed — the Generate now button. */
   request: () => void;
 }
@@ -72,16 +76,20 @@ export function useRecurringPending(
 
   const signature = useMemo(() => signatureOf(pending), [pending]);
 
-  const dismiss = useCallback(() => {
-    setDismissed(signature);
-    setRequested(false);
-    try {
-      localStorage.setItem(DISMISSED_KEY, signature);
-    } catch {
-      // A browser refusing storage is not a reason to fail; the worst case is
-      // being asked again next launch.
-    }
-  }, [signature]);
+  const dismiss = useCallback(
+    (explicit?: string) => {
+      const value = explicit ?? signature;
+      setDismissed(value);
+      setRequested(false);
+      try {
+        localStorage.setItem(DISMISSED_KEY, value);
+      } catch {
+        // A browser refusing storage is not a reason to fail; the worst case
+        // is being asked again next launch.
+      }
+    },
+    [signature],
+  );
 
   const request = useCallback(() => setRequested(true), []);
 

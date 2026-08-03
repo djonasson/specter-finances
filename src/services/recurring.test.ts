@@ -6,6 +6,7 @@ import {
   addMonths,
   daysInMonth,
   dueDate,
+  nextDueDate,
   pendingRecurring,
 } from './recurring';
 import type { Expense, ExpenseRow } from '../types/expense';
@@ -123,6 +124,33 @@ describe('dueDate', () => {
 
   it('pads a single-digit day so the result still sorts as a date', () => {
     expect(dueDate('2026-07', 5)).toBe('2026-07-05');
+  });
+});
+
+// ── Next due ──
+
+describe('nextDueDate', () => {
+  it('is later this month when the day has not passed', () => {
+    expect(nextDueDate({ start: '2026-01-10', day: 25 }, '2026-03-20')).toBe('2026-03-25');
+  });
+
+  it('rolls to next month once the day has passed', () => {
+    expect(nextDueDate({ start: '2026-01-10', day: 10 }, '2026-03-20')).toBe('2026-04-10');
+  });
+
+  // A payment starting on the 25th that falls due on the 5th first happens the
+  // following month. Reporting the start date would name a day on which no
+  // expense will ever be dated.
+  it('reports the first date an expense would actually carry, not the start date', () => {
+    expect(nextDueDate({ start: '2026-09-25', day: 5 }, '2026-03-20')).toBe('2026-10-05');
+  });
+
+  it('reports the start month itself when the rule starts before its own day', () => {
+    expect(nextDueDate({ start: '2026-09-01', day: 5 }, '2026-03-20')).toBe('2026-09-05');
+  });
+
+  it('clamps to the last day of a short month', () => {
+    expect(nextDueDate({ start: '2026-01-01', day: 31 }, '2026-02-01')).toBe('2026-02-28');
   });
 });
 
