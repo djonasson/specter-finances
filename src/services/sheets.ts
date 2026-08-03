@@ -6,12 +6,36 @@ import { toCategory } from '../types/expense';
 import type { Transfer, TransferFormData, TransferRow } from '../types/transfer';
 import type { Gift, GiftFormData, GiftRow } from '../types/gift';
 import { toGiftKind } from '../types/gift';
+import type { RecurringRule, RecurringRow, RecurringFormData } from '../types/recurring';
+import type { PendingExpense } from './recurring';
+import { today } from './utils';
 import { DEFAULT_NAMES } from '../types/person';
 import type { PersonNames } from '../types/person';
 
 export { parseAmount };
 
 const SHEETS_API = 'https://sheets.googleapis.com/v4/spreadsheets';
+
+/**
+ * A Sheets API failure that is neither an auth problem nor a lost grant.
+ *
+ * Carries the HTTP status alongside the API's own wording so callers can tell
+ * one 4xx from another. Reading a tab that does not exist answers 400, and that
+ * is an ordinary state for this app — a sheet with no Recurring tab yet — not a
+ * failure worth a red banner. Everything else stays a failure.
+ *
+ * `message` is left exactly as before so the error surfaced to the user is
+ * unchanged.
+ */
+export class SheetsApiError extends Error {
+  status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = 'SheetsApiError';
+    this.status = status;
+  }
+}
 
 function getConfig() {
   // The granted sheet wins: with the drive.file scope the token only authorises
@@ -70,10 +94,39 @@ async function sheetsRequest(path: string, options: RequestInit = {}) {
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.error?.message || `Sheets API error: ${res.status}`);
+    throw new SheetsApiError(res.status, err.error?.message || `Sheets API error: ${res.status}`);
   }
 
   return res.json();
+}
+
+/** Title and numeric id of every tab in the granted spreadsheet. */
+async function listSheets(): Promise<{ title: string; sheetId: number }[]> {
+  const { spreadsheetId } = getConfig();
+  const spreadsheet = await sheetsRequest(`/${spreadsheetId}?fields=sheets.properties`);
+  return (spreadsheet.sheets ?? []).map(
+    (s: { properties: { title: string; sheetId: number } }) => s.properties,
+  );
+}
+
+/**
+ * Did this failure mean "that tab does not exist"?
+ *
+ * Sheets answers a read against a missing tab with 400 "Unable to parse range",
+ * but that prose is the API's and could change or be localised, and an
+ * unrelated 400 must never be swallowed as "nothing configured yet". So the
+ * status only decides whether the question is worth asking: the answer comes
+ * from the spreadsheet's own tab list.
+ */
+async function isMissingTab(e: unknown, title: string): Promise<boolean> {
+  if (!(e instanceof SheetsApiError) || e.status !== 400) return false;
+  try {
+    return !(await listSheets()).some((s) => s.title === title);
+  } catch {
+    // The metadata call failing tells us nothing about the tab; treat the
+    // original error as real rather than inventing an empty state.
+    return false;
+  }
 }
 
 const DRIVE_API = 'https://www.googleapis.com/drive/v3/files';
@@ -153,10 +206,15 @@ export interface ExpensesResult {
  * The range starts at A1 rather than A3 so both header rows come back with the
  * data: rows 1 and 2 are the header and sub-header, and data still starts at
  * sheet row 3.
+ *
+ * It reads through H to pick up the two columns the app maintains itself: the
+ * recurring marker (G, see services/recurring.ts) and the date the row was added
+ * (H). Sheets trims trailing blanks, so a row written before either column
+ * existed comes back six cells long and reads as having neither.
  */
 export async function fetchExpenses(): Promise<ExpensesResult> {
   const { spreadsheetId, sheetName } = getConfig();
-  const range = encodeURIComponent(`${sheetName}!A1:F`);
+  const range = encodeURIComponent(`${sheetName}!A1:H`);
   const data = await sheetsRequest(
     `/${spreadsheetId}/values/${range}?valueRenderOption=UNFORMATTED_VALUE`,
   );
@@ -173,14 +231,26 @@ export async function fetchExpenses(): Promise<ExpensesResult> {
       item: String(row[3] || ''),
       category: toCategory(String(row[4] || '')),
       notes: String(row[5] || ''),
+      recurringMarker: String(row[6] || ''),
+      // Guarded rather than passed straight to normalizeDate: an empty cell is
+      // every row written before this column existed, and warning about each
+      // one would bury the warnings that mean something.
+      addedOn: row[7] ? normalizeDate(row[7]) : '',
     })),
   };
 }
 
-/** Append a new expense row */
+/**
+ * Append a new expense row, stamped with today's date.
+ *
+ * Appending writes the full A:H because the row is new: there is no marker to
+ * protect in G (a hand-entered expense has none), and H records that this row
+ * was added now, which is what lets the list point out a purchase entered today
+ * but dated weeks ago.
+ */
 export async function addExpense(form: ExpenseFormData): Promise<void> {
   const { spreadsheetId, sheetName } = getConfig();
-  const range = encodeURIComponent(`${sheetName}!A:F`);
+  const range = encodeURIComponent(`${sheetName}!A:H`);
   const row = [
     form.date,
     formatAmount(form.amountA),
@@ -188,6 +258,8 @@ export async function addExpense(form: ExpenseFormData): Promise<void> {
     form.item,
     form.category,
     form.notes,
+    '',
+    today(),
   ];
 
   await sheetsRequest(`/${spreadsheetId}/values/${range}:append?valueInputOption=USER_ENTERED`, {
@@ -196,7 +268,20 @@ export async function addExpense(form: ExpenseFormData): Promise<void> {
   });
 }
 
-/** Update an existing expense row */
+/**
+ * Update an existing expense row.
+ *
+ * The range stops at F on purpose, and must keep stopping at F. A PUT rewrites
+ * every cell in its range, so widening this to G would blank the recurring
+ * marker on any generated expense the user edits — and a month with no marker
+ * reads as never generated, so the next check would propose it again and the
+ * sheet would end up with the payment twice.
+ *
+ * Leaving G and H outside the range makes both unerasable by construction
+ * rather than by remembering to carry them through the form. It is also the
+ * right answer for H: correcting an amount does not change the day the row was
+ * added.
+ */
 export async function updateExpense(rowIndex: ExpenseRow, form: ExpenseFormData): Promise<void> {
   const { spreadsheetId, sheetName } = getConfig();
   const range = encodeURIComponent(`${sheetName}!A${rowIndex}:F${rowIndex}`);
@@ -219,12 +304,9 @@ export async function updateExpense(rowIndex: ExpenseRow, form: ExpenseFormData)
 async function deleteRow(sheetName: string, rowIndex: number): Promise<void> {
   const { spreadsheetId } = getConfig();
 
-  const spreadsheet = await sheetsRequest(`/${spreadsheetId}?fields=sheets.properties`);
-  const sheet = spreadsheet.sheets.find(
-    (s: { properties: { title: string } }) => s.properties.title === sheetName,
-  );
+  const sheet = (await listSheets()).find((s) => s.title === sheetName);
   if (!sheet) throw new Error(`Sheet "${sheetName}" not found`);
-  const sheetId = sheet.properties.sheetId;
+  const sheetId = sheet.sheetId;
 
   await sheetsRequest(`/${spreadsheetId}:batchUpdate`, {
     method: 'POST',
@@ -369,3 +451,295 @@ export const fetchGifts = giftsCrud.fetchAll;
 export const addGift = giftsCrud.add;
 export const updateGift = giftsCrud.update;
 export const deleteGift = giftsCrud.remove;
+
+// ── Recurring payments ──────────────────────────────────────
+//
+// Standing monthly payments: metadata, not money. Columns B–F are deliberately
+// the same five as the expenses tab, so generating an expense copies them
+// across untouched and a human reading the spreadsheet sees the same shape in
+// both places. The id sits last, out of the way, for the same reason.
+//
+// makeMovementCrud is not reused here: it is built around the
+// date/amountA/amountB/notes shape and the "which column is empty" direction
+// encoding, neither of which a recurring rule has.
+
+const RECURRING_SHEET = 'Recurring';
+
+const RECURRING_HEADER = [
+  'Start',
+  'Amount (A)',
+  'Amount (B)',
+  'Item',
+  'Category',
+  'Notes',
+  'Day',
+  'Id',
+];
+
+/**
+ * A short, stable, opaque id for a rule.
+ *
+ * Short on purpose: it is repeated inside every marker cell in expenses column
+ * G, and a 36-character UUID there would make that column unreadable to anyone
+ * looking at the spreadsheet directly.
+ */
+let ruleIdCounter = 0;
+
+export function newRuleId(): string {
+  // Three parts, each covering the others' blind spot: the clock separates
+  // sessions, the counter guarantees uniqueness within one (Date.now() repeats
+  // freely inside a millisecond), and the random tail keeps two devices adding
+  // a rule at the same moment apart.
+  const random = Math.random().toString(36).slice(2, 5);
+  return `r${Date.now().toString(36)}${(ruleIdCounter++).toString(36)}${random}`;
+}
+
+/** Form values in sheet column order. */
+function recurringRow(form: RecurringFormData, id: string): string[] {
+  return [
+    form.start,
+    formatAmount(form.amountA),
+    formatAmount(form.amountB),
+    form.item,
+    form.category,
+    form.notes,
+    String(form.day),
+    id,
+  ];
+}
+
+export interface RecurringResult {
+  rules: RecurringRule[];
+  /** The tab has not been created yet — an empty state, not a failure. */
+  tabMissing: boolean;
+}
+
+export async function fetchRecurring(): Promise<RecurringResult> {
+  const { spreadsheetId } = getConfig();
+  const range = encodeURIComponent(`${RECURRING_SHEET}!A2:H`);
+
+  let data;
+  try {
+    data = await sheetsRequest(
+      `/${spreadsheetId}/values/${range}?valueRenderOption=UNFORMATTED_VALUE`,
+    );
+    recurringTabPresent = true;
+  } catch (e) {
+    // Once this session has seen the tab missing, a repeat 400 needs no second
+    // opinion: the metadata lookup that classifies it would otherwise run on
+    // every navigation, for every user who has not opted in.
+    if (recurringTabPresent === false && e instanceof SheetsApiError && e.status === 400) {
+      return { rules: [], tabMissing: true };
+    }
+    if (await isMissingTab(e, RECURRING_SHEET)) {
+      recurringTabPresent = false;
+      return { rules: [], tabMissing: true };
+    }
+    throw e;
+  }
+
+  const rows: unknown[][] = data.values || [];
+  const rules = rows
+    .map((row, i) => {
+      const start = normalizeDate(row[0]);
+      // A day of its own overrides the start date's, because a rule that falls
+      // on the 31st cannot say so through a start date in a 30-day month. With
+      // the cell blank — as a hand-added rule would leave it — the start date's
+      // day is the honest reading.
+      const day = Number(row[6]) || Number(start.slice(8, 10)) || 1;
+      return {
+        rowIndex: (i + 2) as RecurringRow,
+        start,
+        amountA: normalizeAmount(row[1]),
+        amountB: normalizeAmount(row[2]),
+        item: String(row[3] || ''),
+        category: toCategory(String(row[4] || '')),
+        notes: String(row[5] || ''),
+        day,
+        id: String(row[7] || '').trim(),
+      };
+    })
+    // Filtered after mapping so rowIndex still matches the physical sheet row.
+    .filter((r) => r.start || r.amountA || r.amountB || r.item);
+
+  return { rules, tabMissing: false };
+}
+
+/** Sub-header labels for the two columns the app writes to the expenses tab. */
+export const EXPENSE_COLUMN_LABELS = ['Recurring', 'Added'];
+
+/**
+ * Are G2/H2 still blank? Answered from the header rows `fetchExpenses` already
+ * read, so asking costs nothing.
+ */
+export function expenseColumnsUnlabelled(rows: unknown[][]): boolean {
+  const subHeader = rows[1] ?? [];
+  return EXPENSE_COLUMN_LABELS.some((_, i) => !String(subHeader[6 + i] ?? '').trim());
+}
+
+/**
+ * Put a heading over the two columns the app maintains on the expenses tab.
+ *
+ * Kept apart from the Recurring tab, and not behind its early return, because
+ * only column G is recurring's business: column H is stamped on *every* added
+ * expense, so a user who never opens the Recurring tab would otherwise
+ * accumulate an unexplained column of dates — which is worse than no feature at
+ * all, and was exactly what the previous arrangement did.
+ *
+ * Only blank cells are written, and the write is narrowed to exactly those
+ * cells. These are headings in someone else's spreadsheet: a label they chose
+ * themselves outranks ours, and writing a cell back even with the value we just
+ * read would replace a formula there with whatever it currently renders to.
+ */
+const EXPENSE_LABEL_COLUMNS = ['G', 'H'];
+
+export async function ensureExpenseColumnLabels(): Promise<void> {
+  const { spreadsheetId, sheetName } = getConfig();
+  const readRange = encodeURIComponent(`${sheetName}!G2:H2`);
+  const existing = await sheetsRequest(`/${spreadsheetId}/values/${readRange}`);
+  const current = (existing.values?.[0] ?? []) as unknown[];
+
+  const blank = EXPENSE_COLUMN_LABELS.map((_, i) => !String(current[i] ?? '').trim());
+  const first = blank.indexOf(true);
+  if (first === -1) return;
+  const last = blank.lastIndexOf(true);
+
+  // Two columns, so the blanks are always adjacent — one write either way.
+  const writeRange = encodeURIComponent(
+    `${sheetName}!${EXPENSE_LABEL_COLUMNS[first]}2:${EXPENSE_LABEL_COLUMNS[last]}2`,
+  );
+  await sheetsRequest(`/${spreadsheetId}/values/${writeRange}?valueInputOption=USER_ENTERED`, {
+    method: 'PUT',
+    body: JSON.stringify({ values: [EXPENSE_COLUMN_LABELS.slice(first, last + 1)] }),
+  });
+}
+
+/**
+ * Whether this session has already established that the Recurring tab exists.
+ *
+ * Every navigation reloads every domain, so without this the tab-existence
+ * question is re-asked over and over: a sheet with no Recurring tab paid a
+ * doomed read *plus* a metadata lookup on each one, and adding a rule paid
+ * another lookup to confirm what the last load had just proved.
+ */
+let recurringTabPresent: boolean | null = null;
+
+/** Forget what we know about the tab — for tests, and after creating it. */
+export function resetRecurringTabCache(): void {
+  recurringTabPresent = null;
+}
+
+/**
+ * Create the Recurring tab, if it is not there.
+ *
+ * Idempotent, and never called on load — writing to someone's spreadsheet
+ * because they opened the app is the kind of surprise this app avoids, and with
+ * every domain loading in parallel on every navigation a create-on-load would
+ * race itself into a duplicate tab. It runs when a rule is added, or when the
+ * empty state's button is pressed.
+ */
+export async function ensureRecurringSetup(): Promise<void> {
+  const { spreadsheetId } = getConfig();
+
+  if (recurringTabPresent !== true) {
+    const sheets = await listSheets();
+    if (!sheets.some((s) => s.title === RECURRING_SHEET)) {
+      await sheetsRequest(`/${spreadsheetId}:batchUpdate`, {
+        method: 'POST',
+        body: JSON.stringify({
+          requests: [{ addSheet: { properties: { title: RECURRING_SHEET } } }],
+        }),
+      });
+
+      await sheetsRequest(
+        `/${spreadsheetId}/values/${encodeURIComponent(
+          `${RECURRING_SHEET}!A1:H1`,
+        )}?valueInputOption=USER_ENTERED`,
+        { method: 'PUT', body: JSON.stringify({ values: [RECURRING_HEADER] }) },
+      );
+    }
+    recurringTabPresent = true;
+  }
+
+  await ensureExpenseColumnLabels();
+}
+
+export async function addRecurring(form: RecurringFormData): Promise<void> {
+  await ensureRecurringSetup();
+  const { spreadsheetId } = getConfig();
+  const range = encodeURIComponent(`${RECURRING_SHEET}!A:H`);
+  await sheetsRequest(`/${spreadsheetId}/values/${range}:append?valueInputOption=USER_ENTERED`, {
+    method: 'POST',
+    body: JSON.stringify({ values: [recurringRow(form, newRuleId())] }),
+  });
+}
+
+/**
+ * Update a rule.
+ *
+ * Touches the Recurring tab and nothing else. A rule carries no history: the
+ * expenses it has already produced record what was actually paid those months,
+ * and raising a subscription's price must not rewrite them.
+ */
+export async function updateRecurring(
+  rowIndex: RecurringRow,
+  form: RecurringFormData,
+  id: string,
+): Promise<void> {
+  const { spreadsheetId } = getConfig();
+  const range = encodeURIComponent(`${RECURRING_SHEET}!A${rowIndex}:H${rowIndex}`);
+  await sheetsRequest(`/${spreadsheetId}/values/${range}?valueInputOption=USER_ENTERED`, {
+    method: 'PUT',
+    body: JSON.stringify({ values: [recurringRow(form, id)] }),
+  });
+}
+
+/** Give a hand-added rule an id, so what it generates can be traced back. */
+export async function assignRecurringId(rowIndex: RecurringRow): Promise<void> {
+  const { spreadsheetId } = getConfig();
+  const range = encodeURIComponent(`${RECURRING_SHEET}!H${rowIndex}`);
+  await sheetsRequest(`/${spreadsheetId}/values/${range}?valueInputOption=USER_ENTERED`, {
+    method: 'PUT',
+    body: JSON.stringify({ values: [[newRuleId()]] }),
+  });
+}
+
+/** Delete a rule. The expenses it already produced are left alone. */
+export async function deleteRecurring(rowIndex: RecurringRow): Promise<void> {
+  await deleteRow(RECURRING_SHEET, rowIndex);
+}
+
+/**
+ * Write the generated expenses, all in one request.
+ *
+ * One request rather than N because it is all-or-nothing: separate appends
+ * could leave some months on the sheet and some not, with nothing to say which.
+ *
+ * insertDataOption matters. The default, OVERWRITE, writes into blank rows
+ * below the table — so anything a person keeps further down the sheet would be
+ * silently replaced. INSERT_ROWS pushes rows in instead.
+ */
+export async function appendGeneratedExpenses(pending: PendingExpense[]): Promise<void> {
+  if (pending.length === 0) return;
+  const { spreadsheetId, sheetName } = getConfig();
+  const range = encodeURIComponent(`${sheetName}!A:H`);
+  const addedOn = today();
+  const values = pending.map((p) => [
+    p.date,
+    p.amountA,
+    p.amountB,
+    p.item,
+    p.category,
+    p.notes,
+    p.marker,
+    // Stamped like any other new row. It matters most here: a payment caught up
+    // for two months ago is dated two months ago, so it lands far down a list
+    // ordered by date and would otherwise be invisible.
+    addedOn,
+  ]);
+
+  await sheetsRequest(
+    `/${spreadsheetId}/values/${range}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
+    { method: 'POST', body: JSON.stringify({ values }) },
+  );
+}

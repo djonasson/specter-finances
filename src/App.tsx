@@ -33,7 +33,9 @@ import { useExpensesContext } from './hooks/ExpensesContext';
 import { getGrantedSheetId, setSheetAccessListener } from './services/sheetAccess';
 import { ExpenseForm } from './components/ExpenseForm';
 import type { ExpenseFormData, ExpenseRow } from './types/expense';
-import { ExpenseList } from './components/ExpenseList';
+import { ExpensesPage } from './components/ExpensesPage';
+import { RecurringForm } from './components/RecurringForm';
+import { RecurringPrompt } from './components/RecurringPrompt';
 import type { Transfer, TransferRow, TransferFormData } from './types/transfer';
 import type { Gift, GiftRow, GiftFormData } from './types/gift';
 import { MovementForm } from './components/MovementForm';
@@ -98,6 +100,21 @@ function AuthenticatedApp() {
     addGift,
     updateGift,
     removeGift,
+    recurring,
+    recurringLoading,
+    recurringError,
+    recurringTabMissing,
+    loadRecurring,
+    addRecurring,
+    updateRecurring,
+    removeRecurring,
+    assignRecurringId,
+    setUpRecurring,
+    recurringPending,
+    recurringPrompt,
+    dismissRecurringPrompt,
+    requestRecurringPrompt,
+    generateRecurring,
   } = useExpensesContext();
   const [settingsOpened, setSettingsOpened] = useState(false);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
@@ -107,13 +124,14 @@ function AuthenticatedApp() {
 
   // Deliberately keyed on pathname: the sheet is the source of truth and both
   // of us edit it directly in Google Sheets, so every navigation refetches
-  // rather than trusting cached state. Three requests per navigation is
+  // rather than trusting cached state. Four requests per navigation is
   // nothing against the 60/min per-user quota at this scale.
   useEffect(() => {
     load();
     loadTransfers();
     loadGifts();
-  }, [load, loadTransfers, loadGifts, location.pathname]);
+    loadRecurring();
+  }, [load, loadTransfers, loadGifts, loadRecurring, location.pathname]);
 
   // Auto-dismiss success message
   useEffect(() => {
@@ -137,6 +155,23 @@ function AuthenticatedApp() {
       setSuccessMsg('Expense deleted');
     },
     [remove],
+  );
+
+  const addRecurringAndRedirect = useCallback(
+    async (form: Parameters<typeof addRecurring>[0]) => {
+      await addRecurring(form);
+      navigate('/list?tab=recurring');
+      setSuccessMsg('Recurring payment added');
+    },
+    [addRecurring, navigate],
+  );
+
+  const confirmRecurring = useCallback(
+    async (rows: Parameters<typeof generateRecurring>[0]) => {
+      await generateRecurring(rows);
+      setSuccessMsg(`${rows.length} recurring ${rows.length === 1 ? 'expense' : 'expenses'} added`);
+    },
+    [generateRecurring],
   );
 
   const addTransferAndRedirect = useCallback(
@@ -200,9 +235,9 @@ function AuthenticatedApp() {
         </AppShell.Header>
 
         <AppShell.Main>
-          {(error || transfersError || giftsError) && (
+          {(error || transfersError || giftsError || recurringError) && (
             <Alert color="red" icon={<IconAlertCircle size={16} />} mb="md">
-              {error || transfersError || giftsError}
+              {error || transfersError || giftsError || recurringError}
             </Alert>
           )}
 
@@ -241,6 +276,7 @@ function AuthenticatedApp() {
                       <Tabs.Tab value="expense">Expense</Tabs.Tab>
                       <Tabs.Tab value="transfer">Transfer</Tabs.Tab>
                       <Tabs.Tab value="gift">Gift</Tabs.Tab>
+                      <Tabs.Tab value="recurring">Recurring</Tabs.Tab>
                     </Tabs.List>
                     <Tabs.Panel value="expense" pt="md">
                       <RecordTypeHelp kind="expense" names={names} />
@@ -266,6 +302,9 @@ function AuthenticatedApp() {
                         onSubmit={addGiftAndRedirect}
                       />
                     </Tabs.Panel>
+                    <Tabs.Panel value="recurring" pt="md">
+                      <RecurringForm names={names} onSubmit={addRecurringAndRedirect} />
+                    </Tabs.Panel>
                   </Tabs>
                 </>
               }
@@ -277,13 +316,23 @@ function AuthenticatedApp() {
                   <Title order={2} mb="md">
                     Expenses
                   </Title>
-                  <ExpenseList
+                  <ExpensesPage
                     names={names}
                     expenses={expenses}
                     loading={loading}
                     onUpdate={update}
                     onDelete={removeWithNotify}
                     onRefresh={load}
+                    rules={recurring}
+                    recurringLoading={recurringLoading}
+                    recurringTabMissing={recurringTabMissing}
+                    dueCount={recurringPending.length}
+                    onUpdateRule={updateRecurring}
+                    onDeleteRule={removeRecurring}
+                    onAssignRuleId={assignRecurringId}
+                    onSetUpRecurring={setUpRecurring}
+                    onGenerate={requestRecurringPrompt}
+                    onRefreshRules={loadRecurring}
                   />
                 </>
               }
@@ -327,6 +376,15 @@ function AuthenticatedApp() {
               }
             />
           </Routes>
+          {/* Outside the routes: what is due does not depend on which screen
+              the user happens to be looking at. */}
+          <RecurringPrompt
+            opened={recurringPrompt}
+            names={names}
+            pending={recurringPending}
+            onConfirm={confirmRecurring}
+            onDismiss={dismissRecurringPrompt}
+          />
           {backgroundEffect === 'squirrel' && <div style={{ height: 100 }} />}
         </AppShell.Main>
 

@@ -13,8 +13,18 @@ fully owned by you.
   - **Gifts** — one partner giving the other something that does _not_ count as
     settling up: either a **present** that changed hands, or **forgiving** part of
     what the other owes (see [Transfers vs. gifts](#transfers-vs-gifts)).
+- **Recurring payments** — a phone bill, a subscription, a gym. Each one is a rule
+  that falls due monthly on a day you choose; the app offers the months that are
+  due, including any you missed while it was closed, and never adds anything
+  without asking (see [Recurring payments](#recurring-payments)).
 - **Settlement math** — automatically computes who owes whom from all three record
   types.
+- **Sorting and filtering** — order the expense list by date, by the order rows
+  were added, or by what each one cost, and narrow it to a single category.
+- **A "New" badge** on anything added in the last few days, so a purchase you
+  entered today but dated last month is still easy to spot in a list ordered by
+  when the money was spent — plus a **Recently added** checkbox that narrows the
+  list to just those, for when the badge is buried a few pages down.
 - **Dashboard** — charts (via Chart.js) summarizing spending by category and over
   time, with shared date filtering.
 - **Installable PWA** — works offline-friendly and installs to the home screen.
@@ -72,6 +82,66 @@ shifts by the amount twice over.
 
 Everything else about the two is plumbing: separate sheet tabs, hooks, routes and
 list pages, but the same record shape.
+
+## Recurring payments
+
+Some spending repeats: a phone bill on the 10th, a subscription on the 1st, a gym
+on the 28th. Rather than typing those in every month, you describe each one once
+on the **Recurring** tab of the expenses screen, and the app creates the expense
+rows for you.
+
+### It asks first, and it catches up
+
+Recurring payments are **rules**, not expenses. Nothing is written to the sheet
+until you confirm it. When something is due you get a list of the months, and you
+can correct any amount or untick any row before it is added.
+
+If the app has not been opened for two months, opening it offers those two months
+as well as the current one — being away is not the same as not having paid.
+Catch-up reaches back at most 24 months, so a rule you set up years ago does not
+greet a fresh install with eighty rows.
+
+A month is offered only once its day has arrived. A payment on the 15th proposes
+nothing on the 3rd.
+
+### A created expense is a snapshot
+
+**Changing a rule never changes what it has already created.** If a subscription
+gets more expensive, the months you already paid keep the price you actually paid;
+only future months use the new one. The same goes for renaming a payment or
+changing its category. This is the whole point of the design: the sheet is the
+only record of who owes whom, and rewriting history would move real money.
+
+The one thing this cannot know is what a payment used to cost. If the price
+changed while the app was closed, the missed months are proposed at today's price
+— which is exactly why the confirmation list lets you correct each amount before
+it is written.
+
+### Deleting, skipping and short months
+
+| You do this                            | What happens                                                                                                                                               |
+| -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Delete a rule**                      | Nothing further is created from it. Every expense it already created stays — that money was really spent.                                                  |
+| **Delete a created expense**           | It is not recreated. The app carries on from the most recent month it created, so a deletion sticks.                                                       |
+| **Untick a month** in the confirmation | Nothing is written and nothing is recorded, so it is offered again next time. "Not this month" never becomes "never".                                      |
+| **Set the day to the 31st**            | It falls on the last day of shorter months — the 28th, 29th or 30th. The payment does leave the account in February, so it is clamped rather than skipped. |
+
+### Setting it up
+
+Recurring payments live on their own tab, which an existing spreadsheet will not
+have. The first time you open the Recurring tab the app offers to create it; that
+one action adds the `Recurring` tab and labels column G of the expenses tab, where
+each created expense records which payment produced it. **The app never creates
+the tab on its own** — nothing is written to your spreadsheet because you opened
+the app.
+
+Columns G and H are written by the app. Editing a created expense is fine —
+change the amount, the date, anything — but clearing column G makes the app think
+that month was never created, and it will offer it again.
+
+Because a caught-up payment is dated the month it belonged to, it would land far
+down a list ordered by date. It is marked **New** for a few days after it is
+created, so you can see what just appeared.
 
 ## Who the app calls you
 
@@ -174,17 +244,31 @@ npm run preview  # preview the production build locally
 
 ## Sheet layout
 
-The app expects three tabs in the spreadsheet. `rowIndex` everywhere refers to the
-1-based sheet row number.
+The app expects up to four tabs in the spreadsheet. `rowIndex` everywhere refers to
+the 1-based sheet row number.
 
-- **Expenses** (the `VITE_SHEET_NAME` tab, range `A3:F`) — row 1 is a header, row 2
+- **Expenses** (the `VITE_SHEET_NAME` tab, range `A3:G`) — row 1 is a header, row 2
   a sub-header, and data starts at row 3:
 
-  | Date | Amount (partner A) | Amount (partner B) | Item | Category | Notes |
-  | ---- | ------------------ | ------------------ | ---- | -------- | ----- |
+  | Date | Amount (partner A) | Amount (partner B) | Item | Category | Notes | Recurring | Added |
+  | ---- | ------------------ | ------------------ | ---- | -------- | ----- | --------- | ----- |
 
-  The two amount headers in **row 1** are also where the app reads the partners'
-  display names from (see [Who the app calls you](#who-the-app-calls-you)).
+  The two amount headers are also where the app reads the partners' display names
+  from (see [Who the app calls you](#who-the-app-calls-you)).
+
+  The last two columns are written by the app, never by you:
+
+  - **Recurring** records which recurring payment and which month produced the
+    row, as `rec:<id>:YYYY-MM`, and is blank on everything you enter yourself
+    (see [Recurring payments](#recurring-payments)).
+  - **Added** is the date the row was typed, as opposed to **Date**, which is
+    when the money was spent. The two differ whenever you enter something late,
+    and the list is ordered by **Date** — so this is what lets a purchase you
+    added today but dated last month still be marked **New**. Editing a row
+    never changes it.
+
+  Rows from before these columns existed simply have nothing in them, which reads
+  as "not known" rather than "old" — no badge, no recurring payment.
 
 - **Transfers** (`Transfers` tab, range `A2:D`) — one header row, data from row 2:
 
@@ -198,6 +282,24 @@ The app expects three tabs in the spreadsheet. `rowIndex` everywhere refers to t
 
   `Kind` is `present` or `forgiven`; anything else, blank included, reads as
   `forgiven` (see [Transfers vs. gifts](#transfers-vs-gifts)).
+
+- **Recurring** (`Recurring` tab, range `A2:H`) — one header row, data from row 2.
+  Created by the app when you set the feature up, so an existing spreadsheet will
+  not have it until then:
+
+  | Start | Amount (partner A) | Amount (partner B) | Item | Category | Notes | Day | Id  |
+  | ----- | ------------------ | ------------------ | ---- | -------- | ----- | --- | --- |
+
+  Columns B–F are deliberately the same five as the expenses tab, so a created
+  expense is a straight copy with a date in front and a marker behind.
+
+  `Start` is the earliest date anything is created for. `Day` is the day of the
+  month it falls on, clamped to the last day in shorter ones; leave it blank and
+  the start date's own day is used. `Id` is how a created expense is traced back
+  to its rule — it is last so the familiar columns stay where you expect them, and
+  it lives in the cell rather than being the row number, because deleting any row
+  renumbers everything below it. A rule you add by hand with no `Id` is listed but
+  nothing is created from it until you give it one, which the app offers to do.
 
 For transfers and gifts, the form captures a single payer + amount, but the value
 is stored in one of two amount columns; the empty column encodes the direction.
@@ -214,15 +316,16 @@ Categories are a fixed set: `Car`, `Food`, `Health`, `Holidays`, `Home`, `Variou
 src/
   components/        UI components (forms, lists, dashboard, theme controls)
   hooks/             per-domain data hooks + the shared ExpensesContext
-  services/          Sheets CRUD, auth, parsing, and settlement math (utils.ts)
+  services/          Sheets CRUD, auth, parsing, settlement math (utils.ts),
+                     and the recurring due-date rules (recurring.ts)
   theme/             theming context and animated backgrounds
-  types/             Expense / Transfer / Gift type definitions
+  types/             Expense / Transfer / Gift / Recurring type definitions
 ```
 
 Data flows in one direction:
 
 ```
-Google Sheet ↔ services/sheets.ts ↔ useExpenses/useTransfers/useGifts
+Google Sheet ↔ services/sheets.ts ↔ useExpenses/useTransfers/useGifts/useRecurring
             ↔ ExpensesContext ↔ UI components
 ```
 
@@ -253,8 +356,14 @@ npm run test          # Vitest, one-shot
 npm run test:watch    # Vitest, watch mode
 ```
 
-Tests cover `src/services/parsing.ts` and `src/services/utils.ts`. Run a single
-file with `npx vitest run src/services/parsing.test.ts`.
+Tests cover the services (`parsing`, `utils`, `sheets`, `recurring`, `auth`), the
+hook that decides when to offer a recurring payment, and the list, form and page
+components. Run a single file with
+`npx vitest run src/services/parsing.test.ts`.
+
+Service tests run in Node; anything touching the DOM opts into jsdom with a
+`// @vitest-environment jsdom` docblock on the first line, so the fast suite stays
+fast.
 
 A [Husky](https://typicode.github.io/husky/) pre-commit hook formats staged files
 with Prettier (via lint-staged) and blocks the commit unless lint, build, and tests

@@ -31,8 +31,39 @@ export interface Expense {
   item: string;
   category: Category | '';
   notes: string;
+  /**
+   * Column G: which recurring rule and month produced this row, if any —
+   * `rec:<ruleId>:YYYY-MM`. Empty on every hand-entered expense.
+   *
+   * Provenance only. Nothing reads this to write back into the row: a generated
+   * expense records what was actually paid that month, and later edits to the
+   * rule must not rewrite history.
+   */
+  recurringMarker: string;
+  /**
+   * Column H: the date this row was added, as opposed to the date of the
+   * spending, which is column A.
+   *
+   * The two differ whenever a purchase is entered late or back-dated, and the
+   * list is ordered by the spending date — so without this a row entered today
+   * can land in the middle of the list, where nobody looking for it would
+   * think to scroll.
+   *
+   * Written by the app on insert and never touched again; editing a row does
+   * not change when it was added. Empty on every row that predates the column,
+   * and on anything typed straight into Google Sheets, which reads as "not
+   * known" rather than "old".
+   */
+  addedOn: string;
 }
 
+/**
+ * The editable fields of an expense.
+ *
+ * Note the absence of `recurringMarker`. That is what keeps Duplicate honest —
+ * duplicating a generated expense produces a fresh, unmarked row — and it means
+ * no form can reach the marker at all.
+ */
 export interface ExpenseFormData {
   date: string;
   amountA: string; // raw number string, e.g. "123.45"

@@ -1,8 +1,11 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   useComputedColorScheme,
   Group,
   TextInput,
+  Select,
+  Checkbox,
+  Badge,
   Button,
   Text,
   Table,
@@ -22,10 +25,22 @@ import {
   IconCopy,
   IconChevronDown,
   IconAlertCircle,
+  IconArrowUp,
+  IconArrowDown,
+  IconArrowsSort,
 } from '@tabler/icons-react';
-import type { Expense, ExpenseFormData, ExpenseRow } from '../types/expense';
+import type { Expense, ExpenseFormData, ExpenseRow, Category } from '../types/expense';
+import { CATEGORIES } from '../types/expense';
 import type { PersonNames } from '../types/person';
-import { expenseToFormData, today } from '../services/utils';
+import type { ExpenseSort, ExpenseSortKey } from '../services/utils';
+import {
+  expenseToFormData,
+  today,
+  sortExpenses,
+  filterExpenses,
+  isRecentlyAdded,
+  DEFAULT_EXPENSE_SORT,
+} from '../services/utils';
 import { ExpenseForm } from './ExpenseForm';
 import { CategoryIcon } from './CategoryIcon';
 
@@ -45,6 +60,56 @@ const TABULAR = { fontVariantNumeric: 'tabular-nums' } as const;
 const NOWRAP = { whiteSpace: 'nowrap' } as const;
 const ELLIPSIS = { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } as const;
 
+/**
+ * Sort options in the words someone would use, rather than "date desc".
+ *
+ * "Recently added" is the sheet's own order, which is what the list always
+ * showed before there was a choice.
+ */
+const SORT_OPTIONS: { label: string; sort: ExpenseSort }[] = [
+  { label: 'Newest first', sort: { key: 'date', asc: false } },
+  { label: 'Oldest first', sort: { key: 'date', asc: true } },
+  { label: 'Largest amount', sort: { key: 'amount', asc: false } },
+  { label: 'Smallest amount', sort: { key: 'amount', asc: true } },
+  { label: 'Recently added', sort: { key: 'inserted', asc: false } },
+  { label: 'First added', sort: { key: 'inserted', asc: true } },
+];
+
+/** The Select speaks strings; this is the only place that encoding is defined. */
+const sortValue = (sort: ExpenseSort) => `${sort.key}-${sort.asc ? 'asc' : 'desc'}`;
+
+const UNCATEGORISED = '__none__';
+
+/**
+ * Marks a row this app created from a recurring payment.
+ *
+ * variant="filled" rather than "light" for the same reason the gift badges are:
+ * over a striped row the light variant does not hold contrast in both colour
+ * schemes.
+ */
+function RecurringBadge() {
+  return (
+    <Badge color="indigo" variant="filled" size="sm">
+      Recurring
+    </Badge>
+  );
+}
+
+/**
+ * Marks a row added in the last few days.
+ *
+ * The list is ordered by when the money was spent, so something entered today
+ * for a purchase last month sits in the middle of it. Both badges can appear on
+ * one row — a caught-up recurring payment is exactly that case.
+ */
+function NewBadge() {
+  return (
+    <Badge color="teal" variant="filled" size="sm">
+      New
+    </Badge>
+  );
+}
+
 export function ExpenseList({ names, expenses, loading, onUpdate, onDelete, onRefresh }: Props) {
   const navigate = useNavigate();
   const isDark = useComputedColorScheme('light') === 'dark';
@@ -53,23 +118,76 @@ export function ExpenseList({ names, expenses, loading, onUpdate, onDelete, onRe
   const [deletingRow, setDeletingRow] = useState<number | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<Expense | null>(null);
   const [filter, setFilter] = useState('');
+  const [category, setCategory] = useState<Category | '' | 'all'>('all');
+  const [recentOnly, setRecentOnly] = useState(false);
+  const [sort, setSort] = useState<ExpenseSort>(DEFAULT_EXPENSE_SORT);
   const [page, setPage] = useState(0);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
-  const sorted = [...expenses].reverse();
+  // Read once per render rather than per row, so every badge on the screen
+  // agrees even if the clock crosses midnight mid-render.
+  const now = today();
 
-  const filtered = filter
-    ? sorted.filter(
-        (e) =>
-          e.item.toLowerCase().includes(filter.toLowerCase()) ||
-          e.category.toLowerCase().includes(filter.toLowerCase()) ||
-          e.notes.toLowerCase().includes(filter.toLowerCase()) ||
-          e.date.includes(filter),
-      )
-    : sorted;
+  // Filter then sort then page, so "Showing X of Y" counts what was matched
+  // rather than what fits on the screen.
+  const filtered = useMemo(
+    () =>
+      sortExpenses(
+        filterExpenses(expenses, { text: filter, category, recentOnly, todayIso: now }),
+        sort,
+      ),
+    [expenses, filter, category, recentOnly, now, sort],
+  );
 
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
   const paged = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+
+  // Offered only when such a row exists: toCategory blanks anything it does not
+  // recognise, and hiding those rows behind a filter that cannot reach them
+  // would make them unfindable.
+  const hasUncategorised = useMemo(() => expenses.some((e) => e.category === ''), [expenses]);
+
+  // Which of the rows on screen are new, worked out once. The row renderer runs
+  // twice per expense — once per breakpoint, both of which are always rendered
+  // and hidden with CSS — so asking per row asked twice as often as needed.
+  const recentRows = useMemo(
+    () => new Set(paged.filter((e) => isRecentlyAdded(e, now)).map((e) => e.rowIndex)),
+    [paged, now],
+  );
+
+  const changeSort = (next: ExpenseSort) => {
+    setSort(next);
+    setPage(0);
+  };
+
+  /** Clicking a desktop header sorts by it, and flips direction if already so. */
+  const toggleSort = (key: ExpenseSortKey) =>
+    changeSort(sort.key === key ? { key, asc: !sort.asc } : { key, asc: false });
+
+  // Screen readers get sort state from aria-sort; the icon conveys it only
+  // visually.
+  const ariaSort = (key: ExpenseSortKey): 'ascending' | 'descending' | 'none' =>
+    sort.key === key ? (sort.asc ? 'ascending' : 'descending') : 'none';
+
+  const sortIcon = (key: ExpenseSortKey) =>
+    sort.key === key ? (
+      sort.asc ? (
+        <IconArrowUp size={14} />
+      ) : (
+        <IconArrowDown size={14} />
+      )
+    ) : (
+      <IconArrowsSort size={14} style={{ opacity: 0.5 }} />
+    );
+
+  const sortableHeader = (key: ExpenseSortKey, label: string) => (
+    <UnstyledButton onClick={() => toggleSort(key)} style={{ font: 'inherit', color: 'inherit' }}>
+      <Group gap={4} wrap="nowrap">
+        {label}
+        {sortIcon(key)}
+      </Group>
+    </UnstyledButton>
+  );
 
   const handleDeleteConfirm = async () => {
     if (!confirmDelete) return;
@@ -167,12 +285,20 @@ export function ExpenseList({ names, expenses, loading, onUpdate, onDelete, onRe
         </Table.Td>
         <Table.Td style={ELLIPSIS}>
           {isMobile ? (
+            // The badge earns its space in the narrow layout: a row that has to
+            // be tapped to reveal that it is the one you just added is no help
+            // at all. The recurring badge stays in the detail row.
             <Group gap={4} wrap="nowrap" style={{ overflow: 'hidden' }}>
               <CategoryIcon category={expense.category} size={16} />
               <span style={ELLIPSIS as React.CSSProperties}>{expense.item}</span>
+              {recentRows.has(expense.rowIndex) && <NewBadge />}
             </Group>
           ) : (
-            expense.item
+            <Group gap="xs" wrap="nowrap">
+              <span style={ELLIPSIS as React.CSSProperties}>{expense.item}</span>
+              {recentRows.has(expense.rowIndex) && <NewBadge />}
+              {expense.recurringMarker && <RecurringBadge />}
+            </Group>
           )}
         </Table.Td>
         {!isMobile && (
@@ -225,6 +351,14 @@ export function ExpenseList({ names, expenses, loading, onUpdate, onDelete, onRe
           <Table.Td colSpan={4} py="xs" px="sm">
             <Group justify="space-between" align="flex-start" wrap="nowrap">
               <Stack gap="xs" style={{ flex: 1 }}>
+                {expense.recurringMarker && (
+                  <Group gap="xs">
+                    <Text size="sm" c="var(--mantine-color-text)" w={70}>
+                      Source
+                    </Text>
+                    <RecurringBadge />
+                  </Group>
+                )}
                 {expense.category && (
                   <Group gap="xs">
                     <Text size="sm" c="var(--mantine-color-text)" w={70}>
@@ -283,8 +417,9 @@ export function ExpenseList({ names, expenses, loading, onUpdate, onDelete, onRe
 
   return (
     <Stack gap="md">
-      <Group>
+      <Group grow wrap="wrap" align="flex-end">
         <TextInput
+          label="Search"
           placeholder="Search expenses..."
           leftSection={<IconSearch size={16} />}
           value={filter}
@@ -292,9 +427,47 @@ export function ExpenseList({ names, expenses, loading, onUpdate, onDelete, onRe
             setFilter(e.currentTarget.value);
             setPage(0);
           }}
-          style={{ flex: 1 }}
+          miw={180}
         />
-        <Button variant="light" loading={loading} onClick={onRefresh}>
+        <Select
+          label="Category"
+          value={category === 'all' ? 'all' : category === '' ? UNCATEGORISED : category}
+          onChange={(val) => {
+            setCategory(
+              val === 'all' || !val ? 'all' : val === UNCATEGORISED ? '' : (val as Category),
+            );
+            setPage(0);
+          }}
+          allowDeselect={false}
+          maw={220}
+          data={[
+            { value: 'all', label: 'All categories' },
+            ...CATEGORIES.map((c) => ({ value: c, label: c })),
+            ...(hasUncategorised ? [{ value: UNCATEGORISED, label: 'Uncategorised' }] : []),
+          ]}
+        />
+        <Select
+          label="Sort by"
+          value={sortValue(sort)}
+          onChange={(val) => {
+            const option = SORT_OPTIONS.find((o) => sortValue(o.sort) === val);
+            if (option) changeSort(option.sort);
+          }}
+          allowDeselect={false}
+          maw={220}
+          data={SORT_OPTIONS.map((o) => ({ value: sortValue(o.sort), label: o.label }))}
+        />
+        <Checkbox
+          label="Recently added"
+          checked={recentOnly}
+          onChange={(e) => {
+            setRecentOnly(e.currentTarget.checked);
+            setPage(0);
+          }}
+          maw={180}
+          mb={7}
+        />
+        <Button variant="light" loading={loading} onClick={onRefresh} maw={120}>
           Refresh
         </Button>
       </Group>
@@ -328,8 +501,8 @@ export function ExpenseList({ names, expenses, loading, onUpdate, onDelete, onRe
           >
             <Table.Thead>
               <Table.Tr>
-                <Table.Th style={NOWRAP} w={110}>
-                  Date
+                <Table.Th style={NOWRAP} w={130} aria-sort={ariaSort('date')}>
+                  {sortableHeader('date', 'Date')}
                 </Table.Th>
                 <Table.Th w={110} ta="right">
                   {names.a}

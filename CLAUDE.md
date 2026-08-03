@@ -34,6 +34,32 @@ same. Run `npm run test` before calling a change done, and say so if it fails.
 Keep logic in `services/` where it can be tested directly rather than inline in a
 component.
 
+## Before merging a feature
+
+**Hard rule: no feature branch merges until all three review skills have been run
+over the change and what they found has been dealt with.** Run them in this order,
+because each one's fixes are the next one's input:
+
+1. **`/simplify`** — reuse, duplication, and altitude. Cheapest to act on while
+   the code is still fresh, and it shrinks what the other two have to read.
+2. **`/code-review`** — correctness. This is the one that catches a moved sign or
+   a wrong row index, which on this app is real money moved silently.
+   **Claude cannot launch this one** — it is user-triggered and billed. Ask for
+   it explicitly, say the branch is ready for it, and wait; do not quietly treat
+   the step as done because it could not be run.
+3. **`/security-review`** — the token lives in localStorage and the OAuth scope
+   grants access to a real person's Drive file, so anything touching auth,
+   `sheetAccess`, or what gets written to the sheet needs a look.
+
+They read the **pending diff on the current branch**, so run them before merging
+or squashing, not after — once the change is on `main` there is nothing for them
+to look at.
+
+Fix what they report, then re-run `npm run lint`, `npm run build` and
+`npm run test`. If a finding is deliberate and you are leaving it, say which one
+and why rather than passing over it silently. Report what each review found even
+when it found nothing.
+
 ## Environment Variables
 
 Required in `.env` (not committed):
@@ -51,17 +77,31 @@ This is a client-only PWA (no backend) that reads/writes expenses directly to a 
 
 ### Data flow
 
-Google Sheet (source of truth) ↔ `services/sheets.ts` (CRUD via Sheets REST API) ↔ per-domain hooks (`useExpenses.ts`, `useTransfers.ts`, `useGifts.ts`) ↔ `hooks/ExpensesContext.tsx` (single React context exposing all three domains) ↔ UI components
+Google Sheet (source of truth) ↔ `services/sheets.ts` (CRUD via Sheets REST API) ↔ per-domain hooks (`useExpenses.ts`, `useTransfers.ts`, `useGifts.ts`, `useRecurring.ts`) ↔ `hooks/ExpensesContext.tsx` (single React context exposing all four domains) ↔ UI components
 
-### Three data domains
+### Four data domains
 
-The app tracks three kinds of records, each in its own sheet tab, all flowing through the same `ExpensesContext`:
+The app tracks four kinds of records, each in its own sheet tab, all flowing through the same `ExpensesContext`:
 
-- **Expenses** — main sheet (`VITE_SHEET_NAME`, default `Sheet1`), range `A1:F` (rows 1–2 are the header and sub-header; data still starts at row 3). Both partners can have an amount on one row.
+- **Expenses** — main sheet (`VITE_SHEET_NAME`, default `Sheet1`), read `A1:H` (rows 1–2 are the header and sub-header; data still starts at row 3). Both partners can have an amount on one row. Columns G and H are maintained by the app: G is the recurring marker (see below), H is the date the row was added.
 - **Transfers** — `Transfers` tab, range `A2:D`. One partner pays the other to settle the balance.
 - **Gifts** — `Gifts` tab, range `A2:E`. Column E is the kind: a `present` (money changed hands, no balance effect at all) or `forgiven` (no money moved, one partner let that much of the other's debt slide — the _inverse_ of a transfer). `toGiftKind` in `types/gift.ts` reads blank and unrecognised cells as `forgiven`, which is what rows written before the column existed already did, so adding it moved no balances.
+- **Recurring** — `Recurring` tab, range `A2:H`: `Start | Amount (A) | Amount (B) | Item | Category | Notes | Day | Id`. **Metadata, not money** — a recurring rule never enters `calculateBalance`; only the expense rows it produces do, and those are ordinary expenses. B–F mirror the expenses tab's B–F so `formatAmount`/`normalizeAmount`/`toCategory` are reused and generating a row is a straight copy.
 
 For Transfers and Gifts, the form captures a single `from` person + `amount`, but the sheet stores it in one of two columns (`amountA`/`amountB`); the empty column encodes direction. `transferFrom`/`giftFrom` in `utils.ts` recover the direction by checking which column is non-empty.
+
+### Recurring payments (`services/recurring.ts`, pure)
+
+Four rules hold this together. Breaking any of them moves real money.
+
+- **A generated expense is a snapshot, never a live view of its rule.** Column G holds `rec:<ruleId>:YYYY-MM` as _provenance only_. Nothing may read a marker and write back into an expense row: raising a subscription's price, renaming it or recategorising it must leave every past row byte-identical, because those rows record what was actually paid.
+- **The expenses read/write ranges are deliberately asymmetric**: read `A1:H`, append `A:H`, update `A{n}:F{n}`. A PUT rewrites its whole range, so widening `updateExpense` past F would blank the marker on any generated expense the user edits — the month would then read as never generated and be created a second time. Keeping the PUT narrow makes both app-written columns unerasable by construction, and is also the right answer for H (correcting an amount does not change when the row was added). Appending writes the full `A:H` because the row is new: there is no marker to protect. `ExpenseFormData` has neither field, which is also why Duplicate yields a fresh, unmarked, freshly-stamped row.
+- **Generate forward from the last month already generated, do not backfill holes.** Deleting a generated expense is a decision; an app that quietly recreates it next launch is worse than one that misses a month. A month is due only once `dueDate(month, day) <= today`, which covers both the current month and the rule's start month. Capped at `MAX_CATCH_UP_MONTHS` (24).
+- **Ids live in the sheet, not in the row number.** Deleting any row renumbers `rowIndex`, so a marker keyed on it would point at a different rule. A rule with a blank `Id` (added by hand) is listed but never generated from.
+
+Month arithmetic is done on `YYYY-MM` strings and integers, with `Date.UTC` used only to count days in a month, so no timezone can shift a payment into the wrong month. `pendingRecurring` takes `todayIso` as a parameter and `Pick<Expense, 'recurringMarker'>[]` for the existing rows — it cannot see a `rowIndex` even if a caller wanted it to, which makes the snapshot rule a property of the types.
+
+A missing `Recurring` tab is an HTTP **400 `Unable to parse range`**, not a lost grant. `sheetsRequest` throws `SheetsApiError` carrying the status; `fetchRecurring` confirms absence against the spreadsheet's own tab list rather than matching Google's (localisable) prose, and reports `tabMissing` as an empty state. The tab is **never auto-created on load** — all four domains load in parallel on every navigation, so a create-on-load races itself into a duplicate-title 400. It is created by an explicit button, or implicitly by `addRecurring`.
 
 ### Settlement math (the core domain logic, in `utils.ts`)
 
@@ -76,7 +116,9 @@ Changing these signs, coefficients or the halving changes who owes whom and by h
 
 ### Key details
 
-- **Expense sheet layout:** Row 1 = header, row 2 = sub-header, data starts at row 3. Columns: Date | Amount (A) | Amount (B) | Item | Category | Notes. The partners' display names are read from these header rows — `readPersonNames` tries row 2 first, then row 1, because row 1 often merges both amount columns under one group label. Transfers/Gifts have a single header row, data from row 2. `rowIndex` in each type is the 1-based sheet row number.
+- **Expense sheet layout:** Row 1 = header, row 2 = sub-header, data starts at row 3. Columns: Date | Amount (A) | Amount (B) | Item | Category | Notes | Recurring | Added. The partners' display names are read from these header rows — `readPersonNames` tries row 2 first, then row 1, because row 1 often merges both amount columns under one group label. Transfers/Gifts have a single header row, data from row 2; Recurring likewise. `rowIndex` in each type is the 1-based sheet row number.
+- **The "New" badge:** `isRecentlyAdded` in `utils.ts`, over column H, with a three-day window (`RECENTLY_ADDED_DAYS`). It exists because the list is ordered by the date of the _spending_, so a purchase entered today but dated last month lands mid-list where nobody would scroll — and a caught-up recurring payment is always that case. A row with no `addedOn` is **not** recent: that is every row predating the column and anything typed straight into Google Sheets, and "unknown" must not light up a years-old row. A future date does count, since it means a wrong clock wrote it and the row is certainly new. Shown inline on both breakpoints — a badge you must tap a row to see defeats the purpose.
+- **Sorting and filtering the expense list:** `sortExpenses`/`filterExpenses` in `utils.ts`, not inline in the component. The default is **date descending**, which for a sheet filled in as the money was spent renders identically to the old `[...expenses].reverse()` — there is a test pinning that equivalence, because it is what makes changing the default safe. Ties break on `rowIndex` following the primary direction; dates failing `isIsoDate` sort last in **both** directions. "Amount" means the row total (`amountA + amountB`), the cost of the purchase rather than either person's share. `filterExpenses` also takes `recentOnly` + `todayIso` for the "Recently added" checkbox, and **ignores `recentOnly` when `todayIso` is not a real date**: answering "show me what is new" by emptying the list reads as "you have no expenses" rather than "the clock is wrong".
 - **Deletes** go through `deleteRow` (batchUpdate `deleteDimension`), which looks up the `sheetId` by tab title — so deleting renumbers `rowIndex` for everything below; the UI reloads after mutations rather than patching in place.
 - **Date handling:** The sheet may store dates as serial numbers (Google Sheets epoch) or text in various formats (DD/MM/YYYY, DD.MM.YY, etc.). All normalization is in `services/parsing.ts`.
 - **Amounts:** Stored/displayed with `€` prefix and comma thousands separators. `parseAmount`/`formatAmount` in `parsing.ts` convert between display format and raw numbers.
@@ -92,4 +134,10 @@ BrowserRouter → AuthProvider → ExpensesProvider → ThemeProvider → App
 
 ### UI
 
-Mantine v8 component library with Tabler icons. Five routes: `/` (Dashboard with charts via chart.js), `/add` (tabbed Expense/Transfer/Gift form), `/list` (expenses), `/transfers`, `/gifts`. Bottom nav bar for mobile. Theme system with customizable backgrounds in `theme/` (gradient, matrix, squirrel). Date filtering (`filterByDate`/`FilterMode` in `utils.ts`) is shared across the dashboard and lists.
+Mantine v8 component library with Tabler icons. Five routes: `/` (Dashboard with charts via chart.js), `/add` (tabbed Expense/Transfer/Gift/Recurring form), `/list` (`ExpensesPage`: Expenses | Recurring), `/transfers`, `/gifts`. Bottom nav bar for mobile. Theme system with customizable backgrounds in `theme/` (gradient, matrix, squirrel). Date filtering (`filterByDate`/`FilterMode` in `utils.ts`) is shared across the dashboard and lists.
+
+The `/list` tab lives in the **query string** (`/list?tab=recurring`), not the path: `BottomNavItem` marks the current screen with an exact `pathname ===` match, so a sub-route would unlight Expenses — and a path change fires the four-request refetch on every tab switch.
+
+`RecurringPrompt` is rendered once in `AuthenticatedApp` outside `<Routes>`, since what is due does not depend on the screen being viewed. Two things gate it, both load-bearing: `useExpenses` exposes `loadedOnce` so an unloaded (therefore empty) expense list is never mistaken for "no month was ever generated" — which would offer to write every month of every rule — and `useRecurringPending` keys its dismissal on the **set of pending markers** in localStorage, so it cannot nag on every navigation while still asking again when a new month falls due or the rules change. Unticking a month in the prompt writes **nothing**, not even a marker: otherwise "not this month" silently becomes "never".
+
+New components take `names: PersonNames` as a prop like every other; `App` remains the only place that reads it off the context.

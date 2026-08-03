@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import type { Expense, ExpenseRow } from '../types/expense';
 import type { Transfer, TransferRow } from '../types/transfer';
 import type { Gift, GiftRow } from '../types/gift';
+import type { RecurringRow } from '../types/recurring';
 import { toGiftKind } from '../types/gift';
 import {
   fromDate,
@@ -24,6 +25,13 @@ import {
   giftToFormData,
   expenseToFormData,
   hasAmbiguousDirection,
+  sortExpenses,
+  filterExpenses,
+  expenseTotal,
+  DEFAULT_EXPENSE_SORT,
+  daysBefore,
+  isRecentlyAdded,
+  recurringToFormData,
 } from './utils';
 import { formatAmount } from './parsing';
 
@@ -38,6 +46,10 @@ function makeExpense(overrides: Partial<Expense> = {}): Expense {
     item: 'Test',
     category: 'Food',
     notes: '',
+    // Hand-entered by default: the balance cases below therefore double as
+    // proof that introducing the recurring marker column moved nobody's money.
+    recurringMarker: '',
+    addedOn: '',
     ...overrides,
   };
 }
@@ -1106,5 +1118,334 @@ describe('monthlyBars', () => {
   it('handles an empty range', () => {
     expect(monthlyBars({}, false).labels).toEqual([]);
     expect(monthlyBars({}, true).a).toEqual(Array(12).fill(0));
+  });
+});
+
+// ── Sorting and filtering the expense list ──
+//
+// The list used to be shown in one fixed order — the sheet reversed — with a
+// single text box. These helpers replace that. The risk is the change of
+// default: for years the list has read one way, and it has to keep reading that
+// way for a sheet filled in as the money was spent.
+
+describe('expenseTotal', () => {
+  it('adds both columns, because a shared bill cost what both of them put in', () => {
+    expect(expenseTotal({ amountA: '€100.00', amountB: '€100.00' })).toBe(200);
+  });
+
+  it('reads an empty column as nothing rather than as missing data', () => {
+    expect(expenseTotal({ amountA: '€1,234.56', amountB: '' })).toBe(1234.56);
+  });
+});
+
+describe('sortExpenses', () => {
+  const jan = makeExpense({ rowIndex: 3 as ExpenseRow, date: '2026-01-05', amountA: '€10.00' });
+  const feb = makeExpense({ rowIndex: 4 as ExpenseRow, date: '2026-02-05', amountA: '€30.00' });
+  const mar = makeExpense({ rowIndex: 5 as ExpenseRow, date: '2026-03-05', amountA: '€20.00' });
+  const chronological = [jan, feb, mar];
+
+  it('shows the newest first by default', () => {
+    const sorted = sortExpenses(chronological, DEFAULT_EXPENSE_SORT);
+    expect(sorted.map((e) => e.date)).toEqual(['2026-03-05', '2026-02-05', '2026-01-05']);
+  });
+
+  it('reproduces the old reversed-sheet order for a sheet filled in as money was spent', () => {
+    // The regression that licenses changing the default: same list, same order.
+    expect(sortExpenses(chronological, DEFAULT_EXPENSE_SORT)).toEqual([...chronological].reverse());
+  });
+
+  it('reverses to oldest first when asked', () => {
+    const sorted = sortExpenses(chronological, { key: 'date', asc: true });
+    expect(sorted.map((e) => e.date)).toEqual(['2026-01-05', '2026-02-05', '2026-03-05']);
+  });
+
+  it('orders by what each row cost, both columns together', () => {
+    const split = makeExpense({
+      rowIndex: 6 as ExpenseRow,
+      amountA: '€100.00',
+      amountB: '€100.00',
+    });
+    const single = makeExpense({ rowIndex: 7 as ExpenseRow, amountA: '€150.00' });
+    const sorted = sortExpenses([single, split], { key: 'amount', asc: false });
+    expect(sorted.map((e) => e.rowIndex)).toEqual([6, 7]);
+  });
+
+  it('ranks a free row below a paid one rather than treating a blank as missing', () => {
+    const free = makeExpense({ rowIndex: 8 as ExpenseRow, amountA: '', amountB: '' });
+    const paid = makeExpense({ rowIndex: 9 as ExpenseRow, amountA: '€0.50' });
+    expect(
+      sortExpenses([free, paid], { key: 'amount', asc: false }).map((e) => e.rowIndex),
+    ).toEqual([9, 8]);
+  });
+
+  it('orders by the sheet itself when asked for insertion order', () => {
+    const backdated = makeExpense({ rowIndex: 9 as ExpenseRow, date: '2020-01-01' });
+    const sorted = sortExpenses([jan, backdated], { key: 'inserted', asc: true });
+    expect(sorted.map((e) => e.rowIndex)).toEqual([3, 9]);
+  });
+
+  it('breaks a same-day tie by the order the rows were entered', () => {
+    const first = makeExpense({ rowIndex: 3 as ExpenseRow, date: '2026-01-05' });
+    const second = makeExpense({ rowIndex: 4 as ExpenseRow, date: '2026-01-05' });
+    expect(
+      sortExpenses([second, first], { key: 'date', asc: true }).map((e) => e.rowIndex),
+    ).toEqual([3, 4]);
+  });
+
+  it('flips the tie-break with the direction, so the list reads consistently', () => {
+    const first = makeExpense({ rowIndex: 3 as ExpenseRow, date: '2026-01-05' });
+    const second = makeExpense({ rowIndex: 4 as ExpenseRow, date: '2026-01-05' });
+    expect(
+      sortExpenses([first, second], { key: 'date', asc: false }).map((e) => e.rowIndex),
+    ).toEqual([4, 3]);
+  });
+
+  it('sends a date the sheet could not parse to the end whichever way the list is sorted', () => {
+    const broken = makeExpense({ rowIndex: 9 as ExpenseRow, date: 'March 2013' });
+    const withBroken = [broken, ...chronological];
+    expect(sortExpenses(withBroken, { key: 'date', asc: true }).at(-1)?.rowIndex).toBe(9);
+    expect(sortExpenses(withBroken, { key: 'date', asc: false }).at(-1)?.rowIndex).toBe(9);
+  });
+
+  it('leaves the array it was given untouched', () => {
+    const original = [...chronological];
+    sortExpenses(chronological, { key: 'amount', asc: true });
+    expect(chronological).toEqual(original);
+  });
+});
+
+describe('filterExpenses', () => {
+  const bread = makeExpense({ rowIndex: 3 as ExpenseRow, item: 'Bread', category: 'Food' });
+  const petrol = makeExpense({ rowIndex: 4 as ExpenseRow, item: 'Petrol', category: 'Car' });
+  const mystery = makeExpense({ rowIndex: 5 as ExpenseRow, item: 'Mystery', category: '' });
+  const phone = makeExpense({
+    rowIndex: 6 as ExpenseRow,
+    item: 'Phone',
+    category: 'Various',
+    recurringMarker: 'rec:r1:2026-02',
+  });
+  const all = [bread, petrol, mystery, phone];
+  const noFilter = { text: '', category: 'all' } as const;
+
+  it('keeps everything when nothing is asked of it', () => {
+    expect(filterExpenses(all, noFilter)).toHaveLength(4);
+  });
+
+  it('narrows to one category', () => {
+    expect(filterExpenses(all, { text: '', category: 'Food' }).map((e) => e.item)).toEqual([
+      'Bread',
+    ]);
+  });
+
+  it('can reach the rows whose category the sheet left blank', () => {
+    // toCategory blanks anything it does not recognise, and those rows are real
+    // in a hand-edited sheet — a filter that cannot reach them hides them.
+    expect(filterExpenses(all, { text: '', category: '' }).map((e) => e.item)).toEqual(['Mystery']);
+  });
+
+  it('still matches free text against item, category, notes and date', () => {
+    const noted = makeExpense({ rowIndex: 7 as ExpenseRow, notes: 'sourdough' });
+    expect(filterExpenses([...all, noted], { ...noFilter, text: 'sourdough' })).toHaveLength(1);
+    expect(filterExpenses(all, { ...noFilter, text: 'car' }).map((e) => e.item)).toEqual([
+      'Petrol',
+    ]);
+    expect(filterExpenses(all, { ...noFilter, text: '2026-01' })).toHaveLength(4);
+  });
+
+  it('ignores the case of what was typed', () => {
+    expect(filterExpenses(all, { ...noFilter, text: 'BREAD' }).map((e) => e.item)).toEqual([
+      'Bread',
+    ]);
+  });
+
+  it('finds the generated rows when the search box says recurring', () => {
+    expect(filterExpenses(all, { ...noFilter, text: 'recurring' }).map((e) => e.item)).toEqual([
+      'Phone',
+    ]);
+  });
+
+  it('does not call a hand-entered row recurring', () => {
+    expect(filterExpenses([bread], { ...noFilter, text: 'recurring' })).toEqual([]);
+  });
+
+  it('narrows rather than widens when a category and text are combined', () => {
+    expect(filterExpenses(all, { text: 'Bread', category: 'Car' })).toEqual([]);
+  });
+});
+
+describe('filtering to what was added recently', () => {
+  const TODAY = '2026-03-20';
+  const fresh = makeExpense({ rowIndex: 3 as ExpenseRow, item: 'Fresh', addedOn: TODAY });
+  const older = makeExpense({ rowIndex: 4 as ExpenseRow, item: 'Older', addedOn: '2026-01-01' });
+  const unknown = makeExpense({ rowIndex: 5 as ExpenseRow, item: 'Unknown', addedOn: '' });
+  const all = [fresh, older, unknown];
+  const base = { text: '', category: 'all' } as const;
+
+  it('keeps everything when the box is unticked', () => {
+    expect(filterExpenses(all, { ...base, recentOnly: false, todayIso: TODAY })).toHaveLength(3);
+  });
+
+  it('keeps only what was added in the last few days', () => {
+    const kept = filterExpenses(all, { ...base, recentOnly: true, todayIso: TODAY });
+    expect(kept.map((e) => e.item)).toEqual(['Fresh']);
+  });
+
+  it('drops the rows that predate the column rather than guessing they are recent', () => {
+    const kept = filterExpenses([unknown], { ...base, recentOnly: true, todayIso: TODAY });
+    expect(kept).toEqual([]);
+  });
+
+  // Answering "show me what is new" by emptying the list reads as "you have no
+  // expenses". Better to ignore a filter that cannot be evaluated.
+  it('ignores the filter when today is not a real date, rather than hiding everything', () => {
+    const kept = filterExpenses(all, { ...base, recentOnly: true, todayIso: 'not-a-date' });
+    expect(kept).toHaveLength(3);
+  });
+
+  it('ignores it when no date was supplied at all', () => {
+    expect(filterExpenses(all, { ...base, recentOnly: true })).toHaveLength(3);
+  });
+
+  it('narrows further when combined with a category', () => {
+    const freshCar = makeExpense({
+      rowIndex: 6 as ExpenseRow,
+      item: 'Tyres',
+      category: 'Car',
+      addedOn: TODAY,
+    });
+    const kept = filterExpenses([...all, freshCar], {
+      text: '',
+      category: 'Car',
+      recentOnly: true,
+      todayIso: TODAY,
+    });
+    expect(kept.map((e) => e.item)).toEqual(['Tyres']);
+  });
+
+  it('narrows further when combined with free text', () => {
+    const kept = filterExpenses(all, {
+      text: 'older',
+      category: 'all',
+      recentOnly: true,
+      todayIso: TODAY,
+    });
+    expect(kept).toEqual([]);
+  });
+});
+
+// ── Recently added ──
+//
+// The list is ordered by when the money was spent, so a purchase entered today
+// but dated weeks ago lands in the middle of it. This is what marks it, and the
+// boundaries matter: a day out either way either badges a stale row or hides
+// the one the user just typed.
+
+describe('daysBefore', () => {
+  it('steps back within a month', () => {
+    expect(daysBefore('2026-03-20', 2)).toBe('2026-03-18');
+  });
+
+  it('steps back across a month boundary', () => {
+    expect(daysBefore('2026-03-01', 1)).toBe('2026-02-28');
+  });
+
+  it('steps back across a year boundary', () => {
+    expect(daysBefore('2026-01-01', 1)).toBe('2025-12-31');
+  });
+
+  it('knows February is longer in a leap year', () => {
+    expect(daysBefore('2028-03-01', 1)).toBe('2028-02-29');
+  });
+
+  it('returns the same day when asked for none', () => {
+    expect(daysBefore('2026-03-20', 0)).toBe('2026-03-20');
+  });
+});
+
+describe('isRecentlyAdded', () => {
+  const on = (addedOn: string) => ({ addedOn });
+
+  it('marks a row added today', () => {
+    expect(isRecentlyAdded(on('2026-03-20'), '2026-03-20')).toBe(true);
+  });
+
+  it('still marks one added the day before yesterday', () => {
+    // Three days including today: the 18th is the oldest that counts.
+    expect(isRecentlyAdded(on('2026-03-18'), '2026-03-20')).toBe(true);
+  });
+
+  it('stops marking one added the day before that', () => {
+    expect(isRecentlyAdded(on('2026-03-17'), '2026-03-20')).toBe(false);
+  });
+
+  it('honours a different window', () => {
+    expect(isRecentlyAdded(on('2026-03-19'), '2026-03-20', 1)).toBe(false);
+    expect(isRecentlyAdded(on('2026-03-20'), '2026-03-20', 1)).toBe(true);
+  });
+
+  it('reaches back across a month boundary', () => {
+    expect(isRecentlyAdded(on('2026-02-28'), '2026-03-01')).toBe(true);
+  });
+
+  // Every row written before the column existed reads this way, as does
+  // anything typed straight into Google Sheets. Unknown is not the same as
+  // recent, and treating it as old is what stops years-old rows lighting up.
+  it('does not mark a row with no added date', () => {
+    expect(isRecentlyAdded(on(''), '2026-03-20')).toBe(false);
+  });
+
+  it('does not mark a row whose added date the sheet could not parse', () => {
+    expect(isRecentlyAdded(on('March 2013'), '2026-03-20')).toBe(false);
+  });
+
+  // A date in the future means the device that wrote it has a wrong clock, and
+  // that row is certainly new — better badged than silently missing.
+  it('marks a row stamped in the future rather than hiding it', () => {
+    expect(isRecentlyAdded(on('2026-03-25'), '2026-03-20')).toBe(true);
+  });
+
+  it('reports nothing when today is not a real date', () => {
+    expect(isRecentlyAdded(on('2026-03-20'), 'not-a-date')).toBe(false);
+  });
+});
+
+// ── Recurring rule to form ──
+//
+// The fourth of the record→form converters. It goes through parseAmount like the
+// other three: a rule is the one record whose bad value would be re-applied
+// every month rather than once.
+
+describe('recurringToFormData', () => {
+  const rule = {
+    rowIndex: 2 as RecurringRow,
+    id: 'r1',
+    start: '2026-01-10',
+    amountA: '€1,234.50',
+    amountB: '',
+    item: 'Phone',
+    category: 'Various' as const,
+    notes: 'monthly',
+    day: 10,
+  };
+
+  it('strips the display formatting off the amounts', () => {
+    expect(recurringToFormData(rule)).toMatchObject({ amountA: '1234.50', amountB: '' });
+  });
+
+  it('drops a value the sheet holds that is not an amount, rather than passing junk through', () => {
+    expect(recurringToFormData({ ...rule, amountA: 'n/a' }).amountA).toBe('');
+  });
+
+  it('gives an uncategorised rule the same default an expense gets', () => {
+    expect(recurringToFormData({ ...rule, category: '' }).category).toBe('Various');
+  });
+
+  it('carries the rest across unchanged', () => {
+    expect(recurringToFormData(rule)).toMatchObject({
+      start: '2026-01-10',
+      item: 'Phone',
+      notes: 'monthly',
+      day: 10,
+    });
   });
 });
