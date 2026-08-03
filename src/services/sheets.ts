@@ -195,9 +195,22 @@ export function readPersonNames(rows: unknown[][]): PersonNames {
   return DEFAULT_NAMES;
 }
 
+/** Sub-header labels for the two columns the app writes to the expenses tab. */
+export const EXPENSE_COLUMN_LABELS = ['Recurring', 'Added', 'Not counted (A)', 'Not counted (B)'];
+
 export interface ExpensesResult {
   expenses: Expense[];
   names: PersonNames;
+  /**
+   * Do the columns the app writes still have no heading?
+   *
+   * Answered from the header rows this fetch already read, so asking costs
+   * nothing — and it has to be asked here, because the labels used to be
+   * written only while setting up recurring payments. Somebody who never opens
+   * that tab still gets G to J written on every expense they add, and would
+   * have been left with four unexplained columns forever.
+   */
+  columnsUnlabelled: boolean;
 }
 
 /**
@@ -224,6 +237,7 @@ export async function fetchExpenses(): Promise<ExpensesResult> {
 
   return {
     names: readPersonNames(rows),
+    columnsUnlabelled: EXPENSE_COLUMN_LABELS.some((_, i) => !String(rows[1]?.[6 + i] ?? '').trim()),
     expenses: rows.slice(2).map((row, i) => ({
       rowIndex: (i + 3) as ExpenseRow,
       date: normalizeDate(row[0]),
@@ -620,9 +634,6 @@ export async function fetchRecurring(): Promise<RecurringResult> {
 
   return { rules, tabMissing: false };
 }
-
-/** Sub-header labels for the two columns the app writes to the expenses tab. */
-export const EXPENSE_COLUMN_LABELS = ['Recurring', 'Added', 'Not counted (A)', 'Not counted (B)'];
 
 /**
  * Fill in blank heading cells over a range, leaving anything already there.

@@ -8,12 +8,14 @@ const fetchExpenses = vi.fn();
 const addExpense = vi.fn<(form: unknown) => Promise<void>>(async () => {});
 const updateExpense = vi.fn<(rowIndex: unknown, form: unknown) => Promise<void>>(async () => {});
 const deleteExpense = vi.fn<(rowIndex: unknown) => Promise<void>>(async () => {});
+const ensureExpenseColumnLabels = vi.fn<() => Promise<void>>(async () => {});
 
 vi.mock('../services/sheets', () => ({
   fetchExpenses: () => fetchExpenses(),
   addExpense: (form: unknown) => addExpense(form),
   updateExpense: (rowIndex: unknown, form: unknown) => updateExpense(rowIndex, form),
   deleteExpense: (rowIndex: unknown) => deleteExpense(rowIndex),
+  ensureExpenseColumnLabels: () => ensureExpenseColumnLabels(),
 }));
 
 import { useExpenses } from './useExpenses';
@@ -47,7 +49,7 @@ const form = {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  fetchExpenses.mockResolvedValue({ expenses: [row], names: NAMES });
+  fetchExpenses.mockResolvedValue({ expenses: [row], names: NAMES, columnsUnlabelled: false });
 });
 
 // Added retroactively. Most of this mirrors useMovements, but the two pieces of
@@ -97,7 +99,7 @@ describe('useExpenses', () => {
     });
     expect(result.current.loadedOnce).toBe(false);
 
-    fetchExpenses.mockResolvedValue({ expenses: [row], names: NAMES });
+    fetchExpenses.mockResolvedValue({ expenses: [row], names: NAMES, columnsUnlabelled: false });
     await act(async () => {
       await result.current.load();
     });
@@ -155,5 +157,111 @@ describe('useExpenses', () => {
     const first = result.current.load;
     rerender();
     expect(result.current.load).toBe(first);
+  });
+});
+
+// ── Heading the columns the app writes ──
+//
+// G to J are written on every expense the app adds or edits, but the labelling
+// used to be reachable only while setting up recurring payments — so anyone who
+// never opened that tab was left with four unexplained columns of money.
+
+describe('labelling the app-written columns', () => {
+  const unlabelled = { expenses: [row], names: NAMES, columnsUnlabelled: true };
+
+  it('writes no heading merely because the app was opened', async () => {
+    fetchExpenses.mockResolvedValue(unlabelled);
+    const { result } = renderHook(() => useExpenses());
+    await act(async () => {
+      await result.current.load();
+    });
+    expect(ensureExpenseColumnLabels).not.toHaveBeenCalled();
+  });
+
+  it('writes them once an expense has actually been added', async () => {
+    fetchExpenses.mockResolvedValue(unlabelled);
+    const { result } = renderHook(() => useExpenses());
+    await act(async () => {
+      await result.current.load();
+    });
+    await act(async () => {
+      await result.current.add(form);
+    });
+    expect(ensureExpenseColumnLabels).toHaveBeenCalledTimes(1);
+  });
+
+  it('writes them when an expense is edited, which also writes those columns', async () => {
+    fetchExpenses.mockResolvedValue(unlabelled);
+    const { result } = renderHook(() => useExpenses());
+    await act(async () => {
+      await result.current.load();
+    });
+    await act(async () => {
+      await result.current.update(3 as ExpenseRow, form);
+    });
+    expect(ensureExpenseColumnLabels).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not write them again once they are there', async () => {
+    const { result } = renderHook(() => useExpenses()); // labelled already
+    await act(async () => {
+      await result.current.load();
+    });
+    await act(async () => {
+      await result.current.add(form);
+    });
+    expect(ensureExpenseColumnLabels).not.toHaveBeenCalled();
+  });
+
+  it('stops asking after a successful labelling', async () => {
+    // Once written, the next read of the sheet sees the headings — so the
+    // reload that follows every mutation is what settles it.
+    fetchExpenses.mockResolvedValue(unlabelled);
+    ensureExpenseColumnLabels.mockImplementationOnce(async () => {
+      fetchExpenses.mockResolvedValue({ expenses: [row], names: NAMES, columnsUnlabelled: false });
+    });
+
+    const { result } = renderHook(() => useExpenses());
+    await act(async () => {
+      await result.current.load();
+    });
+    await act(async () => {
+      await result.current.add(form);
+    });
+    await act(async () => {
+      await result.current.add(form);
+    });
+    expect(ensureExpenseColumnLabels).toHaveBeenCalledTimes(1);
+  });
+
+  // The expense itself already saved; a heading is not worth reporting that as
+  // a failure and sending the user back to a form they completed.
+  it('does not fail the save when the heading cannot be written', async () => {
+    fetchExpenses.mockResolvedValue(unlabelled);
+    ensureExpenseColumnLabels.mockRejectedValueOnce(new Error('Backend error'));
+    const { result } = renderHook(() => useExpenses());
+    await act(async () => {
+      await result.current.load();
+    });
+    await act(async () => {
+      await result.current.add(form);
+    });
+    expect(result.current.error).toBeNull();
+  });
+
+  it('tries again on the next write after a failure', async () => {
+    fetchExpenses.mockResolvedValue(unlabelled);
+    ensureExpenseColumnLabels.mockRejectedValueOnce(new Error('Backend error'));
+    const { result } = renderHook(() => useExpenses());
+    await act(async () => {
+      await result.current.load();
+    });
+    await act(async () => {
+      await result.current.add(form);
+    });
+    await act(async () => {
+      await result.current.add(form);
+    });
+    expect(ensureExpenseColumnLabels).toHaveBeenCalledTimes(2);
   });
 });
