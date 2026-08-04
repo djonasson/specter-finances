@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { Stack, Group, Button, NumberInput, Alert } from '@mantine/core';
+import { Stack, Group, Button, NumberInput, Checkbox, Alert, Text } from '@mantine/core';
 import { DateInput } from '@mantine/dates';
 import { IconAlertCircle } from '@tabler/icons-react';
 import type { RecurringFormData } from '../types/recurring';
 import type { PersonNames } from '../types/person';
 import { today, dateInputValue, notCountedProblem } from '../services/utils';
+import { MAX_EVERY_MONTHS, MIN_EVERY_MONTHS, describeInterval } from '../services/recurring';
 import { ExpenseFields } from './ExpenseFields';
 
 interface Props {
@@ -33,6 +34,8 @@ function emptyForm(): RecurringFormData {
     category: 'Various',
     notes: '',
     day: Number(start.slice(8, 10)),
+    everyMonths: 1,
+    amountVaries: false,
   };
 }
 
@@ -56,8 +59,18 @@ export function RecurringForm({
       setError('Item is required');
       return;
     }
-    if (!form.amountA && !form.amountB) {
+    // A varying payment stores no amount at all — the figure is not known until
+    // the bill arrives, and the confirmation is where it gets typed in.
+    if (!form.amountVaries && !form.amountA && !form.amountB) {
       setError('At least one amount is required');
+      return;
+    }
+    if (!Number.isInteger(form.everyMonths) || form.everyMonths < MIN_EVERY_MONTHS) {
+      setError(`How often must be at least every ${MIN_EVERY_MONTHS} month`);
+      return;
+    }
+    if (form.everyMonths > MAX_EVERY_MONTHS) {
+      setError(`How often cannot be more than every ${MAX_EVERY_MONTHS} months`);
       return;
     }
     if (!Number.isInteger(form.day) || form.day < 1 || form.day > 31) {
@@ -111,12 +124,46 @@ export function RecurringForm({
           onChange={(val) => set('day', typeof val === 'number' ? val : 1)}
         />
 
+        <NumberInput
+          label={`How often, in months (${describeInterval(form.everyMonths)})`}
+          min={MIN_EVERY_MONTHS}
+          max={MAX_EVERY_MONTHS}
+          clampBehavior="strict"
+          value={form.everyMonths}
+          onChange={(val) => set('everyMonths', typeof val === 'number' ? val : 1)}
+        />
+
+        <Checkbox
+          label="The amount is different every time"
+          checked={form.amountVaries}
+          onChange={(e) => {
+            const amountVaries = e.currentTarget.checked;
+            // Clear what can no longer be known. Leaving a stale figure behind
+            // would put it on the sheet the next time the box is unticked.
+            setForm((f) => ({
+              ...f,
+              amountVaries,
+              ...(amountVaries
+                ? { amountA: '', amountB: '', notCountedA: '', notCountedB: '' }
+                : {}),
+            }));
+          }}
+        />
+
+        {form.amountVaries && (
+          <Text size="sm">
+            A utility bill, then — nobody knows the figure until it arrives. This app will remind
+            you when one is due and ask for the amount, with everything else already filled in.
+          </Text>
+        )}
+
         <ExpenseFields
           names={names}
           value={form}
           onChange={(patch) => setForm((f) => ({ ...f, ...patch }))}
-          itemPlaceholder="e.g. Phone bill"
+          itemPlaceholder="e.g. Water bill"
           categoryFallback="Various"
+          showAmounts={!form.amountVaries}
         />
 
         <Group>

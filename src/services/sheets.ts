@@ -8,6 +8,7 @@ import type { Gift, GiftFormData, GiftRow } from '../types/gift';
 import { toGiftKind } from '../types/gift';
 import type { RecurringRule, RecurringRow, RecurringFormData } from '../types/recurring';
 import type { PendingExpense } from './recurring';
+import { toEveryMonths } from './recurring';
 import { today } from './utils';
 import { DEFAULT_NAMES } from '../types/person';
 import type { PersonNames } from '../types/person';
@@ -536,7 +537,12 @@ const RECURRING_HEADER = [
   'Id',
   'Not counted (A)',
   'Not counted (B)',
+  'Every (months)',
+  'Amount varies',
 ];
+
+/** What column L holds when a payment's amount is different every time. */
+const VARIES = 'yes';
 
 /**
  * A short, stable, opaque id for a rule.
@@ -569,6 +575,8 @@ function recurringRow(form: RecurringFormData, id: string): string[] {
     id,
     formatAmount(form.notCountedA),
     formatAmount(form.notCountedB),
+    String(toEveryMonths(form.everyMonths)),
+    form.amountVaries ? VARIES : '',
   ];
 }
 
@@ -580,7 +588,7 @@ export interface RecurringResult {
 
 export async function fetchRecurring(): Promise<RecurringResult> {
   const { spreadsheetId } = getConfig();
-  const range = encodeURIComponent(`${RECURRING_SHEET}!A2:J`);
+  const range = encodeURIComponent(`${RECURRING_SHEET}!A2:L`);
 
   let data;
   try {
@@ -627,6 +635,13 @@ export async function fetchRecurring(): Promise<RecurringResult> {
         id: String(row[7] || '').trim(),
         notCountedA: normalizeAmount(row[8]),
         notCountedB: normalizeAmount(row[9]),
+        // Blank reads as monthly and as a fixed amount, so every rule written
+        // before these columns existed keeps behaving exactly as it did.
+        everyMonths: toEveryMonths(row[10]),
+        amountVaries:
+          String(row[11] ?? '')
+            .trim()
+            .toLowerCase() === VARIES,
       };
     })
     // Filtered after mapping so rowIndex still matches the physical sheet row.
@@ -747,7 +762,7 @@ export async function ensureRecurringSetup(): Promise<void> {
 
       await sheetsRequest(
         `/${spreadsheetId}/values/${encodeURIComponent(
-          `${RECURRING_SHEET}!A1:J1`,
+          `${RECURRING_SHEET}!A1:L1`,
         )}?valueInputOption=USER_ENTERED`,
         { method: 'PUT', body: JSON.stringify({ values: [RECURRING_HEADER] }) },
       );
@@ -759,14 +774,14 @@ export async function ensureRecurringSetup(): Promise<void> {
   // header while the app writes ten. Reads and writes are positional so no
   // value is wrong, but two unlabelled columns of money in someone's own
   // spreadsheet is the thing this whole labelling exists to avoid.
-  await ensureLabels(RECURRING_SHEET, 1, ['I', 'J'], RECURRING_HEADER.slice(8));
+  await ensureLabels(RECURRING_SHEET, 1, ['I', 'J', 'K', 'L'], RECURRING_HEADER.slice(8));
   await ensureExpenseColumnLabels();
 }
 
 export async function addRecurring(form: RecurringFormData): Promise<void> {
   await ensureRecurringSetup();
   const { spreadsheetId } = getConfig();
-  const range = encodeURIComponent(`${RECURRING_SHEET}!A:J`);
+  const range = encodeURIComponent(`${RECURRING_SHEET}!A:L`);
   await sheetsRequest(`/${spreadsheetId}/values/${range}:append?valueInputOption=USER_ENTERED`, {
     method: 'POST',
     body: JSON.stringify({ values: [recurringRow(form, newRuleId())] }),
@@ -786,7 +801,7 @@ export async function updateRecurring(
   id: string,
 ): Promise<void> {
   const { spreadsheetId } = getConfig();
-  const range = encodeURIComponent(`${RECURRING_SHEET}!A${rowIndex}:J${rowIndex}`);
+  const range = encodeURIComponent(`${RECURRING_SHEET}!A${rowIndex}:L${rowIndex}`);
   await sheetsRequest(`/${spreadsheetId}/values/${range}?valueInputOption=USER_ENTERED`, {
     method: 'PUT',
     body: JSON.stringify({ values: [recurringRow(form, id)] }),

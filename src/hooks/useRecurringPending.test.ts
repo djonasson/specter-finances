@@ -25,6 +25,8 @@ function makeRule(overrides: Partial<RecurringRule> = {}): RecurringRule {
     category: 'Various',
     notes: '',
     day: 10,
+    everyMonths: 1,
+    amountVaries: false,
     ...overrides,
   };
 }

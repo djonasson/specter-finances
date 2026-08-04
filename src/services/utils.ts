@@ -688,5 +688,7 @@ export function recurringToFormData(r: RecurringRule): RecurringFormData {
     category: r.category || 'Various',
     notes: r.notes,
     day: r.day,
+    everyMonths: r.everyMonths,
+    amountVaries: r.amountVaries,
   };
 }

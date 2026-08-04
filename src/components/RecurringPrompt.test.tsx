@@ -17,6 +17,7 @@ function makePending(overrides: Partial<PendingExpense> = {}): PendingExpense {
     date: `${month}-10`,
     amountA: '€12.99',
     amountB: '',
+    amountVaries: false,
     notCountedA: '',
     notCountedB: '',
     item: 'Phone',
@@ -257,5 +258,75 @@ describe('when a correction strands what the rule sets aside', () => {
       amountA: '€20.00',
       notCountedA: '€12.00',
     });
+  });
+});
+
+// ── Bills nobody can price in advance ──
+//
+// The rule deliberately holds no amount, so this dialog is the only moment the
+// app can learn it. Writing a zero row would be worse than writing nothing: it
+// settles as though the bill were free, on the only record either of them has.
+
+describe('a payment whose amount varies', () => {
+  const water = makePending({
+    month: '2026-02',
+    item: 'Water',
+    amountA: '',
+    amountB: '',
+    amountVaries: true,
+  });
+
+  it('says why the amount is empty', () => {
+    renderPrompt([water]);
+    expect(screen.getByText('amount differs every time')).toBeInTheDocument();
+  });
+
+  it('refuses to write it until someone types the figure', async () => {
+    const user = userEvent.setup();
+    const { onConfirm } = renderPrompt([water]);
+
+    expect(screen.getByRole('button', { name: /^Add 1 expense$/ })).toBeDisabled();
+    expect(screen.getByText(/needs its amount/)).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /^Add 1 expense$/ }));
+    expect(onConfirm).not.toHaveBeenCalled();
+  });
+
+  it('writes it once the figure is in', async () => {
+    const user = userEvent.setup();
+    const { onConfirm } = renderPrompt([water]);
+
+    await user.type(screen.getByRole('textbox', { name: 'Ada for Water on 2026-02-10' }), '82.4');
+    await user.click(screen.getByRole('button', { name: /^Add 1 expense$/ }));
+
+    await waitFor(() => expect(onConfirm).toHaveBeenCalled());
+    expect(onConfirm.mock.calls[0]![0][0]).toMatchObject({ amountA: '€82.40', item: 'Water' });
+  });
+
+  it('accepts a figure against either person', async () => {
+    const user = userEvent.setup();
+    const { onConfirm } = renderPrompt([water]);
+    await user.type(screen.getByRole('textbox', { name: 'Bo for Water on 2026-02-10' }), '50');
+    await user.click(screen.getByRole('button', { name: /^Add 1 expense$/ }));
+    await waitFor(() => expect(onConfirm).toHaveBeenCalled());
+    expect(onConfirm.mock.calls[0]![0][0]).toMatchObject({ amountB: '€50.00' });
+  });
+
+  it('lets the rest through when the unpriced one is left for next time', async () => {
+    const user = userEvent.setup();
+    const phone = makePending({ month: '2026-01', item: 'Phone' });
+    const { onConfirm } = renderPrompt([phone, water]);
+
+    await user.click(screen.getByRole('checkbox', { name: 'Add Water for 2026-02-10' }));
+    await user.click(screen.getByRole('button', { name: /^Add 1 expense$/ }));
+
+    await waitFor(() => expect(onConfirm).toHaveBeenCalled());
+    expect(onConfirm.mock.calls[0]![0].map((p) => p.item)).toEqual(['Phone']);
+  });
+
+  it('leaves a payment with a known amount alone', () => {
+    renderPrompt([makePending({ month: '2026-01' })]);
+    expect(screen.getByRole('button', { name: /^Add 1 expense$/ })).toBeEnabled();
+    expect(screen.queryByText(/needs its amount/)).toBeNull();
   });
 });

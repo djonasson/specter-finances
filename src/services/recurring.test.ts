@@ -8,6 +8,8 @@ import {
   dueDate,
   nextDueDate,
   pendingRecurring,
+  toEveryMonths,
+  describeInterval,
 } from './recurring';
 import type { Expense, ExpenseRow } from '../types/expense';
 import type { RecurringRule, RecurringRow } from '../types/recurring';
@@ -27,6 +29,8 @@ function makeRule(overrides: Partial<RecurringRule> = {}): RecurringRule {
     category: 'Various',
     notes: '',
     day: 10,
+    everyMonths: 1,
+    amountVaries: false,
     ...overrides,
   };
 }
@@ -133,26 +137,36 @@ describe('dueDate', () => {
 
 describe('nextDueDate', () => {
   it('is later this month when the day has not passed', () => {
-    expect(nextDueDate({ start: '2026-01-10', day: 25 }, '2026-03-20')).toBe('2026-03-25');
+    expect(nextDueDate({ start: '2026-01-10', day: 25, everyMonths: 1 }, '2026-03-20')).toBe(
+      '2026-03-25',
+    );
   });
 
   it('rolls to next month once the day has passed', () => {
-    expect(nextDueDate({ start: '2026-01-10', day: 10 }, '2026-03-20')).toBe('2026-04-10');
+    expect(nextDueDate({ start: '2026-01-10', day: 10, everyMonths: 1 }, '2026-03-20')).toBe(
+      '2026-04-10',
+    );
   });
 
   // A payment starting on the 25th that falls due on the 5th first happens the
   // following month. Reporting the start date would name a day on which no
   // expense will ever be dated.
   it('reports the first date an expense would actually carry, not the start date', () => {
-    expect(nextDueDate({ start: '2026-09-25', day: 5 }, '2026-03-20')).toBe('2026-10-05');
+    expect(nextDueDate({ start: '2026-09-25', day: 5, everyMonths: 1 }, '2026-03-20')).toBe(
+      '2026-10-05',
+    );
   });
 
   it('reports the start month itself when the rule starts before its own day', () => {
-    expect(nextDueDate({ start: '2026-09-01', day: 5 }, '2026-03-20')).toBe('2026-09-05');
+    expect(nextDueDate({ start: '2026-09-01', day: 5, everyMonths: 1 }, '2026-03-20')).toBe(
+      '2026-09-05',
+    );
   });
 
   it('clamps to the last day of a short month', () => {
-    expect(nextDueDate({ start: '2026-01-01', day: 31 }, '2026-02-01')).toBe('2026-02-28');
+    expect(nextDueDate({ start: '2026-01-01', day: 31, everyMonths: 1 }, '2026-02-01')).toBe(
+      '2026-02-28',
+    );
   });
 });
 
@@ -241,7 +255,7 @@ describe('pendingRecurring', () => {
 
   it('caps a long-dormant rule at the catch-up window instead of proposing years of rows', () => {
     const pending = pendingRecurring([makeRule({ start: '2019-01-10' })], [], '2026-07-31', {
-      maxCatchUpMonths: 3,
+      maxCatchUpOccurrences: 3,
     });
     expect(pending.map((p) => p.month)).toEqual(['2026-05', '2026-06', '2026-07']);
   });
@@ -328,5 +342,206 @@ describe('generated expenses are snapshots', () => {
       },
     ];
     expect(pendingRecurring([makeRule()], full, '2026-01-20')).toEqual([]);
+  });
+});
+
+// ── How often a payment recurs ──
+//
+// Occurrences sit on a schedule anchored at the rule's start month, stepping by
+// its interval. A bi-monthly bill starting in March falls in May and July and
+// never April — and because every occurrence is at least a month from the next,
+// the YYYY-MM marker still names exactly one of them.
+
+describe('toEveryMonths', () => {
+  it('takes an ordinary interval as it is', () => {
+    expect(toEveryMonths(3)).toBe(3);
+    expect(toEveryMonths('6')).toBe(6);
+  });
+
+  it('reads a blank cell as monthly, so a rule written before the column is unchanged', () => {
+    expect(toEveryMonths(undefined)).toBe(1);
+    expect(toEveryMonths('')).toBe(1);
+  });
+
+  it('holds a hand-typed value inside what the app can honour', () => {
+    // Zero would never come round; a year and a half has no schedule to sit on.
+    expect(toEveryMonths(0)).toBe(1);
+    expect(toEveryMonths(-4)).toBe(1);
+    expect(toEveryMonths(18)).toBe(12);
+    expect(toEveryMonths('every other month')).toBe(1);
+  });
+
+  it('rounds a fractional interval to whole months', () => {
+    expect(toEveryMonths(2.4)).toBe(2);
+  });
+});
+
+describe('describeInterval', () => {
+  it.each([
+    [1, 'Monthly'],
+    [2, 'Every 2 months'],
+    [3, 'Every 3 months'],
+    [6, 'Every 6 months'],
+    [12, 'Yearly'],
+  ])('reads %i months as %s', (months, expected) => {
+    expect(describeInterval(months)).toBe(expected);
+  });
+
+  it('describes a rule with nothing set as monthly', () => {
+    expect(describeInterval(0)).toBe('Monthly');
+  });
+});
+
+describe('pendingRecurring across intervals', () => {
+  it('offers a monthly rule exactly what it always did', () => {
+    // The regression that licenses rewriting the loop: same rule, same answer.
+    const monthly = makeRule({ start: '2026-01-10', day: 10, everyMonths: 1 });
+    const pending = pendingRecurring([monthly], [], '2026-04-12');
+    expect(pending.map((p) => p.month)).toEqual(['2026-01', '2026-02', '2026-03', '2026-04']);
+  });
+
+  it('skips the months in between a bi-monthly bill', () => {
+    const rule = makeRule({ start: '2026-03-10', day: 10, everyMonths: 2 });
+    const pending = pendingRecurring([rule], [], '2026-08-31');
+    expect(pending.map((p) => p.month)).toEqual(['2026-03', '2026-05', '2026-07']);
+  });
+
+  it('offers a quarterly bill four times a year', () => {
+    const rule = makeRule({ start: '2026-01-15', day: 15, everyMonths: 3 });
+    const pending = pendingRecurring([rule], [], '2026-12-31');
+    expect(pending.map((p) => p.month)).toEqual(['2026-01', '2026-04', '2026-07', '2026-10']);
+  });
+
+  it('offers a half-yearly bill twice', () => {
+    const rule = makeRule({ start: '2026-02-01', day: 1, everyMonths: 6 });
+    const pending = pendingRecurring([rule], [], '2026-12-31');
+    expect(pending.map((p) => p.month)).toEqual(['2026-02', '2026-08']);
+  });
+
+  it('offers a yearly bill in its own month and no other', () => {
+    const rule = makeRule({ start: '2024-09-20', day: 20, everyMonths: 12 });
+    const pending = pendingRecurring([rule], [], '2026-10-01');
+    expect(pending.map((p) => p.month)).toEqual(['2024-09', '2025-09', '2026-09']);
+  });
+
+  it('resumes on the schedule after a gap rather than every month since', () => {
+    const rule = makeRule({ start: '2026-01-10', day: 10, everyMonths: 3 });
+    const pending = pendingRecurring([rule], marked('rec:r1:2026-01'), '2026-10-31');
+    expect(pending.map((p) => p.month)).toEqual(['2026-04', '2026-07', '2026-10']);
+  });
+
+  it('does not resurrect a deleted occurrence, exactly as for a monthly rule', () => {
+    const rule = makeRule({ start: '2026-01-10', day: 10, everyMonths: 3 });
+    // April was deleted on purpose; July is the latest still marked.
+    const pending = pendingRecurring(
+      [rule],
+      marked('rec:r1:2026-01', 'rec:r1:2026-07'),
+      '2026-10-31',
+    );
+    expect(pending.map((p) => p.month)).toEqual(['2026-10']);
+  });
+
+  // Changing the interval must snap the rule back onto its own anchor rather
+  // than drifting a month further out every time it is edited.
+  it('realigns to the schedule when the interval is changed later', () => {
+    const rule = makeRule({ start: '2026-01-10', day: 10, everyMonths: 6 });
+    const pending = pendingRecurring([rule], marked('rec:r1:2026-02'), '2026-08-31');
+    // The anchor is January, so a six-month schedule falls in July, not August.
+    expect(pending.map((p) => p.month)).toEqual(['2026-07']);
+  });
+
+  it('clamps the day on a six-month step landing in February', () => {
+    const rule = makeRule({ start: '2025-08-31', day: 31, everyMonths: 6 });
+    const pending = pendingRecurring([rule], [], '2026-03-01');
+    expect(pending.map((p) => p.date)).toEqual(['2025-08-31', '2026-02-28']);
+  });
+
+  it('offers nothing before the day arrives, whatever the interval', () => {
+    const rule = makeRule({ start: '2026-03-25', day: 25, everyMonths: 2 });
+    expect(pendingRecurring([rule], [], '2026-03-04')).toEqual([]);
+  });
+
+  it('counts the catch-up cap in occurrences, so a yearly bill keeps its history', () => {
+    const rule = makeRule({ start: '2019-09-20', day: 20, everyMonths: 12 });
+    const pending = pendingRecurring([rule], [], '2026-10-01', { maxCatchUpOccurrences: 3 });
+    expect(pending.map((p) => p.month)).toEqual(['2024-09', '2025-09', '2026-09']);
+  });
+
+  it('interleaves payments on different schedules in date order', () => {
+    const water = makeRule({
+      id: 'r1',
+      item: 'Water',
+      start: '2026-01-05',
+      day: 5,
+      everyMonths: 2,
+    });
+    const power = makeRule({
+      id: 'r2',
+      item: 'Power',
+      start: '2026-01-20',
+      day: 20,
+      everyMonths: 1,
+    });
+    const pending = pendingRecurring([water, power], [], '2026-03-31');
+    expect(pending.map((p) => `${p.date} ${p.item}`)).toEqual([
+      '2026-01-05 Water',
+      '2026-01-20 Power',
+      '2026-02-20 Power',
+      '2026-03-05 Water',
+      '2026-03-20 Power',
+    ]);
+  });
+});
+
+// ── Bills whose amount nobody knows in advance ──
+
+describe('a payment whose amount varies', () => {
+  it('offers no amount at all, rather than one it invented', () => {
+    const rule = makeRule({ amountA: '€30.00', notCountedA: '€5.00', amountVaries: true });
+    const [pending] = pendingRecurring([rule], [], '2026-01-10');
+    expect(pending).toMatchObject({
+      amountA: '',
+      amountB: '',
+      notCountedA: '',
+      notCountedB: '',
+      amountVaries: true,
+    });
+  });
+
+  it('still says when it is due, and what it is for', () => {
+    const rule = makeRule({ item: 'Water', amountVaries: true });
+    const [pending] = pendingRecurring([rule], [], '2026-01-10');
+    expect(pending).toMatchObject({ item: 'Water', date: '2026-01-10', category: 'Various' });
+  });
+
+  it('leaves a fixed payment carrying its amount as before', () => {
+    const [pending] = pendingRecurring([makeRule()], [], '2026-01-10');
+    expect(pending).toMatchObject({ amountA: '€12.99', amountVaries: false });
+  });
+});
+
+describe('nextDueDate across intervals', () => {
+  it('names a month the rule actually falls on', () => {
+    // Bi-monthly from March: May, not April.
+    const rule = { start: '2026-03-10', day: 10, everyMonths: 2 };
+    expect(nextDueDate(rule, '2026-04-01')).toBe('2026-05-10');
+  });
+
+  it('names this month when its day has not passed', () => {
+    expect(nextDueDate({ start: '2026-01-25', day: 25, everyMonths: 3 }, '2026-04-02')).toBe(
+      '2026-04-25',
+    );
+  });
+
+  it('steps a whole interval once the day has gone by', () => {
+    expect(nextDueDate({ start: '2026-01-25', day: 25, everyMonths: 3 }, '2026-04-26')).toBe(
+      '2026-07-25',
+    );
+  });
+
+  it('answers for a yearly bill without walking through the months between', () => {
+    expect(nextDueDate({ start: '2020-09-20', day: 20, everyMonths: 12 }, '2026-10-01')).toBe(
+      '2027-09-20',
+    );
   });
 });

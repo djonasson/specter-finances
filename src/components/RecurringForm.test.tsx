@@ -54,8 +54,8 @@ describe('RecurringForm', () => {
     await user.type(screen.getByRole('textbox', { name: 'Ada (€)' }), '12.99');
 
     const day = screen.getByRole('textbox', { name: /Day of the month/ });
-    await user.tripleClick(day); // select what is there, then replace it
-    await user.type(day, '45');
+    await user.click(day);
+    await user.keyboard('{Control>}a{/Control}45');
 
     await user.click(submit());
     await waitFor(() => expect(onSubmit).toHaveBeenCalled());
@@ -72,8 +72,8 @@ describe('RecurringForm', () => {
     await user.type(screen.getByRole('textbox', { name: 'Ada (€)' }), '500');
 
     const day = screen.getByRole('textbox', { name: /Day of the month/ });
-    await user.tripleClick(day);
-    await user.type(day, '31');
+    await user.click(day);
+    await user.keyboard('{Control>}a{/Control}31');
 
     await user.click(submit());
     await waitFor(() => expect(onSubmit).toHaveBeenCalled());
@@ -156,6 +156,8 @@ describe('RecurringForm', () => {
       category: 'Various',
       notes: 'monthly',
       day: 10,
+      everyMonths: 1,
+      amountVaries: false,
     };
     const { onSubmit } = renderForm(initial);
     expect(screen.getByRole('textbox', { name: 'Item' })).toHaveValue('Phone');
@@ -165,6 +167,102 @@ describe('RecurringForm', () => {
     // Still filled in: an edit form that empties itself on save looks as though
     // the record was cleared.
     expect(screen.getByRole('textbox', { name: 'Item' })).toHaveValue('Phone');
+  });
+
+  // ── How often, and bills nobody can price in advance ──
+
+  it('defaults to monthly, which is what most payments are', async () => {
+    const user = userEvent.setup();
+    const { onSubmit } = renderForm();
+    expect(screen.getByRole('textbox', { name: /How often/ })).toHaveValue('1');
+    await user.type(screen.getByRole('textbox', { name: 'Item' }), 'Phone');
+    await user.type(screen.getByRole('textbox', { name: 'Ada (€)' }), '12.99');
+    await user.click(submit());
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    expect(onSubmit.mock.calls[0]![0].everyMonths).toBe(1);
+  });
+
+  it('carries an interval through, and names it in the label', async () => {
+    const user = userEvent.setup();
+    const { onSubmit } = renderForm();
+    const every = screen.getByRole('textbox', { name: /How often/ });
+    await user.click(every);
+    await user.keyboard('{Control>}a{/Control}2');
+    expect(screen.getByRole('textbox', { name: /Every 2 months/ })).toBeInTheDocument();
+
+    await user.type(screen.getByRole('textbox', { name: 'Item' }), 'Water');
+    await user.type(screen.getByRole('textbox', { name: 'Ada (€)' }), '40');
+    await user.click(submit());
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    expect(onSubmit.mock.calls[0]![0].everyMonths).toBe(2);
+  });
+
+  it('will not accept an interval outside what it can honour', async () => {
+    // Zero would never come round; beyond a year has no schedule to sit on.
+    const user = userEvent.setup();
+    const { onSubmit } = renderForm();
+    const every = screen.getByRole('textbox', { name: /How often/ });
+    await user.click(every);
+    await user.keyboard('{Control>}a{/Control}18');
+
+    await user.type(screen.getByRole('textbox', { name: 'Item' }), 'Water');
+    await user.type(screen.getByRole('textbox', { name: 'Ada (€)' }), '40');
+    await user.click(submit());
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    expect(onSubmit.mock.calls[0]![0].everyMonths).toBeLessThanOrEqual(12);
+  });
+
+  it('stops asking for an amount once the bill is one that varies', async () => {
+    const user = userEvent.setup();
+    renderForm();
+    expect(screen.getByRole('textbox', { name: 'Ada (€)' })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('checkbox', { name: /different every time/ }));
+
+    expect(screen.queryByRole('textbox', { name: 'Ada (€)' })).toBeNull();
+    expect(screen.queryByRole('textbox', { name: /not counted/ })).toBeNull();
+    // What it is and what it counts as are still needed.
+    expect(screen.getByRole('textbox', { name: 'Item' })).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'Category' })).toBeInTheDocument();
+  });
+
+  it('saves a varying bill with no amount at all', async () => {
+    const user = userEvent.setup();
+    const { onSubmit } = renderForm();
+    await user.click(screen.getByRole('checkbox', { name: /different every time/ }));
+    await user.type(screen.getByRole('textbox', { name: 'Item' }), 'Water');
+    await user.click(submit());
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    expect(onSubmit.mock.calls[0]![0]).toMatchObject({
+      item: 'Water',
+      amountVaries: true,
+      amountA: '',
+      amountB: '',
+    });
+  });
+
+  // Leaving one behind would put it back on the sheet the moment the box is
+  // unticked, as though the app had known the figure all along.
+  it('forgets an amount already typed when the bill becomes one that varies', async () => {
+    const user = userEvent.setup();
+    const { onSubmit } = renderForm();
+    await user.type(screen.getByRole('textbox', { name: 'Ada (€)' }), '40');
+    await user.click(screen.getByRole('checkbox', { name: /different every time/ }));
+    await user.type(screen.getByRole('textbox', { name: 'Item' }), 'Water');
+    await user.click(submit());
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    expect(onSubmit.mock.calls[0]![0].amountA).toBe('');
+  });
+
+  it('still refuses a fixed payment with no amount', async () => {
+    const user = userEvent.setup();
+    const { onSubmit } = renderForm();
+    await user.type(screen.getByRole('textbox', { name: 'Item' }), 'Phone');
+    await user.click(submit());
+    expect(await screen.findByText('At least one amount is required')).toBeInTheDocument();
+    expect(onSubmit).not.toHaveBeenCalled();
   });
 
   it('surfaces a failed save rather than appearing to have worked', async () => {

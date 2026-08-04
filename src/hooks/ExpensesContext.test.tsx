@@ -65,6 +65,7 @@ function makePending(month: string): PendingExpense {
     item: 'Phone',
     category: 'Various',
     notes: '',
+    amountVaries: false,
   };
 }
 

@@ -22,6 +22,8 @@ function makeRule(overrides: Partial<RecurringRule> = {}): RecurringRule {
     category: 'Various',
     notes: '',
     day: 10,
+    everyMonths: 1,
+    amountVaries: false,
     ...overrides,
   };
 }
@@ -48,6 +50,7 @@ function duePending(n: number, ruleId = 'r1'): PendingExpense[] {
       item: 'Phone',
       category: 'Various' as const,
       notes: '',
+      amountVaries: false,
     };
   });
 }
@@ -137,6 +140,27 @@ describe('listing the rules', () => {
     expect(screen.getByRole('cell', { name: 'Phone' })).toBeInTheDocument();
     expect(screen.getByRole('cell', { name: '€12.99' })).toBeInTheDocument();
     expect(screen.getByRole('cell', { name: '10' })).toBeInTheDocument();
+  });
+
+  it('says how often each payment comes round', () => {
+    renderList([
+      makeRule({ rowIndex: 2 as RecurringRow, id: 'r1', item: 'Phone', everyMonths: 1 }),
+      makeRule({ rowIndex: 3 as RecurringRow, id: 'r2', item: 'Water', everyMonths: 2 }),
+      makeRule({ rowIndex: 4 as RecurringRow, id: 'r3', item: 'Tax', everyMonths: 12 }),
+    ]);
+    expect(screen.getByRole('cell', { name: 'Monthly' })).toBeInTheDocument();
+    expect(screen.getByRole('cell', { name: 'Every 2 months' })).toBeInTheDocument();
+    expect(screen.getByRole('cell', { name: 'Yearly' })).toBeInTheDocument();
+  });
+
+  it('marks a payment the app cannot price in advance', () => {
+    renderList([makeRule({ item: 'Water', amountVaries: true })]);
+    expect(screen.getByText('Amount varies')).toBeInTheDocument();
+  });
+
+  it('leaves a payment with a known amount unmarked', () => {
+    renderList([makeRule({ item: 'Phone' })]);
+    expect(screen.queryByText('Amount varies')).toBeNull();
   });
 
   it('says so when there is nothing set up yet', () => {
