@@ -15,8 +15,33 @@ import type { RecurringRule } from '../types/recurring';
  * maths, and mixing an unrelated domain into it makes both harder to trust.
  */
 
-/** How far back a first run will offer to catch up. */
-export const MAX_CATCH_UP_MONTHS = 24;
+/**
+ * How many missed occurrences a first run will offer to catch up.
+ *
+ * Counted in occurrences rather than months so the bound means the same thing
+ * whatever the interval: 24 months would let a yearly bill catch up twice,
+ * quietly dropping the rest of its history on a fresh install.
+ */
+export const MAX_CATCH_UP_OCCURRENCES = 24;
+
+/** How many months a recurrence may span. */
+export const MIN_EVERY_MONTHS = 1;
+export const MAX_EVERY_MONTHS = 12;
+
+/** Hold an interval read from a hand-editable cell to something workable. */
+export function toEveryMonths(raw: unknown): number {
+  const n = Math.round(Number(raw));
+  if (!Number.isFinite(n) || n < MIN_EVERY_MONTHS) return MIN_EVERY_MONTHS;
+  return Math.min(n, MAX_EVERY_MONTHS);
+}
+
+/** How a recurrence reads to a person. */
+export function describeInterval(everyMonths: number): string {
+  const n = toEveryMonths(everyMonths);
+  if (n === 1) return 'Monthly';
+  if (n === 12) return 'Yearly';
+  return `Every ${n} months`;
+}
 
 /** The cell written into expenses column G to record where a row came from. */
 export function recurringMarker(ruleId: string, month: string): string {
@@ -40,13 +65,15 @@ export function monthKey(isoDate: string): string {
   return isoDate.slice(0, 7);
 }
 
-/** Shift a YYYY-MM by n months, as integers — no Date, so no timezone. */
-export function addMonths(month: string, n: number): string {
-  const year = Number(month.slice(0, 4));
-  const monthIndex = Number(month.slice(5, 7)) - 1;
-  const total = year * 12 + monthIndex + n;
-  const y = Math.floor(total / 12);
-  const m = total - y * 12 + 1;
+/** A YYYY-MM as a single number, so months can be counted and compared. */
+export function monthIndex(month: string): number {
+  return Number(month.slice(0, 4)) * 12 + Number(month.slice(5, 7)) - 1;
+}
+
+/** The inverse of monthIndex. */
+export function monthFromIndex(index: number): string {
+  const y = Math.floor(index / 12);
+  const m = index - y * 12 + 1;
   return `${String(y).padStart(4, '0')}-${String(m).padStart(2, '0')}`;
 }
 
@@ -80,14 +107,45 @@ export function dueDate(month: string, day: number): string {
  * that falls due on the 5th first happens the following month, not on the 25th,
  * because that is the date an expense would actually carry.
  *
- * This answers "when next", not "what is outstanding": a rule with months
+ * This answers "when next", not "what is outstanding": a rule with occurrences
  * already waiting to be confirmed is behind, and the list shows the earliest of
  * those instead.
+ *
+ * It only ever names a month the rule actually falls on. A bi-monthly bill
+ * starting in March happens in May, not April, so the answer is snapped onto
+ * the rule's own schedule rather than to the next month.
  */
-export function nextDueDate(rule: Pick<RecurringRule, 'day' | 'start'>, todayIso: string): string {
+export function nextDueDate(
+  rule: Pick<RecurringRule, 'day' | 'start' | 'everyMonths'>,
+  todayIso: string,
+): string {
+  const step = toEveryMonths(rule.everyMonths);
+  const anchor = monthIndex(monthKey(rule.start));
   const from = rule.start > todayIso ? rule.start : todayIso;
-  const thisMonth = dueDate(monthKey(from), rule.day);
-  return thisMonth >= from ? thisMonth : dueDate(addMonths(monthKey(from), 1), rule.day);
+
+  let index = alignToSchedule(anchor, step, monthIndex(monthKey(from)));
+  // The month is right but its day may already have gone by.
+  if (dueDate(monthFromIndex(index), rule.day) < from) index += step;
+  return dueDate(monthFromIndex(index), rule.day);
+}
+
+/**
+ * The first occurrence at or after `from`, staying on the rule's own schedule.
+ *
+ * Rounding up onto the schedule rather than stepping forward from wherever we
+ * happen to be is what makes a rule whose interval was changed after some
+ * expenses had been created snap back onto its anchor, instead of drifting a
+ * month further out every time it is edited.
+ */
+function alignToSchedule(anchor: number, step: number, from: number): number {
+  if (from <= anchor) return anchor;
+  return anchor + Math.ceil((from - anchor) / step) * step;
+}
+
+/** The last occurrence at or before `until`, or the anchor if none has come. */
+function latestOnOrBefore(anchor: number, step: number, until: number): number {
+  if (until <= anchor) return anchor;
+  return anchor + Math.floor((until - anchor) / step) * step;
 }
 
 /** An expense a rule says is due but the sheet does not have yet. */
@@ -98,6 +156,8 @@ export interface PendingExpense {
   date: string;
   amountA: string; // display form, copied from the rule as it stands now
   amountB: string;
+  /** The rule does not know this month's figure; someone has to type it. */
+  amountVaries: boolean;
   /** The slice of each amount that is only for that person. */
   notCountedA: string;
   notCountedB: string;
@@ -111,14 +171,18 @@ export interface PendingExpense {
  *
  * Two rules govern the answer:
  *
- * 1. **Generate forward from the last month already generated**, rather than
- *    filling every gap. So deleting a generated expense does not resurrect it
- *    on the next check — a deletion is a decision, and an app that quietly
+ * 1. **Generate forward from the last occurrence already generated**, rather
+ *    than filling every gap. So deleting a generated expense does not resurrect
+ *    it on the next check — a deletion is a decision, and an app that quietly
  *    undoes it is worse than one that misses a month.
- * 2. **A month is due only once its day has arrived.** One comparison covers
- *    both ends: a rule on the 15th proposes nothing on the 3rd, and a rule
- *    started on the 25th with a day of 5 does not back-fill the month it
+ * 2. **An occurrence is due only once its day has arrived.** One comparison
+ *    covers both ends: a rule on the 15th proposes nothing on the 3rd, and a
+ *    rule started on the 25th with a day of 5 does not back-fill the month it
  *    started in.
+ * 3. **Occurrences sit on a schedule anchored at the rule's start month**,
+ *    stepping by its interval. A bi-monthly bill starting in March falls in
+ *    May and July, never April — and because every occurrence is at least a
+ *    month from the next, the YYYY-MM marker still names exactly one of them.
  *
  * The amounts are copied from the rule as it stands *now*. A rule carries no
  * history, so months missed across a price change would be proposed at today's
@@ -134,13 +198,12 @@ export function pendingRecurring(
   rules: RecurringRule[],
   existing: Pick<Expense, 'recurringMarker'>[],
   todayIso: string,
-  options: { maxCatchUpMonths?: number } = {},
+  options: { maxCatchUpOccurrences?: number } = {},
 ): PendingExpense[] {
   if (!isIsoDate(todayIso)) return [];
 
-  const maxCatchUp = options.maxCatchUpMonths ?? MAX_CATCH_UP_MONTHS;
-  const currentMonth = monthKey(todayIso);
-  const floorMonth = addMonths(currentMonth, -(maxCatchUp - 1));
+  const maxCatchUp = options.maxCatchUpOccurrences ?? MAX_CATCH_UP_OCCURRENCES;
+  const currentIndex = monthIndex(monthKey(todayIso));
 
   // Only well-formed markers count as provenance. One pass answers both
   // questions asked below: whether a given month is already on the sheet, and
@@ -160,17 +223,26 @@ export function pendingRecurring(
   for (const rule of rules) {
     if (!rule.id || !isIsoDate(rule.start)) continue;
 
-    // Walk forward from whichever is later: the month after the last one
-    // generated, or the rule's own start.
-    const start = monthKey(rule.start);
-    const last = lastGenerated.get(rule.id);
-    const resume = last ? addMonths(last, 1) : start;
-    let month = resume > start ? resume : start;
-    if (month < floorMonth) month = floorMonth;
+    const step = toEveryMonths(rule.everyMonths);
+    const anchor = monthIndex(monthKey(rule.start));
 
-    for (; month <= currentMonth; month = addMonths(month, 1)) {
+    // Resume from the occurrence after the last one created, or from the very
+    // first if none has been. Either way it is rounded up onto the schedule.
+    const last = lastGenerated.get(rule.id);
+    const resumeFrom = last ? monthIndex(last) + 1 : anchor;
+
+    // Never offer more than the cap, counting back from the most recent
+    // occurrence rather than from a fixed number of months — otherwise the
+    // bound would mean two years for a monthly bill and two occurrences for a
+    // yearly one. It is anchor + k*step by construction, so it is already on
+    // the schedule and a plain comparison keeps the alignment.
+    const floor = latestOnOrBefore(anchor, step, currentIndex) - (maxCatchUp - 1) * step;
+    let index = Math.max(alignToSchedule(anchor, step, resumeFrom), floor);
+
+    for (; index <= currentIndex; index += step) {
+      const month = monthFromIndex(index);
       const date = dueDate(month, rule.day);
-      if (date > todayIso) break; // not due yet, and neither is any later month
+      if (date > todayIso) break; // not due yet, and neither is any later one
       if (date < rule.start) continue; // the rule had not started on that day
       if (generated.has(recurringMarker(rule.id, month))) continue;
 
@@ -179,10 +251,13 @@ export function pendingRecurring(
         month,
         marker: recurringMarker(rule.id, month),
         date,
+        // Blank already for a varying payment: fetchRecurring establishes that
+        // on the way in, so every screen agrees and this can simply copy.
         amountA: rule.amountA,
         amountB: rule.amountB,
         notCountedA: rule.notCountedA,
         notCountedB: rule.notCountedB,
+        amountVaries: rule.amountVaries,
         item: rule.item,
         category: rule.category,
         notes: rule.notes,

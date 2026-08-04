@@ -36,6 +36,8 @@ const rule: RecurringRule = {
   category: 'Various',
   notes: '',
   day: 10,
+  everyMonths: 1,
+  amountVaries: false,
 };
 
 const form: RecurringFormData = {
@@ -48,6 +50,8 @@ const form: RecurringFormData = {
   category: 'Various',
   notes: '',
   day: 10,
+  everyMonths: 1,
+  amountVaries: false,
 };
 
 beforeEach(() => {

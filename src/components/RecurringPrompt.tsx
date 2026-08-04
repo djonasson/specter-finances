@@ -80,7 +80,29 @@ export function RecurringPrompt({ opened, names, pending, onConfirm, onDismiss }
       return next;
     });
 
+  // Amounts arrive in display form ("€12.99"); the inputs work in numbers, and
+  // formatAmount puts them back the way the sheet stores them.
+  const amountValue = (raw: string) => toNum(parseAmount(raw));
+  const amountFromInput = (val: number | string) => formatAmount(fromNum(val as number | ''));
+
   const chosen = pending.filter(isChosen);
+
+  /**
+   * Bills whose amount is different every time, still with no figure.
+   *
+   * The rule deliberately holds none, so this is the only moment the app can
+   * learn it. Writing a €0 row would be worse than writing nothing: it settles
+   * as though the bill were free, and the balance is the only record either of
+   * them has.
+   */
+  const unpriced = chosen.filter((p) => {
+    if (!p.amountVaries) return false;
+    const value = amountsFor(p);
+    // Zero counts as no figure, not as a figure of zero. A €0 row settles as
+    // though the bill had been free, which is the thing this guard exists to
+    // prevent — and a bill that genuinely cost nothing is better left unticked.
+    return !amountValue(value.amountA) && !amountValue(value.amountB);
+  });
   const skipped = pending.filter((p) => !isChosen(p));
 
   /**
@@ -117,7 +139,7 @@ export function RecurringPrompt({ opened, names, pending, onConfirm, onDismiss }
     setSubmitting(true);
     setError(null);
     try {
-      if (impossible.length > 0) return;
+      if (impossible.length > 0 || unpriced.length > 0) return;
       await onConfirm(chosen.map((p) => ({ ...p, ...amountsFor(p) })));
       // Dismiss exactly what was left behind. Working it out here rather than
       // letting the hook read its own state avoids persisting the set as it was
@@ -134,11 +156,6 @@ export function RecurringPrompt({ opened, names, pending, onConfirm, onDismiss }
       setSubmitting(false);
     }
   };
-
-  // Amounts arrive in display form ("€12.99"); the inputs work in numbers, and
-  // formatAmount puts them back the way the sheet stores them.
-  const amountValue = (raw: string) => toNum(parseAmount(raw));
-  const amountFromInput = (val: number | string) => formatAmount(fromNum(val as number | ''));
 
   return (
     <Modal
@@ -194,6 +211,7 @@ export function RecurringPrompt({ opened, names, pending, onConfirm, onDismiss }
                         Shown because a corrected amount can invalidate it, and
                         blocking on a figure the user cannot see is a dead end.
                       */}
+                      {p.amountVaries && <Text size="xs">amount differs every time</Text>}
                       {(p.notCountedA || p.notCountedB) && (
                         <Text size="xs">
                           not counted: {p.notCountedA || '—'} / {p.notCountedB || '—'}
@@ -241,6 +259,13 @@ export function RecurringPrompt({ opened, names, pending, onConfirm, onDismiss }
           </Table>
         </Table.ScrollContainer>
 
+        {unpriced.length > 0 && impossible.length === 0 && (
+          <Alert color="orange" variant="light" icon={<IconAlertCircle size={16} />}>
+            {unpriced[0].item} on {unpriced[0].date} needs its amount — this one is different every
+            time, so nobody but you knows what it came to.
+          </Alert>
+        )}
+
         {impossible.length > 0 && (
           <Alert color="red" variant="light" icon={<IconAlertCircle size={16} />}>
             {impossible[0].problem} — {impossible[0].p.item} on {impossible[0].p.date} sets aside
@@ -257,7 +282,7 @@ export function RecurringPrompt({ opened, names, pending, onConfirm, onDismiss }
         <Group>
           <Button
             loading={submitting}
-            disabled={chosen.length === 0 || impossible.length > 0}
+            disabled={chosen.length === 0 || impossible.length > 0 || unpriced.length > 0}
             onClick={handleConfirm}
           >
             Add {chosen.length} {chosen.length === 1 ? 'expense' : 'expenses'}

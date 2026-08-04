@@ -34,6 +34,14 @@ interface Props {
   itemPlaceholder: string;
   /** Where the category Select lands when handed something unrecognised. */
   categoryFallback: Category;
+  /**
+   * Whether to ask for money at all.
+   *
+   * A recurring payment whose amount differs every time has none to give — the
+   * figure is typed in when the bill arrives. It still needs the item, the
+   * category and the notes, so the amounts drop out rather than the whole set.
+   */
+  showAmounts?: boolean;
 }
 
 export function ExpenseFields({
@@ -42,57 +50,62 @@ export function ExpenseFields({
   onChange,
   itemPlaceholder,
   categoryFallback,
+  showAmounts = true,
 }: Props) {
   return (
     <>
-      <Group grow>
-        <NumberInput
-          label={`${names.a} (€)`}
-          prefix="€ "
-          decimalScale={2}
-          fixedDecimalScale
-          min={0}
-          placeholder="0.00"
-          value={toNum(value.amountA)}
-          onChange={(val) => onChange({ amountA: fromNum(val as number | '') })}
-        />
-        <NumberInput
-          label={`${names.b} (€)`}
-          prefix="€ "
-          decimalScale={2}
-          fixedDecimalScale
-          min={0}
-          placeholder="0.00"
-          value={toNum(value.amountB)}
-          onChange={(val) => onChange({ amountB: fromNum(val as number | '') })}
-        />
-      </Group>
+      {showAmounts && (
+        <>
+          <Group grow>
+            <NumberInput
+              label={`${names.a} (€)`}
+              prefix="€ "
+              decimalScale={2}
+              fixedDecimalScale
+              min={0}
+              placeholder="0.00"
+              value={toNum(value.amountA)}
+              onChange={(val) => onChange({ amountA: fromNum(val as number | '') })}
+            />
+            <NumberInput
+              label={`${names.b} (€)`}
+              prefix="€ "
+              decimalScale={2}
+              fixedDecimalScale
+              min={0}
+              placeholder="0.00"
+              value={toNum(value.amountB)}
+              onChange={(val) => onChange({ amountB: fromNum(val as number | '') })}
+            />
+          </Group>
 
-      {/*
-        Below the amounts, because that is what they are part of: a slice of the
-        figure directly above, not an extra charge. Left blank on almost every
-        row, so they carry no placeholder inviting a number.
-      */}
-      <Group grow>
-        <NumberInput
-          label={`${names.a} — not counted (€)`}
-          prefix="€ "
-          decimalScale={2}
-          fixedDecimalScale
-          min={0}
-          value={toNum(value.notCountedA)}
-          onChange={(val) => onChange({ notCountedA: fromNum(val as number | '') })}
-        />
-        <NumberInput
-          label={`${names.b} — not counted (€)`}
-          prefix="€ "
-          decimalScale={2}
-          fixedDecimalScale
-          min={0}
-          value={toNum(value.notCountedB)}
-          onChange={(val) => onChange({ notCountedB: fromNum(val as number | '') })}
-        />
-      </Group>
+          {/*
+            Below the amounts, because that is what they are part of: a slice of
+            the figure directly above, not an extra charge. Left blank on almost
+            every row, so they carry no placeholder inviting a number.
+          */}
+          <Group grow>
+            <NumberInput
+              label={`${names.a} — not counted (€)`}
+              prefix="€ "
+              decimalScale={2}
+              fixedDecimalScale
+              min={0}
+              value={toNum(value.notCountedA)}
+              onChange={(val) => onChange({ notCountedA: fromNum(val as number | '') })}
+            />
+            <NumberInput
+              label={`${names.b} — not counted (€)`}
+              prefix="€ "
+              decimalScale={2}
+              fixedDecimalScale
+              min={0}
+              value={toNum(value.notCountedB)}
+              onChange={(val) => onChange({ notCountedB: fromNum(val as number | '') })}
+            />
+          </Group>
+        </>
+      )}
 
       <TextInput
         label="Item"

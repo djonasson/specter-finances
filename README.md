@@ -13,8 +13,9 @@ fully owned by you.
   - **Gifts** — one partner giving the other something that does _not_ count as
     settling up: either a **present** that changed hands, or **forgiving** part of
     what the other owes (see [Transfers vs. gifts](#transfers-vs-gifts)).
-- **Recurring payments** — a phone bill, a subscription, a gym. Each one is a rule
-  that falls due monthly on a day you choose; the app offers the months that are
+- **Recurring payments** — a phone bill, a subscription, a gym, a utility bill.
+  Each one is a rule that falls due every so often on a day you choose —
+  monthly, every two months, quarterly, twice a year, yearly; the app offers the months that are
   due, including any you missed while it was closed, and never adds anything
   without asking (see [Recurring payments](#recurring-payments)).
 - **Not counted** — part of an expense that was only for the person who paid it.
@@ -93,6 +94,25 @@ on the 28th. Rather than typing those in every month, you describe each one once
 on the **Recurring** tab of the expenses screen, and the app creates the expense
 rows for you.
 
+### How often, and bills you cannot predict
+
+A payment does not have to be monthly. **Every (months)** takes anything from 1
+to 12 — 2 for a bi-monthly water bill, 3 for something quarterly, 6 for twice a
+year, 12 for an annual one. Occurrences follow a schedule anchored at the month
+it started in, so a bi-monthly bill starting in March falls in May and July,
+never April.
+
+Utility bills are a different amount every time, and the app does not pretend
+otherwise. Tick **the amount is different every time** and the payment stores no
+figure at all: it still reminds you when one is due, with the date, the item and
+the category already filled in, and asks you for the amount. It will not write
+the expense until you give it one — a €0 row would settle as though the bill had
+been free.
+
+For those, **not counted** is entered on the expense afterwards rather than in
+the reminder, since a share of an unknown amount is not something the rule can
+hold.
+
 ### It asks first, and it catches up
 
 Whenever months are waiting, the expenses page says so in a banner with a
@@ -105,10 +125,11 @@ can correct any amount or untick any row before it is added.
 
 If the app has not been opened for two months, opening it offers those two months
 as well as the current one — being away is not the same as not having paid.
-Catch-up reaches back at most 24 months, so a rule you set up years ago does not
-greet a fresh install with eighty rows.
+Catch-up reaches back at most 24 **occurrences**, so a rule you set up years ago
+does not greet a fresh install with eighty rows — and a yearly bill keeps 24
+years of history rather than the two a limit counted in months would leave it.
 
-A month is offered only once its day has arrived. A payment on the 15th proposes
+One is offered only once its day has arrived. A payment on the 15th proposes
 nothing on the 3rd.
 
 ### A created expense is a snapshot
@@ -126,12 +147,13 @@ it is written.
 
 ### Deleting, skipping and short months
 
-| You do this                            | What happens                                                                                                                                               |
-| -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Delete a rule**                      | Nothing further is created from it. Every expense it already created stays — that money was really spent.                                                  |
-| **Delete a created expense**           | It is not recreated. The app carries on from the most recent month it created, so a deletion sticks.                                                       |
-| **Untick a month** in the confirmation | Nothing is written and nothing is recorded, so it is offered again next time. "Not this month" never becomes "never".                                      |
-| **Set the day to the 31st**            | It falls on the last day of shorter months — the 28th, 29th or 30th. The payment does leave the account in February, so it is clamped rather than skipped. |
+| You do this                            | What happens                                                                                                                                                                                         |
+| -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Delete a rule**                      | Nothing further is created from it. Every expense it already created stays — that money was really spent.                                                                                            |
+| **Delete a created expense**           | It is not recreated. The app carries on from the most recent month it created, so a deletion sticks.                                                                                                 |
+| **Untick a month** in the confirmation | Nothing is written and nothing is recorded, so it is offered again next time. "Not this month" never becomes "never".                                                                                |
+| **Set the day to the 31st**            | It falls on the last day of shorter months — the 28th, 29th or 30th. The payment does leave the account in February, so it is clamped rather than skipped.                                           |
+| **Change how often it recurs**         | Future occurrences move onto the new schedule, still counted from the month it started in, so it cannot drift a month further out each time you edit it. What it has already created stays as it is. |
 
 ### Setting it up
 
@@ -325,12 +347,12 @@ the 1-based sheet row number.
   `Kind` is `present` or `forgiven`; anything else, blank included, reads as
   `forgiven` (see [Transfers vs. gifts](#transfers-vs-gifts)).
 
-- **Recurring** (`Recurring` tab, range `A2:J`) — one header row, data from row 2.
+- **Recurring** (`Recurring` tab, range `A2:L`) — one header row, data from row 2.
   Created by the app when you set the feature up, so an existing spreadsheet will
   not have it until then:
 
-  | Start | Amount (partner A) | Amount (partner B) | Item | Category | Notes | Day | Id  |
-  | ----- | ------------------ | ------------------ | ---- | -------- | ----- | --- | --- |
+  | Start | Amount (partner A) | Amount (partner B) | Item | Category | Notes | Day | Id  | Not counted (A) | Not counted (B) | Every (months) | Amount varies |
+  | ----- | ------------------ | ------------------ | ---- | -------- | ----- | --- | --- | --------------- | --------------- | -------------- | ------------- |
 
   Columns B–F are deliberately the same five as the expenses tab, so a created
   expense is a straight copy with a date in front and a marker behind.
@@ -340,7 +362,12 @@ the 1-based sheet row number.
   the start date's own day is used. `Id` is how a created expense is traced back
   to its rule — it is last so the familiar columns stay where you expect them, and
   it lives in the cell rather than being the row number, because deleting any row
-  renumbers everything below it. The last two columns work exactly as they do on
+  renumbers everything below it.
+
+  `Every (months)` is 1 to 12; blank reads as monthly. `Amount varies` holds
+  `yes` for a bill nobody can price in advance, and blank for everything else —
+  so a rule written before either column existed keeps behaving exactly as it
+  did. The last two columns work exactly as they do on
   the expenses tab, so a payment that is partly personal every month says so
   once. A rule you add by hand with no `Id` is listed but
   nothing is created from it until you give it one, which the app offers to do.

@@ -40,6 +40,7 @@ function duePending(n: number): PendingExpense[] {
       item: 'Phone',
       category: 'Various' as const,
       notes: '',
+      amountVaries: false,
     };
   });
 }
@@ -56,6 +57,8 @@ const rule: RecurringRule = {
   category: 'Various',
   notes: '',
   day: 10,
+  everyMonths: 1,
+  amountVaries: false,
 };
 
 /** Reports the current location so the tab's effect on the URL can be asserted. */

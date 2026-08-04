@@ -23,7 +23,7 @@ import type { RecurringRule, RecurringFormData, RecurringRow } from '../types/re
 import type { PersonNames } from '../types/person';
 import { RecurringForm } from './RecurringForm';
 import { CategoryIcon } from './CategoryIcon';
-import { nextDueDate } from '../services/recurring';
+import { nextDueDate, describeInterval } from '../services/recurring';
 import type { PendingExpense } from '../services/recurring';
 import { today, recurringToFormData } from '../services/utils';
 
@@ -213,6 +213,7 @@ export function RecurringList({
             <Table.Thead>
               <Table.Tr>
                 <Table.Th w={70}>Day</Table.Th>
+                <Table.Th w={130}>How often</Table.Th>
                 <Table.Th>Item</Table.Th>
                 <Table.Th w={110} ta="right">
                   {names.a}
@@ -231,7 +232,7 @@ export function RecurringList({
               {rules.map((rule) =>
                 editingRow === rule.rowIndex ? (
                   <Table.Tr key={rule.rowIndex}>
-                    <Table.Td colSpan={7} bg="var(--mantine-color-default-hover)">
+                    <Table.Td colSpan={8} bg="var(--mantine-color-default-hover)">
                       <RecurringForm
                         names={names}
                         initial={recurringToFormData(rule)}
@@ -251,9 +252,15 @@ export function RecurringList({
                 ) : (
                   <Table.Tr key={rule.rowIndex}>
                     <Table.Td style={TABULAR}>{rule.day}</Table.Td>
+                    <Table.Td style={NOWRAP}>{describeInterval(rule.everyMonths)}</Table.Td>
                     <Table.Td>
                       <Group gap="xs" wrap="nowrap">
                         <span>{rule.item}</span>
+                        {rule.amountVaries && (
+                          <Badge color="cyan" variant="filled" size="sm">
+                            Amount varies
+                          </Badge>
+                        )}
                         {!rule.id && (
                           <Badge
                             color="orange"

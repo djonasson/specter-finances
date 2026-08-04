@@ -49,6 +49,22 @@ export interface RecurringRule {
    * month.
    */
   day: number;
+  /**
+   * Months between one occurrence and the next: 1 monthly, 2 bi-monthly, 3
+   * quarterly, 6 twice a year, 12 yearly. Held to 1–12.
+   *
+   * Blank in the sheet reads as 1, so every rule written before this column
+   * existed is monthly and nothing it had already created moves.
+   */
+  everyMonths: number;
+  /**
+   * The amount is different every time — a utility bill, where only the
+   * supplier knows the figure until it arrives.
+   *
+   * The app must not guess it: the rule stores no amount, and the confirmation
+   * refuses to write the expense until one is typed in.
+   */
+  amountVaries: boolean;
 }
 
 export interface RecurringFormData {
@@ -61,4 +77,6 @@ export interface RecurringFormData {
   category: Category;
   notes: string;
   day: number;
+  everyMonths: number;
+  amountVaries: boolean;
 }

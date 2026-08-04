@@ -1462,6 +1462,8 @@ describe('recurringToFormData', () => {
     category: 'Various' as const,
     notes: 'monthly',
     day: 10,
+    everyMonths: 1,
+    amountVaries: false,
   };
 
   it('strips the display formatting off the amounts', () => {
@@ -1482,6 +1484,8 @@ describe('recurringToFormData', () => {
       item: 'Phone',
       notes: 'monthly',
       day: 10,
+      everyMonths: 1,
+      amountVaries: false,
     });
   });
 });
