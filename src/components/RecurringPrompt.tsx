@@ -102,6 +102,22 @@ export function RecurringPrompt({ opened, names, pending, onConfirm, onDismiss }
   const amountValue = (raw: string) => toNum(parseAmount(raw));
   const amountFromInput = (val: number | string) => formatAmount(fromNum(val as number | ''));
 
+  /**
+   * How a row is referred to: what it is and which month it covers.
+   *
+   * Not its date — that is the thing being edited, so it cannot also be the
+   * handle. Nothing stops two payments sharing a name, though, and "Insurance"
+   * for the car and the house falling due in the same month is ordinary, so the
+   * id is added where the pair would otherwise name two rows at once.
+   */
+  const sharedNames = new Set(
+    pending.map((p) => `${p.item}|${p.month}`).filter((key, i, all) => all.indexOf(key) !== i),
+  );
+  const rowLabel = (p: PendingExpense) =>
+    sharedNames.has(`${p.item}|${p.month}`)
+      ? `${p.item} (${p.ruleId}) in ${p.month}`
+      : `${p.item} in ${p.month}`;
+
   const chosen = pending.filter(isChosen);
 
   /**
@@ -166,30 +182,25 @@ export function RecurringPrompt({ opened, names, pending, onConfirm, onDismiss }
   /**
    * The one thing wrong with this batch, if anything is.
    *
-   * Derived once rather than as three parallel conditions: the precedence lives
-   * in this ternary instead of being spelled out again as a negative in the JSX
-   * and a third time in the submit handler, and a fourth reason to stop is one
-   * more branch here rather than an edit in four places.
-   */
-  /**
-   * The one thing wrong with this batch, if anything is.
-   *
    * Derived in one place rather than as three parallel conditions: the
    * precedence lives here instead of being spelled out again as a negative in
    * the markup and a third time in the submit handler, and a fourth reason to
    * stop is one more guard rather than an edit in four places.
    */
+  /** The date as it stands, falling back to the one the row arrived with. */
+  const shownDate = (p: PendingExpense) => editsFor(p).date || p.date;
+
   function currentBlocker(): { colour: string; message: string } | null {
     if (impossible) {
       return {
         colour: 'red',
-        message: `${impossible.problem} — ${impossible.p.item} on ${impossible.date} sets aside more than the amount now says. Correct the amount, or untick that month and change the payment itself.`,
+        message: `${impossible.problem} — ${impossible.p.item} on ${impossible.date || impossible.p.date} sets aside more than the amount now says. Correct the amount, or untick that month and change the payment itself.`,
       };
     }
     if (unpriced) {
       return {
         colour: 'orange',
-        message: `${unpriced.item} on ${editsFor(unpriced).date} needs its amount — this one is different every time, so nobody but you knows what it came to.`,
+        message: `${unpriced.item} on ${shownDate(unpriced)} needs its amount — this one is different every time, so nobody but you knows what it came to.`,
       };
     }
     if (misdated) {
@@ -268,7 +279,7 @@ export function RecurringPrompt({ opened, names, pending, onConfirm, onDismiss }
                     <Table.Td>
                       <Checkbox
                         checked={included}
-                        aria-label={`Add ${p.item} for ${p.month}`}
+                        aria-label={`Add ${rowLabel(p)}`}
                         onChange={(e) => setChosen(p, e.currentTarget.checked)}
                       />
                     </Table.Td>
@@ -281,7 +292,7 @@ export function RecurringPrompt({ opened, names, pending, onConfirm, onDismiss }
                         why it cannot be used.
                       */}
                       <DateInput
-                        aria-label={`Date for ${p.item} in ${p.month}`}
+                        aria-label={`Date for ${rowLabel(p)}`}
                         valueFormat="YYYY-MM-DD"
                         disabled={!included}
                         value={value.date || null}
@@ -303,7 +314,7 @@ export function RecurringPrompt({ opened, names, pending, onConfirm, onDismiss }
                     </Table.Td>
                     <Table.Td>
                       <NumberInput
-                        aria-label={`${names.a} for ${p.item} in ${p.month}`}
+                        aria-label={`${names.a} for ${rowLabel(p)}`}
                         prefix="€ "
                         decimalScale={2}
                         fixedDecimalScale
@@ -315,7 +326,7 @@ export function RecurringPrompt({ opened, names, pending, onConfirm, onDismiss }
                     </Table.Td>
                     <Table.Td>
                       <NumberInput
-                        aria-label={`${names.b} for ${p.item} in ${p.month}`}
+                        aria-label={`${names.b} for ${rowLabel(p)}`}
                         prefix="€ "
                         decimalScale={2}
                         fixedDecimalScale

@@ -75,7 +75,7 @@ describe('RecurringPrompt', () => {
   it('leaves out the last month when the user unticks it', async () => {
     const user = userEvent.setup();
     const { onConfirm } = renderPrompt([feb, mar]);
-    await user.click(screen.getByRole('checkbox', { name: 'Add Phone for 2026-03' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Add Phone in 2026-03' }));
     await user.click(screen.getByRole('button', { name: 'Add 1 expense' }));
     await waitFor(() => expect(onConfirm).toHaveBeenCalled());
     expect(onConfirm.mock.calls[0]![0].map((p) => p.month)).toEqual(['2026-02']);
@@ -89,10 +89,10 @@ describe('RecurringPrompt', () => {
     const user = userEvent.setup();
     const { onConfirm } = renderPrompt([feb, mar]);
 
-    await user.click(screen.getByRole('checkbox', { name: 'Add Phone for 2026-02' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Add Phone in 2026-02' }));
 
     // March came off with it, so no hole can be left behind.
-    expect(screen.getByRole('checkbox', { name: 'Add Phone for 2026-03' })).not.toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'Add Phone in 2026-03' })).not.toBeChecked();
     expect(screen.getByRole('button', { name: /^Add 0 expenses$/ })).toBeDisabled();
     expect(onConfirm).not.toHaveBeenCalled();
   });
@@ -101,10 +101,10 @@ describe('RecurringPrompt', () => {
     const user = userEvent.setup();
     renderPrompt([feb, mar]);
 
-    await user.click(screen.getByRole('checkbox', { name: 'Add Phone for 2026-02' }));
-    await user.click(screen.getByRole('checkbox', { name: 'Add Phone for 2026-03' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Add Phone in 2026-02' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Add Phone in 2026-03' }));
 
-    expect(screen.getByRole('checkbox', { name: 'Add Phone for 2026-02' })).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'Add Phone in 2026-02' })).toBeChecked();
     expect(screen.getByRole('button', { name: 'Add 2 expenses' })).toBeEnabled();
   });
 
@@ -113,7 +113,7 @@ describe('RecurringPrompt', () => {
     const gym = makePending({ ruleId: 'r2', month: '2026-03', item: 'Gym' });
     const { onConfirm } = renderPrompt([feb, mar, gym]);
 
-    await user.click(screen.getByRole('checkbox', { name: 'Add Phone for 2026-02' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Add Phone in 2026-02' }));
     await user.click(screen.getByRole('button', { name: 'Add 1 expense' }));
 
     await waitFor(() => expect(onConfirm).toHaveBeenCalled());
@@ -123,7 +123,7 @@ describe('RecurringPrompt', () => {
   it('records nothing for a skipped month, so it can be offered again', async () => {
     const user = userEvent.setup();
     const { onConfirm } = renderPrompt([feb, mar]);
-    await user.click(screen.getByRole('checkbox', { name: 'Add Phone for 2026-03' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Add Phone in 2026-03' }));
     await user.click(screen.getByRole('button', { name: 'Add 1 expense' }));
     await waitFor(() => expect(onConfirm).toHaveBeenCalled());
     const markers = onConfirm.mock.calls[0]![0].map((p) => p.marker);
@@ -136,7 +136,7 @@ describe('RecurringPrompt', () => {
   it('stops asking about exactly what was left behind, not what it opened with', async () => {
     const user = userEvent.setup();
     const { onConfirm, onDismiss } = renderPrompt([feb, mar]);
-    await user.click(screen.getByRole('checkbox', { name: 'Add Phone for 2026-03' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Add Phone in 2026-03' }));
     await user.click(screen.getByRole('button', { name: 'Add 1 expense' }));
 
     await waitFor(() => expect(onConfirm).toHaveBeenCalled());
@@ -184,7 +184,7 @@ describe('RecurringPrompt', () => {
   it('will not write an empty list once everything has been unticked', async () => {
     const user = userEvent.setup();
     renderPrompt([feb]);
-    await user.click(screen.getByRole('checkbox', { name: 'Add Phone for 2026-02' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Add Phone in 2026-02' }));
     expect(screen.getByRole('button', { name: /^Add 0 expenses$/ })).toBeDisabled();
   });
 
@@ -321,7 +321,7 @@ describe('a payment whose amount varies', () => {
     const phone = makePending({ month: '2026-01', item: 'Phone' });
     const { onConfirm } = renderPrompt([phone, water]);
 
-    await user.click(screen.getByRole('checkbox', { name: 'Add Water for 2026-02' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Add Water in 2026-02' }));
     await user.click(screen.getByRole('button', { name: /^Add 1 expense$/ }));
 
     await waitFor(() => expect(onConfirm).toHaveBeenCalled());
@@ -383,8 +383,11 @@ describe('correcting the date', () => {
   it('gives the date column room for a whole date', () => {
     renderPrompt([feb]);
     const header = screen.getByRole('columnheader', { name: 'Date' });
-    const width = Number((header.getAttribute('style') ?? '').replace(/\D/g, ''));
-    expect(width).toBeGreaterThanOrEqual(150);
+    // Mantine emits `width: calc(9.375rem * var(--mantine-scale))`. Stripping
+    // every non-digit gives 9375, which clears any threshold — the first
+    // version of this test passed at the width it was written to catch.
+    const rem = Number(/calc\(([\d.]+)rem/.exec(header.getAttribute('style') ?? '')?.[1]);
+    expect(rem * 16).toBeGreaterThanOrEqual(150);
   });
 
   it('leaves the date alone when it is not touched', async () => {
@@ -462,11 +465,61 @@ describe('correcting the date', () => {
     const mar = makePending({ month: '2026-03' });
     const { onConfirm } = renderPrompt([feb, mar]);
 
-    await user.click(screen.getByRole('checkbox', { name: 'Add Phone for 2026-03' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Add Phone in 2026-03' }));
     await retype(user, 'Date for Phone in 2026-03', '2026-05-01');
 
     await user.click(screen.getByRole('button', { name: /^Add 1 expense$/ }));
     await waitFor(() => expect(onConfirm).toHaveBeenCalled());
     expect(onConfirm.mock.calls[0]![0].map((p) => p.month)).toEqual(['2026-02']);
+  });
+});
+
+describe('two payments sharing a name', () => {
+  // "Insurance" for the car and for the house, both due in February, is an
+  // ordinary thing to have — and a handle that names two rows at once is no
+  // handle at all, for a screen reader or for a test.
+  const car = makePending({ ruleId: 'r1', month: '2026-02', item: 'Insurance' });
+  const house = makePending({ ruleId: 'r2', month: '2026-02', item: 'Insurance' });
+
+  it('tells them apart', () => {
+    renderPrompt([car, house]);
+    expect(
+      screen.getByRole('textbox', { name: 'Date for Insurance (r1) in 2026-02' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('textbox', { name: 'Date for Insurance (r2) in 2026-02' }),
+    ).toBeInTheDocument();
+  });
+
+  it('leaves the plain name alone when nothing collides', () => {
+    renderPrompt([car]);
+    expect(
+      screen.getByRole('textbox', { name: 'Date for Insurance in 2026-02' }),
+    ).toBeInTheDocument();
+  });
+
+  it('keeps the same name apart when the months differ', () => {
+    renderPrompt([car, makePending({ ruleId: 'r2', month: '2026-03', item: 'Insurance' })]);
+    expect(
+      screen.getByRole('textbox', { name: 'Date for Insurance in 2026-02' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('textbox', { name: 'Date for Insurance in 2026-03' }),
+    ).toBeInTheDocument();
+  });
+});
+
+describe('a message about a row whose date was cleared', () => {
+  it('still names a date rather than trailing off', async () => {
+    const user = userEvent.setup();
+    const water = makePending({ month: '2026-02', item: 'Water', amountA: '', amountVaries: true });
+    renderPrompt([water]);
+
+    const field = screen.getByRole('textbox', { name: 'Date for Water in 2026-02' });
+    await user.click(field);
+    await user.keyboard('{Control>}a{/Control}{Delete}');
+
+    expect(screen.queryByText(/Water on\s+needs its amount/)).toBeNull();
+    expect(await screen.findByText(/Water on 2026-02-10 needs its amount/)).toBeInTheDocument();
   });
 });
