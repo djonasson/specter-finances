@@ -233,12 +233,12 @@ export function RecurringPrompt({ opened, names, pending, onConfirm, onDismiss }
           </Alert>
         )}
 
-        <Table.ScrollContainer minWidth={520}>
+        <Table.ScrollContainer minWidth={580}>
           <Table>
             <Table.Thead>
               <Table.Tr>
                 <Table.Th w={40}>Add</Table.Th>
-                <Table.Th w={110}>Date</Table.Th>
+                <Table.Th w={150}>Date</Table.Th>
                 <Table.Th>Item</Table.Th>
                 <Table.Th w={120} ta="right">
                   {names.a}

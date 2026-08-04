@@ -379,6 +379,16 @@ describe('correcting the date', () => {
     expect(onConfirm.mock.calls[0]![0][0]).toMatchObject({ date: '2026-02-18' });
   });
 
+  // jsdom has no layout, so it cannot see the value being clipped — this pins
+  // the column width instead, which is the thing that was wrong. The date is
+  // the field the user is being asked to check, and it was showing "2026-08-0".
+  it('gives the date column room for a whole date', () => {
+    renderPrompt([feb]);
+    const header = screen.getByRole('columnheader', { name: 'Date' });
+    const width = Number((header.getAttribute('style') ?? '').replace(/\D/g, ''));
+    expect(width).toBeGreaterThanOrEqual(150);
+  });
+
   it('leaves the date alone when it is not touched', async () => {
     const user = userEvent.setup();
     const { onConfirm } = renderPrompt([feb]);
