@@ -3,7 +3,8 @@ import {
   recurringMarker,
   parseRecurringMarker,
   monthKey,
-  addMonths,
+  monthIndex,
+  monthFromIndex,
   daysInMonth,
   dueDate,
   nextDueDate,
@@ -87,15 +88,26 @@ describe('month arithmetic', () => {
   });
 
   it('crosses a year boundary going forwards', () => {
-    expect(addMonths('2026-12', 1)).toBe('2027-01');
+    expect(monthFromIndex(monthIndex('2026-12') + 1)).toBe('2027-01');
   });
 
   it('crosses a year boundary going backwards', () => {
-    expect(addMonths('2026-01', -1)).toBe('2025-12');
+    expect(monthFromIndex(monthIndex('2026-01') - 1)).toBe('2025-12');
   });
 
   it('steps back a whole catch-up window at once', () => {
-    expect(addMonths('2026-07', -23)).toBe('2024-08');
+    expect(monthFromIndex(monthIndex('2026-07') - 23)).toBe('2024-08');
+  });
+
+  it('round-trips a month through its index', () => {
+    for (const m of ['2026-01', '2026-12', '1999-06', '2031-02']) {
+      expect(monthFromIndex(monthIndex(m))).toBe(m);
+    }
+  });
+
+  it('counts the months between two dates as a plain difference', () => {
+    expect(monthIndex('2026-07') - monthIndex('2026-01')).toBe(6);
+    expect(monthIndex('2027-01') - monthIndex('2026-01')).toBe(12);
   });
 
   it('knows February is longer in a leap year', () => {
@@ -496,8 +508,16 @@ describe('pendingRecurring across intervals', () => {
 // ── Bills whose amount nobody knows in advance ──
 
 describe('a payment whose amount varies', () => {
+  // A varying rule reaches memory with no amount at all — fetchRecurring settles
+  // that, so every screen agrees — and the generator simply carries it through.
   it('offers no amount at all, rather than one it invented', () => {
-    const rule = makeRule({ amountA: '€30.00', notCountedA: '€5.00', amountVaries: true });
+    const rule = makeRule({
+      amountA: '',
+      amountB: '',
+      notCountedA: '',
+      notCountedB: '',
+      amountVaries: true,
+    });
     const [pending] = pendingRecurring([rule], [], '2026-01-10');
     expect(pending).toMatchObject({
       amountA: '',

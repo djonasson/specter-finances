@@ -38,6 +38,7 @@ import {
 } from './sheets';
 import type { RecurringRow } from '../types/recurring';
 import type { PendingExpense } from './recurring';
+import { pendingRecurring } from './recurring';
 
 const SPREADSHEET_ID = 'test-sheet-id';
 
@@ -1500,6 +1501,45 @@ describe('the interval and varying-amount columns', () => {
     expect(rules[0].amountVaries).toBe(false);
   });
 
+  // The form clears the fields when the box is ticked, but the form is not the
+  // only way in: a hand-edited sheet can hold "yes" beside a leftover figure,
+  // and the list would then show an amount next to the badge saying nobody
+  // knows it. Settled once, here, so every screen agrees.
+  it('reads a varying rule as holding no amount, whatever the cells say', async () => {
+    mockFetchStatuses([
+      {
+        body: {
+          values: [['2026-01-10', 30, 5, 'Water', 'Home', '', 10, 'r1', 3, 1, 2, 'yes']],
+        },
+      },
+    ]);
+    const { rules } = await fetchRecurring();
+    expect(rules[0]).toMatchObject({
+      amountVaries: true,
+      amountA: '',
+      amountB: '',
+      notCountedA: '',
+      notCountedB: '',
+      item: 'Water',
+    });
+  });
+
+  it('leaves a fixed rule’s amounts exactly as the sheet holds them', async () => {
+    mockFetchStatuses([
+      {
+        body: { values: [['2026-01-10', 30, 5, 'Phone', 'Various', '', 10, 'r1', 3, 1, 1, '']] },
+      },
+    ]);
+    const { rules } = await fetchRecurring();
+    expect(rules[0]).toMatchObject({
+      amountVaries: false,
+      amountA: '€30.00',
+      amountB: '€5.00',
+      notCountedA: '€3.00',
+      notCountedB: '€1.00',
+    });
+  });
+
   it('writes both columns when a rule is added', async () => {
     const calls = mockFetchStatuses([
       { body: { sheets: [{ properties: { title: 'Recurring', sheetId: 7 } }] } },
@@ -1555,5 +1595,56 @@ describe('the interval and varying-amount columns', () => {
     const row = (bodyOf(calls[0]).values as string[][])[0];
     expect(row.slice(10)).toEqual(['1', '']);
     expect(urls(calls)[0]).toContain('Recurring!A4:L4');
+  });
+});
+
+// ── The varying-amount invariant, end to end ──
+//
+// "A payment whose amount varies holds none" is established in fetchRecurring
+// and relied on by pendingRecurring, and nothing tested the two halves
+// together. That gap is exactly wide enough for one of them to stop holding up
+// its end without a single test going red.
+
+describe('a varying rule from the sheet through to a pending expense', () => {
+  it('reaches the confirmation with no amount, even when the sheet holds one', async () => {
+    mockFetchStatuses([
+      {
+        body: {
+          // Hand-edited: "yes" in L beside a leftover figure in B.
+          values: [['2026-01-10', 30, '', 'Water', 'Home', '', 10, 'r1', 4, '', 2, 'yes']],
+        },
+      },
+    ]);
+
+    const { rules } = await fetchRecurring();
+    const pending = pendingRecurring(rules, [], '2026-01-31');
+
+    expect(pending).toHaveLength(1);
+    expect(pending[0]).toMatchObject({
+      item: 'Water',
+      date: '2026-01-10',
+      amountA: '',
+      amountB: '',
+      notCountedA: '',
+      notCountedB: '',
+      amountVaries: true,
+    });
+  });
+
+  it('carries a fixed rule’s amount all the way through, unchanged', async () => {
+    mockFetchStatuses([
+      {
+        body: { values: [['2026-01-10', 30, '', 'Phone', 'Various', '', 10, 'r1', 4, '', 1, '']] },
+      },
+    ]);
+
+    const { rules } = await fetchRecurring();
+    const pending = pendingRecurring(rules, [], '2026-01-31');
+
+    expect(pending[0]).toMatchObject({
+      amountA: '€30.00',
+      notCountedA: '€4.00',
+      amountVaries: false,
+    });
   });
 });

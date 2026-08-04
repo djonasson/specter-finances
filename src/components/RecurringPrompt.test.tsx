@@ -330,3 +330,19 @@ describe('a payment whose amount varies', () => {
     expect(screen.queryByText(/needs its amount/)).toBeNull();
   });
 });
+
+describe('a varying bill typed as zero', () => {
+  it('is treated as no figure at all, rather than as a free bill', async () => {
+    // A €0 row settles as though the bill had been free — the thing the guard
+    // exists to prevent — so an explicit zero must not slip past it.
+    const user = userEvent.setup();
+    const water = makePending({ month: '2026-02', item: 'Water', amountA: '', amountVaries: true });
+    const { onConfirm } = renderPrompt([water]);
+
+    await user.type(screen.getByRole('textbox', { name: 'Ada for Water on 2026-02-10' }), '0');
+
+    expect(screen.getByRole('button', { name: /^Add 1 expense$/ })).toBeDisabled();
+    expect(screen.getByText(/needs its amount/)).toBeInTheDocument();
+    expect(onConfirm).not.toHaveBeenCalled();
+  });
+});

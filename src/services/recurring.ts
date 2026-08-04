@@ -77,11 +77,6 @@ export function monthFromIndex(index: number): string {
   return `${String(y).padStart(4, '0')}-${String(m).padStart(2, '0')}`;
 }
 
-/** Shift a YYYY-MM by n months, as integers — no Date, so no timezone. */
-export function addMonths(month: string, n: number): string {
-  return monthFromIndex(monthIndex(month) + n);
-}
-
 /** Days in a YYYY-MM. UTC throughout, so it cannot land in the wrong month. */
 export function daysInMonth(month: string): number {
   const year = Number(month.slice(0, 4));
@@ -208,8 +203,7 @@ export function pendingRecurring(
   if (!isIsoDate(todayIso)) return [];
 
   const maxCatchUp = options.maxCatchUpOccurrences ?? MAX_CATCH_UP_OCCURRENCES;
-  const currentMonth = monthKey(todayIso);
-  const currentIndex = monthIndex(currentMonth);
+  const currentIndex = monthIndex(monthKey(todayIso));
 
   // Only well-formed markers count as provenance. One pass answers both
   // questions asked below: whether a given month is already on the sheet, and
@@ -236,14 +230,14 @@ export function pendingRecurring(
     // first if none has been. Either way it is rounded up onto the schedule.
     const last = lastGenerated.get(rule.id);
     const resumeFrom = last ? monthIndex(last) + 1 : anchor;
-    let index = alignToSchedule(anchor, step, resumeFrom);
 
     // Never offer more than the cap, counting back from the most recent
     // occurrence rather than from a fixed number of months — otherwise the
     // bound would mean two years for a monthly bill and two occurrences for a
-    // yearly one.
+    // yearly one. It is anchor + k*step by construction, so it is already on
+    // the schedule and a plain comparison keeps the alignment.
     const floor = latestOnOrBefore(anchor, step, currentIndex) - (maxCatchUp - 1) * step;
-    if (index < floor) index = alignToSchedule(anchor, step, floor);
+    let index = Math.max(alignToSchedule(anchor, step, resumeFrom), floor);
 
     for (; index <= currentIndex; index += step) {
       const month = monthFromIndex(index);
@@ -257,13 +251,12 @@ export function pendingRecurring(
         month,
         marker: recurringMarker(rule.id, month),
         date,
-        // A varying amount is one the app has no business guessing: the rule
-        // holds none, and the confirmation refuses to write the row until one
-        // is typed in.
-        amountA: rule.amountVaries ? '' : rule.amountA,
-        amountB: rule.amountVaries ? '' : rule.amountB,
-        notCountedA: rule.amountVaries ? '' : rule.notCountedA,
-        notCountedB: rule.amountVaries ? '' : rule.notCountedB,
+        // Blank already for a varying payment: fetchRecurring establishes that
+        // on the way in, so every screen agrees and this can simply copy.
+        amountA: rule.amountA,
+        amountB: rule.amountB,
+        notCountedA: rule.notCountedA,
+        notCountedB: rule.notCountedB,
         amountVaries: rule.amountVaries,
         item: rule.item,
         category: rule.category,

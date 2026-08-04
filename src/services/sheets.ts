@@ -541,8 +541,31 @@ const RECURRING_HEADER = [
   'Amount varies',
 ];
 
+/**
+ * Zero-based index of the first Recurring column added after the tab shipped: I.
+ *
+ * A tab created before them keeps a shorter header while the app writes the
+ * full width, so these are the ones topped up.
+ */
+const RECURRING_FIRST_LATE_COLUMN = 8;
+
 /** What column L holds when a payment's amount is different every time. */
 const VARIES = 'yes';
+
+/**
+ * Does this rule's amount change every time?
+ *
+ * Anything but the word itself reads as a fixed amount, so a blank cell — every
+ * rule written before the column existed — and a stray note both keep the
+ * behaviour they already had. Same shape as `toGiftKind`.
+ */
+function toAmountVaries(raw: unknown): boolean {
+  return (
+    String(raw ?? '')
+      .trim()
+      .toLowerCase() === VARIES
+  );
+}
 
 /**
  * A short, stable, opaque id for a rule.
@@ -623,25 +646,28 @@ export async function fetchRecurring(): Promise<RecurringResult> {
       // the cell blank — as a hand-added rule would leave it — the start date's
       // day is the honest reading.
       const day = Number(row[6]) || Number(start.slice(8, 10)) || 1;
+      // Settled here rather than at each screen that reads a rule: a payment
+      // whose amount varies holds none, so nothing downstream can show a figure
+      // beside the badge saying nobody knows it. A hand-edited sheet can hold
+      // both, and the form is not the only way in.
+      const amountVaries = toAmountVaries(row[11]);
+      const money = (cell: unknown) => (amountVaries ? '' : normalizeAmount(cell));
       return {
         rowIndex: (i + 2) as RecurringRow,
         start,
-        amountA: normalizeAmount(row[1]),
-        amountB: normalizeAmount(row[2]),
+        amountA: money(row[1]),
+        amountB: money(row[2]),
         item: String(row[3] || ''),
         category: toCategory(String(row[4] || '')),
         notes: String(row[5] || ''),
         day,
         id: String(row[7] || '').trim(),
-        notCountedA: normalizeAmount(row[8]),
-        notCountedB: normalizeAmount(row[9]),
+        notCountedA: money(row[8]),
+        notCountedB: money(row[9]),
         // Blank reads as monthly and as a fixed amount, so every rule written
         // before these columns existed keeps behaving exactly as it did.
         everyMonths: toEveryMonths(row[10]),
-        amountVaries:
-          String(row[11] ?? '')
-            .trim()
-            .toLowerCase() === VARIES,
+        amountVaries,
       };
     })
     // Filtered after mapping so rowIndex still matches the physical sheet row.
@@ -658,9 +684,23 @@ export async function fetchRecurring(): Promise<RecurringResult> {
  * with the value just read would replace a formula there with whatever it
  * currently renders to.
  */
-async function ensureLabels(sheet: string, row: number, columns: string[], labels: string[]) {
+/** Spreadsheet column letter for a zero-based index: 0 is A. */
+function columnLetter(index: number): string {
+  return String.fromCharCode(65 + index);
+}
+
+/**
+ * Label the app's own columns, starting at `firstColumn` (zero-based).
+ *
+ * The letters are derived rather than listed beside the labels: a parallel
+ * array has to be kept in step by hand, and one label too many would have
+ * produced the range `Recurring!undefined1`.
+ */
+async function ensureLabels(sheet: string, row: number, firstColumn: number, labels: string[]) {
   const { spreadsheetId } = getConfig();
-  const span = `${sheet}!${columns[0]}${row}:${columns[columns.length - 1]}${row}`;
+  const span =
+    `${sheet}!${columnLetter(firstColumn)}${row}` +
+    `:${columnLetter(firstColumn + labels.length - 1)}${row}`;
   const existing = await sheetsRequest(`/${spreadsheetId}/values/${encodeURIComponent(span)}`);
   const current = (existing.values?.[0] ?? []) as unknown[];
 
@@ -668,7 +708,11 @@ async function ensureLabels(sheet: string, row: number, columns: string[], label
   // first blank to the last would write over anything filled in between, which
   // is the single thing this function promises not to do. Still one request.
   const data = labels
-    .map((label, i) => ({ label, column: columns[i], filled: String(current[i] ?? '').trim() }))
+    .map((label, i) => ({
+      label,
+      column: columnLetter(firstColumn + i),
+      filled: String(current[i] ?? '').trim(),
+    }))
     .filter((cell) => !cell.filled)
     .map((cell) => ({
       range: `${sheet}!${cell.column}${row}:${cell.column}${row}`,
@@ -697,11 +741,12 @@ async function ensureLabels(sheet: string, row: number, columns: string[], label
  * themselves outranks ours, and writing a cell back even with the value we just
  * read would replace a formula there with whatever it currently renders to.
  */
-const EXPENSE_LABEL_COLUMNS = ['G', 'H', 'I', 'J'];
+/** Zero-based index of the first expenses column the app writes: G. */
+const EXPENSE_FIRST_APP_COLUMN = 6;
 
 export async function ensureExpenseColumnLabels(): Promise<void> {
   const { sheetName } = getConfig();
-  await ensureLabels(sheetName, 2, EXPENSE_LABEL_COLUMNS, EXPENSE_COLUMN_LABELS);
+  await ensureLabels(sheetName, 2, EXPENSE_FIRST_APP_COLUMN, EXPENSE_COLUMN_LABELS);
 }
 
 /**
@@ -774,7 +819,12 @@ export async function ensureRecurringSetup(): Promise<void> {
   // header while the app writes ten. Reads and writes are positional so no
   // value is wrong, but two unlabelled columns of money in someone's own
   // spreadsheet is the thing this whole labelling exists to avoid.
-  await ensureLabels(RECURRING_SHEET, 1, ['I', 'J', 'K', 'L'], RECURRING_HEADER.slice(8));
+  await ensureLabels(
+    RECURRING_SHEET,
+    1,
+    RECURRING_FIRST_LATE_COLUMN,
+    RECURRING_HEADER.slice(RECURRING_FIRST_LATE_COLUMN),
+  );
   await ensureExpenseColumnLabels();
 }
 

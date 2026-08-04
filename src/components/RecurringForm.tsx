@@ -65,12 +65,12 @@ export function RecurringForm({
       setError('At least one amount is required');
       return;
     }
-    if (!Number.isInteger(form.everyMonths) || form.everyMonths < MIN_EVERY_MONTHS) {
-      setError(`How often must be at least every ${MIN_EVERY_MONTHS} month`);
-      return;
-    }
-    if (form.everyMonths > MAX_EVERY_MONTHS) {
-      setError(`How often cannot be more than every ${MAX_EVERY_MONTHS} months`);
+    if (
+      !Number.isInteger(form.everyMonths) ||
+      form.everyMonths < MIN_EVERY_MONTHS ||
+      form.everyMonths > MAX_EVERY_MONTHS
+    ) {
+      setError(`How often must be between ${MIN_EVERY_MONTHS} and ${MAX_EVERY_MONTHS} months`);
       return;
     }
     if (!Number.isInteger(form.day) || form.day < 1 || form.day > 31) {
@@ -140,13 +140,11 @@ export function RecurringForm({
             const amountVaries = e.currentTarget.checked;
             // Clear what can no longer be known. Leaving a stale figure behind
             // would put it on the sheet the next time the box is unticked.
-            setForm((f) => ({
-              ...f,
-              amountVaries,
-              ...(amountVaries
-                ? { amountA: '', amountB: '', notCountedA: '', notCountedB: '' }
-                : {}),
-            }));
+            setForm((f) =>
+              amountVaries
+                ? { ...f, amountVaries, amountA: '', amountB: '', notCountedA: '', notCountedB: '' }
+                : { ...f, amountVaries },
+            );
           }}
         />
 

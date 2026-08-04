@@ -80,10 +80,10 @@ export function ExpenseFields({
           </Group>
 
           {/*
-        Below the amounts, because that is what they are part of: a slice of the
-        figure directly above, not an extra charge. Left blank on almost every
-        row, so they carry no placeholder inviting a number.
-      */}
+            Below the amounts, because that is what they are part of: a slice of
+            the figure directly above, not an extra charge. Left blank on almost
+            every row, so they carry no placeholder inviting a number.
+          */}
           <Group grow>
             <NumberInput
               label={`${names.a} — not counted (€)`}

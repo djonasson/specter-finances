@@ -80,6 +80,11 @@ export function RecurringPrompt({ opened, names, pending, onConfirm, onDismiss }
       return next;
     });
 
+  // Amounts arrive in display form ("€12.99"); the inputs work in numbers, and
+  // formatAmount puts them back the way the sheet stores them.
+  const amountValue = (raw: string) => toNum(parseAmount(raw));
+  const amountFromInput = (val: number | string) => formatAmount(fromNum(val as number | ''));
+
   const chosen = pending.filter(isChosen);
 
   /**
@@ -93,7 +98,10 @@ export function RecurringPrompt({ opened, names, pending, onConfirm, onDismiss }
   const unpriced = chosen.filter((p) => {
     if (!p.amountVaries) return false;
     const value = amountsFor(p);
-    return toNum(parseAmount(value.amountA)) === '' && toNum(parseAmount(value.amountB)) === '';
+    // Zero counts as no figure, not as a figure of zero. A €0 row settles as
+    // though the bill had been free, which is the thing this guard exists to
+    // prevent — and a bill that genuinely cost nothing is better left unticked.
+    return !amountValue(value.amountA) && !amountValue(value.amountB);
   });
   const skipped = pending.filter((p) => !isChosen(p));
 
@@ -148,11 +156,6 @@ export function RecurringPrompt({ opened, names, pending, onConfirm, onDismiss }
       setSubmitting(false);
     }
   };
-
-  // Amounts arrive in display form ("€12.99"); the inputs work in numbers, and
-  // formatAmount puts them back the way the sheet stores them.
-  const amountValue = (raw: string) => toNum(parseAmount(raw));
-  const amountFromInput = (val: number | string) => formatAmount(fromNum(val as number | ''));
 
   return (
     <Modal
