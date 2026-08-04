@@ -73,11 +73,21 @@ export function RecurringPrompt({ opened, names, pending, onConfirm, onDismiss }
     setError(null);
   }, [pending]);
 
-  const editsFor = (p: PendingExpense): RowEdit =>
-    edits[p.marker] ?? { amountA: p.amountA, amountB: p.amountB, date: p.date };
+  /** The row as the rule proposed it, before anyone touched it. */
+  const asProposed = (p: PendingExpense): RowEdit => ({
+    amountA: p.amountA,
+    amountB: p.amountB,
+    date: p.date,
+  });
 
+  const editsFor = (p: PendingExpense): RowEdit => edits[p.marker] ?? asProposed(p);
+
+  // Builds on `e`, the state as the updater found it, never on the render's
+  // `edits`. Two patches to one row inside a single React event — a
+  // reformat-on-blur landing with the click that opened the date picker — are
+  // batched, so reading the outer state there would silently drop the first.
   const setEdit = (p: PendingExpense, patch: Partial<RowEdit>) =>
-    setEdits((e) => ({ ...e, [p.marker]: { ...editsFor(p), ...patch } }));
+    setEdits((e) => ({ ...e, [p.marker]: { ...(e[p.marker] ?? asProposed(p)), ...patch } }));
   const isChosen = (p: PendingExpense) => !(p.ruleId in stopAt) || p.month < stopAt[p.ruleId];
 
   /** The months of one payment, in order — the run a stopping point cuts. */
@@ -103,20 +113,28 @@ export function RecurringPrompt({ opened, names, pending, onConfirm, onDismiss }
   const amountFromInput = (val: number | string) => formatAmount(fromNum(val as number | ''));
 
   /**
-   * How a row is referred to: what it is and which month it covers.
+   * What to call a payment.
    *
-   * Not its date — that is the thing being edited, so it cannot also be the
-   * handle. Nothing stops two payments sharing a name, though, and "Insurance"
-   * for the car and the house falling due in the same month is ordinary, so the
-   * id is added where the pair would otherwise name two rows at once.
+   * Nothing stops two of them sharing a name, and "Insurance" for the car and
+   * the house falling due in the same month is ordinary, so the id is added
+   * where the pair would otherwise name two rows at once. Used by the field
+   * labels and by every message that has to say which row is wrong — the
+   * message is the only thing telling the user which field to go and fix, so a
+   * name that means two rows there is as useless as one on a label.
    */
   const sharedNames = new Set(
     pending.map((p) => `${p.item}|${p.month}`).filter((key, i, all) => all.indexOf(key) !== i),
   );
-  const rowLabel = (p: PendingExpense) =>
-    sharedNames.has(`${p.item}|${p.month}`)
-      ? `${p.item} (${p.ruleId}) in ${p.month}`
-      : `${p.item} in ${p.month}`;
+  const nameOf = (p: PendingExpense) =>
+    sharedNames.has(`${p.item}|${p.month}`) ? `${p.item} (${p.ruleId})` : p.item;
+
+  /**
+   * How a row is referred to: what it is and which month it covers.
+   *
+   * Not its date — that is the thing being edited, so it cannot also be the
+   * handle.
+   */
+  const rowLabel = (p: PendingExpense) => `${nameOf(p)} in ${p.month}`;
 
   const chosen = pending.filter(isChosen);
 
@@ -187,26 +205,23 @@ export function RecurringPrompt({ opened, names, pending, onConfirm, onDismiss }
    * the markup and a third time in the submit handler, and a fourth reason to
    * stop is one more guard rather than an edit in four places.
    */
-  /** The date as it stands, falling back to the one the row arrived with. */
-  const shownDate = (p: PendingExpense) => editsFor(p).date || p.date;
-
   function currentBlocker(): { colour: string; message: string } | null {
     if (impossible) {
       return {
         colour: 'red',
-        message: `${impossible.problem} — ${impossible.p.item} on ${impossible.date || impossible.p.date} sets aside more than the amount now says. Correct the amount, or untick that month and change the payment itself.`,
+        message: `${impossible.problem} — ${nameOf(impossible.p)} on ${impossible.date || impossible.p.date} sets aside more than the amount now says. Correct the amount, or untick that month and change the payment itself.`,
       };
     }
     if (unpriced) {
       return {
         colour: 'orange',
-        message: `${unpriced.item} on ${shownDate(unpriced)} needs its amount — this one is different every time, so nobody but you knows what it came to.`,
+        message: `${nameOf(unpriced)} on ${editsFor(unpriced).date} needs its amount — this one is different every time, so nobody but you knows what it came to.`,
       };
     }
     if (misdated) {
       return {
         colour: 'orange',
-        message: `${misdated.item} has to stay in ${misdated.month}. That is the month this payment covers, and moving the date out of it would leave the month itself counted as done.`,
+        message: `${nameOf(misdated)} has to stay in ${misdated.month}. That is the month this payment covers, and moving the date out of it would leave the month itself counted as done.`,
       };
     }
     return null;
