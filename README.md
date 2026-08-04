@@ -121,7 +121,14 @@ missed or dismissed.
 
 Recurring payments are **rules**, not expenses. Nothing is written to the sheet
 until you confirm it. When something is due you get a list of the months, and you
-can correct any amount or untick any row before it is added.
+can correct any amount, correct the date, or untick any row before it is added.
+
+The date is worth correcting when a bill wanders — one month it lands on the
+15th, the next on the 18th. Set the payment's day to the earliest it ever
+arrives and fix the odd month here, with the bill in front of you. The date has
+to stay inside the month the payment covers: that month is what identifies the
+occurrence, so moving the date out of it would file the expense in one month
+while the month it left still counted as done.
 
 If the app has not been opened for two months, opening it offers those two months
 as well as the current one — being away is not the same as not having paid.

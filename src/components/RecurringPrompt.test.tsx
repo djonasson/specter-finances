@@ -50,8 +50,12 @@ describe('RecurringPrompt', () => {
 
   it('lists every month that is due before anything is written', () => {
     renderPrompt([feb, mar]);
-    expect(screen.getByText('2026-02-10')).toBeInTheDocument();
-    expect(screen.getByText('2026-03-10')).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'Date for Phone on 2026-02-10' })).toHaveValue(
+      '2026-02-10',
+    );
+    expect(screen.getByRole('textbox', { name: 'Date for Phone on 2026-03-10' })).toHaveValue(
+      '2026-03-10',
+    );
   });
 
   it('names the amount columns from the sheet rather than knowing them itself', () => {
@@ -344,5 +348,91 @@ describe('a varying bill typed as zero', () => {
     expect(screen.getByRole('button', { name: /^Add 1 expense$/ })).toBeDisabled();
     expect(screen.getByText(/needs its amount/)).toBeInTheDocument();
     expect(onConfirm).not.toHaveBeenCalled();
+  });
+});
+
+// ── The day a bill actually landed ──
+//
+// A monthly bill arrives on the 15th one month and the 18th the next. This is
+// the moment it is in front of you, so it is the moment to say so — rather than
+// adding the row and going to find it again in the list afterwards.
+
+describe('correcting the date', () => {
+  const feb = makePending({ month: '2026-02' });
+
+  /** Replace the whole field rather than appending to it. */
+  async function retype(user: ReturnType<typeof userEvent.setup>, label: string, value: string) {
+    const field = screen.getByRole('textbox', { name: label });
+    await user.click(field);
+    await user.keyboard(`{Control>}a{/Control}${value}`);
+    return field;
+  }
+
+  it('writes the day the bill actually landed', async () => {
+    const user = userEvent.setup();
+    const { onConfirm } = renderPrompt([feb]);
+
+    await retype(user, 'Date for Phone on 2026-02-10', '2026-02-18');
+    await user.click(screen.getByRole('button', { name: /^Add 1 expense$/ }));
+
+    await waitFor(() => expect(onConfirm).toHaveBeenCalled());
+    expect(onConfirm.mock.calls[0]![0][0]).toMatchObject({ date: '2026-02-18' });
+  });
+
+  it('leaves the date alone when it is not touched', async () => {
+    const user = userEvent.setup();
+    const { onConfirm } = renderPrompt([feb]);
+    await user.click(screen.getByRole('button', { name: /^Add 1 expense$/ }));
+    await waitFor(() => expect(onConfirm).toHaveBeenCalled());
+    expect(onConfirm.mock.calls[0]![0][0]).toMatchObject({ date: '2026-02-10' });
+  });
+
+  it('takes the last day of the month', async () => {
+    const user = userEvent.setup();
+    const { onConfirm } = renderPrompt([feb]);
+    await retype(user, 'Date for Phone on 2026-02-10', '2026-02-28');
+    await user.click(screen.getByRole('button', { name: /^Add 1 expense$/ }));
+    await waitFor(() => expect(onConfirm).toHaveBeenCalled());
+    expect(onConfirm.mock.calls[0]![0][0]).toMatchObject({ date: '2026-02-28' });
+  });
+
+  // Says why rather than quietly correcting it. Handing the picker min/max
+  // makes it clamp in silence — the field still reads the date typed while a
+  // different one is written.
+  it('refuses a date outside the month the payment covers', async () => {
+    const user = userEvent.setup();
+    const { onConfirm } = renderPrompt([feb]);
+
+    await retype(user, 'Date for Phone on 2026-02-10', '2026-03-05');
+
+    expect(await screen.findByText(/has to stay in 2026-02/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Add 1 expense$/ })).toBeDisabled();
+    await user.click(screen.getByRole('button', { name: /^Add 1 expense$/ }));
+    expect(onConfirm).not.toHaveBeenCalled();
+  });
+
+  it('lets the date be put back and written', async () => {
+    const user = userEvent.setup();
+    const { onConfirm } = renderPrompt([feb]);
+
+    await retype(user, 'Date for Phone on 2026-02-10', '2026-03-05');
+    await retype(user, 'Date for Phone on 2026-02-10', '2026-02-20');
+
+    await user.click(screen.getByRole('button', { name: /^Add 1 expense$/ }));
+    await waitFor(() => expect(onConfirm).toHaveBeenCalled());
+    expect(onConfirm.mock.calls[0]![0][0]).toMatchObject({ date: '2026-02-20' });
+  });
+
+  it('ignores the date of a month left for next time', async () => {
+    const user = userEvent.setup();
+    const mar = makePending({ month: '2026-03' });
+    const { onConfirm } = renderPrompt([feb, mar]);
+
+    await user.click(screen.getByRole('checkbox', { name: 'Add Phone for 2026-03-10' }));
+    await retype(user, 'Date for Phone on 2026-03-10', '2026-05-01');
+
+    await user.click(screen.getByRole('button', { name: /^Add 1 expense$/ }));
+    await waitFor(() => expect(onConfirm).toHaveBeenCalled());
+    expect(onConfirm.mock.calls[0]![0].map((p) => p.month)).toEqual(['2026-02']);
   });
 });

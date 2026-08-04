@@ -10,11 +10,20 @@ import {
   Checkbox,
   Alert,
 } from '@mantine/core';
+import { DateInput } from '@mantine/dates';
 import { IconAlertCircle } from '@tabler/icons-react';
 import type { PendingExpense } from '../services/recurring';
+import { monthKey } from '../services/recurring';
 import type { PersonNames } from '../types/person';
-import { toNum, fromNum, notCountedProblem } from '../services/utils';
-import { formatAmount, parseAmount } from '../services/parsing';
+import { toNum, fromNum, notCountedProblem, dateInputValue } from '../services/utils';
+import { formatAmount, parseAmount, isIsoDate } from '../services/parsing';
+
+/** What the user may change on a pending row before it is written. */
+interface RowEdit {
+  amountA: string;
+  amountB: string;
+  date: string;
+}
 
 interface Props {
   opened: boolean;
@@ -39,6 +48,12 @@ interface Props {
  * changed in between — and on a sheet that is the only record of who owes whom,
  * a plausible wrong figure is worse than a question.
  *
+ * The date is editable for the same reason at a smaller scale: a bill lands on
+ * the 15th one month and the 18th the next, and this is the moment the bill is
+ * in front of you. It is bounded to its own month, because which occurrence a
+ * row is remains fixed — the marker names the month — and a date outside it
+ * would file the expense in one month while its provenance said another.
+ *
  * Unticking a month is a **stopping point, not a hole**: it unticks every later
  * month of the same payment too. That is not a UI nicety — generation resumes
  * from the last month written, so a hole punched in the middle would never be
@@ -47,20 +62,23 @@ interface Props {
  * offered as a choice.
  */
 export function RecurringPrompt({ opened, names, pending, onConfirm, onDismiss }: Props) {
-  const [amounts, setAmounts] = useState<Record<string, { amountA: string; amountB: string }>>({});
+  const [edits, setEdits] = useState<Record<string, RowEdit>>({});
   /** Per rule, the earliest month being left for next time. */
   const [stopAt, setStopAt] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    setAmounts({});
+    setEdits({});
     setStopAt({});
     setError(null);
   }, [pending]);
 
-  const amountsFor = (p: PendingExpense) =>
-    amounts[p.marker] ?? { amountA: p.amountA, amountB: p.amountB };
+  const editsFor = (p: PendingExpense): RowEdit =>
+    edits[p.marker] ?? { amountA: p.amountA, amountB: p.amountB, date: p.date };
+
+  const setEdit = (marker: string, patch: Partial<RowEdit>, current: RowEdit) =>
+    setEdits((e) => ({ ...e, [marker]: { ...current, ...patch } }));
   const isChosen = (p: PendingExpense) => !(p.ruleId in stopAt) || p.month < stopAt[p.ruleId];
 
   /** The months of one payment, in order — the run a stopping point cuts. */
@@ -97,13 +115,26 @@ export function RecurringPrompt({ opened, names, pending, onConfirm, onDismiss }
    */
   const unpriced = chosen.filter((p) => {
     if (!p.amountVaries) return false;
-    const value = amountsFor(p);
+    const value = editsFor(p);
     // Zero counts as no figure, not as a figure of zero. A €0 row settles as
     // though the bill had been free, which is the thing this guard exists to
     // prevent — and a bill that genuinely cost nothing is better left unticked.
     return !amountValue(value.amountA) && !amountValue(value.amountB);
   });
   const skipped = pending.filter((p) => !isChosen(p));
+
+  /**
+   * Rows dated outside the month they belong to.
+   *
+   * Which occurrence a row is stays fixed — the marker names the month — so a
+   * date in another month would file the expense in one place while its
+   * provenance said another, and the month it was moved out of would still
+   * count as generated.
+   */
+  const misdated = chosen.filter((p) => {
+    const { date } = editsFor(p);
+    return !isIsoDate(date) || monthKey(date) !== p.month;
+  });
 
   /**
    * A corrected amount can strand the slice a rule sets aside against it.
@@ -117,7 +148,7 @@ export function RecurringPrompt({ opened, names, pending, onConfirm, onDismiss }
    */
   const impossible = chosen
     .map((p) => {
-      const value = amountsFor(p);
+      const value = editsFor(p);
       // Pending rows carry display amounts ("€12.00"); the validator works in
       // the raw form the forms use, and hands NaN back for anything else.
       return {
@@ -135,12 +166,38 @@ export function RecurringPrompt({ opened, names, pending, onConfirm, onDismiss }
     })
     .filter((r) => r.problem !== null);
 
+  /**
+   * The one thing wrong with this batch, if anything is.
+   *
+   * Derived once rather than as three parallel conditions: the precedence lives
+   * in this ternary instead of being spelled out again as a negative in the JSX
+   * and a third time in the submit handler, and a fourth reason to stop is one
+   * more branch here rather than an edit in four places.
+   */
+  const blocker: { colour: string; message: string } | null =
+    impossible.length > 0
+      ? {
+          colour: 'red',
+          message: `${impossible[0].problem} — ${impossible[0].p.item} on ${impossible[0].p.date} sets aside more than the amount now says. Correct the amount, or untick that month and change the payment itself.`,
+        }
+      : unpriced.length > 0
+        ? {
+            colour: 'orange',
+            message: `${unpriced[0].item} on ${unpriced[0].date} needs its amount — this one is different every time, so nobody but you knows what it came to.`,
+          }
+        : misdated.length > 0
+          ? {
+              colour: 'orange',
+              message: `${misdated[0].item} has to stay in ${misdated[0].month}. That is the month this payment covers, and moving the date out of it would leave the month itself counted as done.`,
+            }
+          : null;
+
   const handleConfirm = async () => {
+    if (blocker) return;
     setSubmitting(true);
     setError(null);
     try {
-      if (impossible.length > 0 || unpriced.length > 0) return;
-      await onConfirm(chosen.map((p) => ({ ...p, ...amountsFor(p) })));
+      await onConfirm(chosen.map((p) => ({ ...p, ...editsFor(p) })));
       // Dismiss exactly what was left behind. Working it out here rather than
       // letting the hook read its own state avoids persisting the set as it was
       // before the write, which would reopen this modal immediately.
@@ -194,7 +251,7 @@ export function RecurringPrompt({ opened, names, pending, onConfirm, onDismiss }
             <Table.Tbody>
               {pending.map((p) => {
                 const included = isChosen(p);
-                const value = amountsFor(p);
+                const value = editsFor(p);
                 return (
                   <Table.Tr key={p.marker}>
                     <Table.Td>
@@ -204,7 +261,22 @@ export function RecurringPrompt({ opened, names, pending, onConfirm, onDismiss }
                         onChange={(e) => setChosen(p, e.currentTarget.checked)}
                       />
                     </Table.Td>
-                    <Table.Td style={{ whiteSpace: 'nowrap' }}>{p.date}</Table.Td>
+                    <Table.Td>
+                      {/*
+                        Checked rather than bounded. Handing the picker min/max
+                        makes it clamp silently — type the 5th of next month and
+                        the field still reads that while the 28th of this one is
+                        what gets written. Better to take what was typed and say
+                        why it cannot be used.
+                      */}
+                      <DateInput
+                        aria-label={`Date for ${p.item} on ${p.date}`}
+                        valueFormat="YYYY-MM-DD"
+                        disabled={!included}
+                        value={value.date || null}
+                        onChange={(d) => setEdit(p.marker, { date: dateInputValue(d) }, value)}
+                      />
+                    </Table.Td>
                     <Table.Td>
                       {p.item}
                       {/*
@@ -228,10 +300,7 @@ export function RecurringPrompt({ opened, names, pending, onConfirm, onDismiss }
                         disabled={!included}
                         value={amountValue(value.amountA)}
                         onChange={(val) =>
-                          setAmounts((a) => ({
-                            ...a,
-                            [p.marker]: { ...value, amountA: amountFromInput(val) },
-                          }))
+                          setEdit(p.marker, { amountA: amountFromInput(val) }, value)
                         }
                       />
                     </Table.Td>
@@ -245,10 +314,7 @@ export function RecurringPrompt({ opened, names, pending, onConfirm, onDismiss }
                         disabled={!included}
                         value={amountValue(value.amountB)}
                         onChange={(val) =>
-                          setAmounts((a) => ({
-                            ...a,
-                            [p.marker]: { ...value, amountB: amountFromInput(val) },
-                          }))
+                          setEdit(p.marker, { amountB: amountFromInput(val) }, value)
                         }
                       />
                     </Table.Td>
@@ -259,18 +325,9 @@ export function RecurringPrompt({ opened, names, pending, onConfirm, onDismiss }
           </Table>
         </Table.ScrollContainer>
 
-        {unpriced.length > 0 && impossible.length === 0 && (
-          <Alert color="orange" variant="light" icon={<IconAlertCircle size={16} />}>
-            {unpriced[0].item} on {unpriced[0].date} needs its amount — this one is different every
-            time, so nobody but you knows what it came to.
-          </Alert>
-        )}
-
-        {impossible.length > 0 && (
-          <Alert color="red" variant="light" icon={<IconAlertCircle size={16} />}>
-            {impossible[0].problem} — {impossible[0].p.item} on {impossible[0].p.date} sets aside
-            more than the amount now says. Correct the amount, or untick that month and change the
-            payment itself.
+        {blocker && (
+          <Alert color={blocker.colour} variant="light" icon={<IconAlertCircle size={16} />}>
+            {blocker.message}
           </Alert>
         )}
 
@@ -282,7 +339,7 @@ export function RecurringPrompt({ opened, names, pending, onConfirm, onDismiss }
         <Group>
           <Button
             loading={submitting}
-            disabled={chosen.length === 0 || impossible.length > 0 || unpriced.length > 0}
+            disabled={chosen.length === 0 || blocker !== null}
             onClick={handleConfirm}
           >
             Add {chosen.length} {chosen.length === 1 ? 'expense' : 'expenses'}
