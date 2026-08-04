@@ -148,6 +148,23 @@ function latestOnOrBefore(anchor: number, step: number, until: number): number {
   return anchor + Math.floor((until - anchor) / step) * step;
 }
 
+/**
+ * Does this date belong to the occurrence it is being written for?
+ *
+ * The day a bill lands wanders — the 15th one month, the 18th the next — but
+ * which occurrence a row is does not: the marker names the month. A date in
+ * another month would file the expense in one place while the month it left
+ * still counted as generated, so it is the one thing about a date that cannot
+ * be corrected freely.
+ *
+ * Both halves earn their place: the month check alone would accept
+ * `2026-02-99`, and the date check alone would accept any real date in any
+ * month.
+ */
+export function datedInOwnMonth(date: string, month: string): boolean {
+  return isIsoDate(date) && monthKey(date) === month;
+}
+
 /** An expense a rule says is due but the sheet does not have yet. */
 export interface PendingExpense {
   ruleId: string;

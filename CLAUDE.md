@@ -70,11 +70,16 @@ recoverable, a wrong "yes" is not.
 Keep logic in `services/` where it can be tested directly rather than inline in a
 component.
 
-## Before merging a feature
+## Before merging anything
 
-**Hard rule: no feature branch merges until all three review skills have been run
-over the change and what they found has been dealt with.** Run them in this order,
-because each one's fixes are the next one's input:
+**Hard rule, non-negotiable: nothing reaches `main` until all three review skills
+have been run over the change and what they found has been dealt with. Every
+change, not every feature** — a one-line follow-up to an already-reviewed branch
+goes through the same three gates as the branch did. The small changes are the
+ones that get waved through, and on this app a small change is exactly how a sign
+gets moved.
+
+Run them in this order, because each one's fixes are the next one's input:
 
 1. **`/simplify`** — reuse, duplication, and altitude. Cheapest to act on while
    the code is still fresh, and it shrinks what the other two have to read.
@@ -88,8 +93,9 @@ because each one's fixes are the next one's input:
    `sheetAccess`, or what gets written to the sheet needs a look.
 
 They read the **pending diff on the current branch**, so run them before merging
-or squashing, not after — once the change is on `main` there is nothing for them
-to look at.
+or squashing, not after — once the change is on `main` there is nothing left for
+them to look at. Work on a branch even for a one-liner, so there is a diff to
+review.
 
 Fix what they report, then re-run `npm run lint`, `npm run build` and
 `npm run test`. If a finding is deliberate and you are leaving it, say which one
