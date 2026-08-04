@@ -671,30 +671,42 @@ export async function fetchRecurring(): Promise<RecurringResult> {
       };
     })
     // Filtered after mapping so rowIndex still matches the physical sheet row.
-    .filter((r) => r.start || r.amountA || r.amountB || r.item);
+    // amountVaries counts as data in its own right: a varying rule has its
+    // amounts blanked above, so without it a hand-added row with no start date
+    // and no item would disappear from the app while still sitting on the sheet
+    // — invisible, and so impossible to fix or delete from here.
+    .filter((r) => r.start || r.amountA || r.amountB || r.item || r.amountVaries);
 
   return { rules, tabMissing: false };
 }
 
 /**
- * Fill in blank heading cells over a range, leaving anything already there.
+ * Spreadsheet column name for a zero-based index: 0 is A, 25 is Z, 26 is AA.
+ *
+ * Base-26 rather than one character, because the point of deriving the letters
+ * is that a label list can grow without anything being kept in step by hand —
+ * and `String.fromCharCode(65 + 26)` is `'['`, which would build a range the
+ * API rejects and take adding a recurring payment down with it.
+ */
+export function columnLetter(index: number): string {
+  let name = '';
+  for (let n = index; n >= 0; n = Math.floor(n / 26) - 1) {
+    name = String.fromCharCode(65 + (n % 26)) + name;
+  }
+  return name;
+}
+
+/**
+ * Fill in blank heading cells, leaving anything already there.
  *
  * Only blank cells are written, and the write is narrowed to exactly those: a
  * label someone chose themselves outranks ours, and writing a cell back even
  * with the value just read would replace a formula there with whatever it
  * currently renders to.
- */
-/** Spreadsheet column letter for a zero-based index: 0 is A. */
-function columnLetter(index: number): string {
-  return String.fromCharCode(65 + index);
-}
-
-/**
- * Label the app's own columns, starting at `firstColumn` (zero-based).
  *
- * The letters are derived rather than listed beside the labels: a parallel
- * array has to be kept in step by hand, and one label too many would have
- * produced the range `Recurring!undefined1`.
+ * Labels start at `firstColumn` (zero-based) and the letters are derived from
+ * there: a parallel array of letters has to be kept in step by hand, and one
+ * label too many would have produced the range `Recurring!undefined1`.
  */
 async function ensureLabels(sheet: string, row: number, firstColumn: number, labels: string[]) {
   const { spreadsheetId } = getConfig();
@@ -727,23 +739,18 @@ async function ensureLabels(sheet: string, row: number, firstColumn: number, lab
   });
 }
 
+/** Zero-based index of the first expenses column the app writes: G. */
+const EXPENSE_FIRST_APP_COLUMN = 6;
+
 /**
- * Put a heading over the two columns the app maintains on the expenses tab.
+ * Put a heading over the columns the app maintains on the expenses tab.
  *
  * Kept apart from the Recurring tab, and not behind its early return, because
  * only column G is recurring's business: column H is stamped on *every* added
  * expense, so a user who never opens the Recurring tab would otherwise
  * accumulate an unexplained column of dates — which is worse than no feature at
  * all, and was exactly what the previous arrangement did.
- *
- * Only blank cells are written, and the write is narrowed to exactly those
- * cells. These are headings in someone else's spreadsheet: a label they chose
- * themselves outranks ours, and writing a cell back even with the value we just
- * read would replace a formula there with whatever it currently renders to.
  */
-/** Zero-based index of the first expenses column the app writes: G. */
-const EXPENSE_FIRST_APP_COLUMN = 6;
-
 export async function ensureExpenseColumnLabels(): Promise<void> {
   const { sheetName } = getConfig();
   await ensureLabels(sheetName, 2, EXPENSE_FIRST_APP_COLUMN, EXPENSE_COLUMN_LABELS);

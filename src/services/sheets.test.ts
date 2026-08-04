@@ -35,6 +35,7 @@ import {
   appendGeneratedExpenses,
   newRuleId,
   SheetsApiError,
+  columnLetter,
 } from './sheets';
 import type { RecurringRow } from '../types/recurring';
 import type { PendingExpense } from './recurring';
@@ -1540,6 +1541,24 @@ describe('the interval and varying-amount columns', () => {
     });
   });
 
+  it('keeps a varying rule that carries nothing else, so it stays fixable', async () => {
+    // Its amounts are blanked on the way in, so without counting the varying
+    // flag as data the row would vanish from the app while still sitting on the
+    // sheet — invisible, and so impossible to correct or delete from here.
+    mockFetchStatuses([
+      { body: { values: [['', 30, '', '', '', '', '', 'r1', '', '', 2, 'yes']] } },
+    ]);
+    const { rules } = await fetchRecurring();
+    expect(rules).toHaveLength(1);
+    expect(rules[0]).toMatchObject({ amountVaries: true, amountA: '', rowIndex: 2 });
+  });
+
+  it('still drops a row with nothing on it at all', async () => {
+    mockFetchStatuses([{ body: { values: [[], ['2026-01-10', 30, '', 'Phone']] } }]);
+    const { rules } = await fetchRecurring();
+    expect(rules.map((r) => r.rowIndex)).toEqual([3]);
+  });
+
   it('writes both columns when a rule is added', async () => {
     const calls = mockFetchStatuses([
       { body: { sheets: [{ properties: { title: 'Recurring', sheetId: 7 } }] } },
@@ -1646,5 +1665,35 @@ describe('a varying rule from the sheet through to a pending expense', () => {
       notCountedA: '€4.00',
       amountVaries: false,
     });
+  });
+});
+
+// ── Column names ──
+//
+// The letters are derived so a label list can grow without a parallel array
+// being kept in step by hand — which only holds if the derivation itself keeps
+// going past Z.
+
+describe('columnLetter', () => {
+  it('names the columns the app actually uses', () => {
+    expect(columnLetter(0)).toBe('A');
+    expect(columnLetter(6)).toBe('G');
+    expect(columnLetter(11)).toBe('L');
+  });
+
+  it('carries past Z instead of running off the alphabet', () => {
+    // String.fromCharCode(65 + 26) is '[', which would build a range the API
+    // rejects — and label writing happens while adding a recurring payment.
+    expect(columnLetter(25)).toBe('Z');
+    expect(columnLetter(26)).toBe('AA');
+    expect(columnLetter(27)).toBe('AB');
+    expect(columnLetter(51)).toBe('AZ');
+    expect(columnLetter(52)).toBe('BA');
+    expect(columnLetter(701)).toBe('ZZ');
+    expect(columnLetter(702)).toBe('AAA');
+  });
+
+  it('never produces anything but letters', () => {
+    for (let i = 0; i < 800; i++) expect(columnLetter(i)).toMatch(/^[A-Z]+$/);
   });
 });
