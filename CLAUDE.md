@@ -55,9 +55,15 @@ list.
   of which turn on a `<script>` the browser loads and a global the page then
   grows. Worth doing behind a fake, not yet done.
 - `InstallButton.tsx` — hangs off the `beforeinstallprompt` event.
-- `ThemeSettings.tsx`, `ThemeToggle.tsx` — controls over `ThemeContext`, which is
-  itself covered.
-- `theme/*Background.tsx` — canvas animation with no assertable output.
+- `ThemeToggle.tsx` — a control over `ThemeContext`, which is itself covered.
+- `theme/*Background.tsx` and `theme/cello/draw.ts` — canvas drawing, which has
+  no assertable output. **A scene's behaviour does not belong in there**: Cello
+  keeps its state machine in `theme/cello/scene.ts`, pure and taking its
+  randomness as a parameter, and its wiring in `CelloBackground.tsx` — both
+  covered, the latter behind a stubbed `getContext` and a mocked `draw`. The
+  squirrel predates that split and holds every entity in a `useEffect` closure
+  where nothing can be asserted; copy Cello's shape for the next scene, not the
+  squirrel's.
 - `ExpenseFields.tsx`, `useTransfers.ts`, `useGifts.ts` — no logic of their own;
   exercised through `ExpenseForm`/`RecurringForm` and `useMovements` tests, plus
   a wiring test proving each wrapper drives its own tab.
@@ -203,7 +209,13 @@ BrowserRouter → AuthProvider → ExpensesProvider → ThemeProvider → App
 
 ### UI
 
-Mantine v8 component library with Tabler icons. Five routes: `/` (Dashboard with charts via chart.js), `/add` (tabbed Expense/Transfer/Gift/Recurring form), `/list` (`ExpensesPage`: Expenses | Recurring), `/transfers`, `/gifts`. Bottom nav bar for mobile. Theme system with customizable backgrounds in `theme/` (gradient, matrix, squirrel). Date filtering (`filterByDate`/`FilterMode` in `utils.ts`) is shared across the dashboard and lists.
+Mantine v8 component library with Tabler icons. Five routes: `/` (Dashboard with charts via chart.js), `/add` (tabbed Expense/Transfer/Gift/Recurring form), `/list` (`ExpensesPage`: Expenses | Recurring), `/transfers`, `/gifts`. Bottom nav bar for mobile. Theme system with customizable backgrounds in `theme/` (gradient, matrix, squirrel, cello). Date filtering (`filterByDate`/`FilterMode` in `utils.ts`) is shared across the dashboard and lists.
+
+**Backgrounds are listed once, in `theme/registry.tsx`, and that is the only place any of them is named.** The `BackgroundName` union is derived from the list, so a background cannot be half-added, and `loadSettings` validates a stored name against it with `isBackgroundName` — storage outlives releases, and an unrecognised name used to render nothing at all. (The union is `BackgroundName`, not `BackgroundEffect`: that name belongs to the component in `backgrounds.tsx` that renders one.)
+
+A background that draws _over_ the app rather than behind it (canvas at z-index 101, not −1) declares a `floor` — how tall a band it stands in — and the layout obeys: `BackgroundFloor` masks everything above the band, `BackgroundSpacer` reserves the matching scroll room inside `AppShell.Main`, and `ThemeContext` leaves the header and footer out of the card-transparency tint so the scene does not show through the chrome it stands on. `App.tsx` names no theme and does not read the theme context at all; asking the registry is the whole point, and `FOOTER_HEIGHT` in `theme/chrome.ts` is the single source for the height the AppShell footer and the floor both depend on.
+
+The `floor` belongs to the scene, and Cello's is **derived, not chosen**: `SCENE_REACH` is the taller of its chimney cap and its bird at the top of his hover, and `CELLO_FLOOR` adds the ground clearance. Anything above the floor is painted over the user's own list, so a hand-picked number goes stale the moment the scenery grows — but what is _thrown_ is deliberately outside it. A pizza sailing up over the app, like the squirrel's falling acorns, is the point.
 
 The `/list` tab lives in the **query string** (`/list?tab=recurring`), not the path: `BottomNavItem` marks the current screen with an exact `pathname ===` match, so a sub-route would unlight Expenses — and a path change fires the four-request refetch on every tab switch.
 

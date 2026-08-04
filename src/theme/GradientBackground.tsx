@@ -1,9 +1,11 @@
 import { useComputedColorScheme } from '@mantine/core';
 import chroma from 'chroma-js';
-import { useThemeSettings } from './ThemeContext';
+import type { GradientSettings } from './ThemeContext';
 
-export function GradientBackground() {
-  const { gradient } = useThemeSettings();
+// Handed its settings like every other background, rather than reading them off
+// the context itself: the registry that lists the backgrounds imports them all,
+// so a background importing the context back would close a module cycle.
+export function GradientBackground({ gradient }: { gradient: GradientSettings }) {
   const isDark = useComputedColorScheme('light') === 'dark';
   const colors = gradient.colors.map((c: string) => (isDark ? chroma(c).darken(2).hex() : c));
   const [c1, c2, c3] = colors;

@@ -33,7 +33,8 @@ fully owned by you.
   time, with shared date filtering.
 - **Installable PWA** — works offline-friendly and installs to the home screen.
 - **Theming** — light/dark mode plus customizable animated backgrounds
-  (gradient, matrix, squirrel) and adjustable accent color and card opacity.
+  (gradient, matrix, squirrel, cello) and adjustable accent color and card
+  opacity.
 - **Mobile-first** — responsive tables and a bottom navigation bar.
 
 ## Transfers vs. gifts

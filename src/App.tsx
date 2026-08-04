@@ -46,7 +46,8 @@ import { Dashboard } from './components/Dashboard';
 import { ThemeToggle } from './components/ThemeToggle';
 import { ThemeSettings } from './components/ThemeSettings';
 import { BackgroundEffect } from './theme/backgrounds';
-import { useThemeSettings } from './theme/ThemeContext';
+import { BackgroundSpacer } from './theme/BackgroundStage';
+import { FOOTER_HEIGHT } from './theme/chrome';
 import { InstallButton } from './components/InstallButton';
 
 function BottomNavItem({ to, icon, label }: { to: string; icon: React.ReactNode; label: string }) {
@@ -75,7 +76,6 @@ function BottomNavItem({ to, icon, label }: { to: string; icon: React.ReactNode;
 }
 
 function AuthenticatedApp() {
-  const { backgroundEffect } = useThemeSettings();
   const { signOut } = useAuth();
   const { names, expenses, transfers, gifts, recurring, pending } = useExpensesContext();
   // Pulled out as locals because the dependency arrays below have to name these
@@ -187,7 +187,7 @@ function AuthenticatedApp() {
 
   return (
     <>
-      <AppShell header={{ height: 56 }} footer={{ height: 60 }} padding="md">
+      <AppShell header={{ height: 56 }} footer={{ height: FOOTER_HEIGHT }} padding="md">
         <AppShell.Header>
           <Group h="100%" px="md" justify="space-between">
             <Group gap="xs">
@@ -366,7 +366,7 @@ function AuthenticatedApp() {
             onConfirm={confirmRecurring}
             onDismiss={pending.dismiss}
           />
-          {backgroundEffect === 'squirrel' && <div style={{ height: 100 }} />}
+          <BackgroundSpacer />
         </AppShell.Main>
 
         <AppShell.Footer style={{ display: 'flex' }}>
@@ -403,20 +403,6 @@ function AuthenticatedApp() {
 
         <ThemeSettings opened={settingsOpened} onClose={() => setSettingsOpened(false)} />
       </AppShell>
-      {backgroundEffect === 'squirrel' && (
-        <div
-          style={{
-            position: 'fixed',
-            bottom: 60,
-            left: 0,
-            right: 0,
-            height: 80,
-            zIndex: 100,
-            pointerEvents: 'none',
-            background: 'var(--mantine-color-body)',
-          }}
-        />
-      )}
       <BackgroundEffect />
     </>
   );

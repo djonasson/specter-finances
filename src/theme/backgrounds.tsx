@@ -1,13 +1,15 @@
 import { useThemeSettings } from './ThemeContext';
-import { MatrixBackground } from './MatrixBackground';
-import { GradientBackground } from './GradientBackground';
-import { SquirrelBackground } from './SquirrelBackground';
+import { backgroundFor } from './registry';
+import { BackgroundFloor } from './BackgroundStage';
 
 export function BackgroundEffect() {
-  const { backgroundEffect, matrixSpeed } = useThemeSettings();
+  const settings = useThemeSettings();
+  const background = backgroundFor(settings.backgroundEffect);
 
-  if (backgroundEffect === 'matrix') return <MatrixBackground speed={matrixSpeed} />;
-  if (backgroundEffect === 'gradient') return <GradientBackground />;
-  if (backgroundEffect === 'squirrel') return <SquirrelBackground />;
-  return null;
+  return (
+    <>
+      {background?.render(settings)}
+      <BackgroundFloor />
+    </>
+  );
 }

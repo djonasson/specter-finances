@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, afterEach, beforeEach } from 'vitest';
-import { renderHook, act } from '@testing-library/react';
+import { renderHook, act, cleanup } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { ThemeProvider, useThemeSettings } from './ThemeContext';
 
@@ -14,7 +14,13 @@ const render = () => renderHook(() => useThemeSettings(), { wrapper });
 const stored = () => JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}');
 
 beforeEach(() => localStorage.clear());
-afterEach(() => localStorage.clear());
+// Unmounting matters here as much as clearing storage: the provider injects the
+// card-transparency CSS into the document, and a left-over provider's rule would
+// be indistinguishable from the next test's.
+afterEach(() => {
+  cleanup();
+  localStorage.clear();
+});
 
 // Added retroactively. Everything here comes back out of localStorage, which
 // anything on the origin can write and which survives every release — so the
@@ -102,6 +108,20 @@ describe('reading stored settings', () => {
     const { result } = render();
     expect(result.current.customColorHex).toBe('#ff8800');
   });
+
+  // A name from a build that had a background this one does not renders nothing
+  // at all — an app that looks broken rather than a setting to change back.
+  it('drops a background name no background answers to', () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ backgroundEffect: 'pinball' }));
+    const { result } = render();
+    expect(result.current.backgroundEffect).toBe('none');
+  });
+
+  it('keeps a background name the app does have', () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ backgroundEffect: 'squirrel' }));
+    const { result } = render();
+    expect(result.current.backgroundEffect).toBe('squirrel');
+  });
 });
 
 describe('changing settings', () => {
@@ -168,6 +188,48 @@ describe('changing settings', () => {
     expect(result.current.primaryColor).toBe('indigo');
     expect(result.current.backgroundEffect).toBe('none');
     expect(stored().primaryColor).toBe('indigo');
+  });
+});
+
+// The card-transparency rule is injected as CSS rather than applied as an
+// element opacity, so the text on a card stays fully opaque at every setting.
+// Which selectors it names is the whole behaviour, and it is not visible from
+// the hook's return value.
+describe('the card transparency rule', () => {
+  const injectedCss = () =>
+    Array.from(document.querySelectorAll('style'))
+      .map((tag) => tag.textContent ?? '')
+      .filter((css) => css.includes('mantine-Card-root'))
+      .join('\n');
+
+  const renderWith = (settings: Record<string, unknown>) => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+    return renderHook(() => useThemeSettings(), { wrapper });
+  };
+
+  it('says nothing at all when there is no background to see through the cards', () => {
+    renderWith({ backgroundEffect: 'none', cardOpacity: 50 });
+    expect(injectedCss()).toBe('');
+  });
+
+  it('says nothing when the cards are meant to stay solid', () => {
+    renderWith({ backgroundEffect: 'matrix', cardOpacity: 100 });
+    expect(injectedCss()).toBe('');
+  });
+
+  it('tints the header and footer along with the cards, for a background drawn behind the app', () => {
+    renderWith({ backgroundEffect: 'matrix', cardOpacity: 50 });
+    expect(injectedCss()).toContain('.mantine-AppShell-header');
+    expect(injectedCss()).toContain('.mantine-AppShell-footer');
+  });
+
+  // A scene that draws over the app stands on the header and footer. Tinting
+  // them would show the scene through the very chrome it is drawn in front of.
+  it('leaves the header and footer alone for a background drawn over the app', () => {
+    renderWith({ backgroundEffect: 'squirrel', cardOpacity: 50 });
+    expect(injectedCss()).toContain('.mantine-Card-root');
+    expect(injectedCss()).not.toContain('.mantine-AppShell-header');
+    expect(injectedCss()).not.toContain('.mantine-AppShell-footer');
   });
 });
 

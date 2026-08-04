@@ -13,7 +13,9 @@ import {
 } from '@mantine/core';
 import { ColorInput } from '@mantine/core';
 import { useThemeSettings } from '../theme/ThemeContext';
-import type { BackgroundEffect, GradientSettings } from '../theme/ThemeContext';
+import type { GradientSettings } from '../theme/ThemeContext';
+import { BACKGROUND_OPTIONS } from '../theme/registry';
+import type { BackgroundName } from '../theme/registry';
 
 interface Props {
   opened: boolean;
@@ -111,13 +113,8 @@ export function ThemeSettings({ opened, onClose }: Props) {
           </Text>
           <Select
             value={backgroundEffect}
-            onChange={(val) => setBackgroundEffect((val ?? 'none') as BackgroundEffect)}
-            data={[
-              { label: 'None', value: 'none' },
-              { label: 'Matrix', value: 'matrix' },
-              { label: 'Gradient', value: 'gradient' },
-              { label: 'Squirrel', value: 'squirrel' },
-            ]}
+            onChange={(val) => setBackgroundEffect((val ?? 'none') as BackgroundName)}
+            data={BACKGROUND_OPTIONS}
             allowDeselect={false}
           />
           {backgroundEffect === 'matrix' && (

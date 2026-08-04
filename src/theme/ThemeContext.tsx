@@ -3,8 +3,8 @@ import type { ReactNode } from 'react';
 import { MantineProvider, createTheme, localStorageColorSchemeManager } from '@mantine/core';
 import type { MantineColorsTuple } from '@mantine/core';
 import { generateColors } from '@mantine/colors-generator';
-
-export type BackgroundEffect = 'none' | 'matrix' | 'gradient' | 'squirrel';
+import { drawsOverTheApp, isBackgroundName } from './registry';
+import type { BackgroundName } from './registry';
 
 interface GradientSettings {
   colors: [string, string, string]; // three hex stops
@@ -14,7 +14,7 @@ interface GradientSettings {
 interface ThemeSettings {
   primaryColor: string;
   customColorHex: string | null;
-  backgroundEffect: BackgroundEffect;
+  backgroundEffect: BackgroundName;
   matrixSpeed: number; // 1 (slowest) to 10 (fastest), default 6
   cardOpacity: number; // 0 (fully transparent) to 100 (fully opaque), default 80
   gradient: GradientSettings;
@@ -23,7 +23,7 @@ interface ThemeSettings {
 interface ThemeContextValue extends ThemeSettings {
   setPrimaryColor: (colorKey: string) => void;
   setCustomColor: (hex: string) => void;
-  setBackgroundEffect: (effect: BackgroundEffect) => void;
+  setBackgroundEffect: (effect: BackgroundName) => void;
   setMatrixSpeed: (speed: number) => void;
   setCardOpacity: (opacity: number) => void;
   setGradient: (gradient: Partial<GradientSettings>) => void;
@@ -32,7 +32,8 @@ interface ThemeContextValue extends ThemeSettings {
 
 export type { GradientSettings };
 
-const STORAGE_KEY = 'specter-theme';
+/** Exported so the tests seed and read settings through the same name as the app. */
+export const STORAGE_KEY = 'specter-theme';
 
 const DEFAULT_GRADIENT: GradientSettings = {
   colors: ['#4c6ef5', '#23a6d5', '#23d5ab'],
@@ -74,6 +75,13 @@ function loadSettings(): ThemeSettings {
 
     if (merged.customColorHex !== null && !HEX.test(String(merged.customColorHex))) {
       merged.customColorHex = DEFAULT_SETTINGS.customColorHex;
+    }
+
+    // A stored name can outlive the background it named, or name one this build
+    // has never had. Taken at face value it renders nothing at all, which looks
+    // like a broken app rather than a setting to change.
+    if (!isBackgroundName(merged.backgroundEffect)) {
+      merged.backgroundEffect = DEFAULT_SETTINGS.backgroundEffect;
     }
 
     // The custom colour only exists in the theme while its hex does, so a
@@ -124,7 +132,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   );
 
   const setBackgroundEffect = useCallback(
-    (effect: BackgroundEffect) => update({ backgroundEffect: effect }),
+    (effect: BackgroundName) => update({ backgroundEffect: effect }),
     [update],
   );
 
@@ -174,7 +182,10 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     resetTheme,
   };
 
-  const isSquirrel = settings.backgroundEffect === 'squirrel';
+  // A background that draws over the app stands on the header and footer, so
+  // they stay opaque: tinting them would show the scene through the very chrome
+  // it is drawn in front of. The registry says which backgrounds those are.
+  const chromeStaysOpaque = drawsOverTheApp(settings.backgroundEffect);
   // Fade only the surface, never the content. Setting `opacity` on the element
   // would fade its text too — at the low end of the slider that is a guaranteed
   // WCAG AA failure, and it can't be undone on hover because touch devices have
@@ -184,7 +195,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     settings.backgroundEffect !== 'none' && settings.cardOpacity < 100
       ? `
       .mantine-Card-root${
-        !isSquirrel
+        !chromeStaysOpaque
           ? `,
       .mantine-AppShell-header,
       .mantine-AppShell-footer`
