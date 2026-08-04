@@ -50,10 +50,10 @@ describe('RecurringPrompt', () => {
 
   it('lists every month that is due before anything is written', () => {
     renderPrompt([feb, mar]);
-    expect(screen.getByRole('textbox', { name: 'Date for Phone on 2026-02-10' })).toHaveValue(
+    expect(screen.getByRole('textbox', { name: 'Date for Phone in 2026-02' })).toHaveValue(
       '2026-02-10',
     );
-    expect(screen.getByRole('textbox', { name: 'Date for Phone on 2026-03-10' })).toHaveValue(
+    expect(screen.getByRole('textbox', { name: 'Date for Phone in 2026-03' })).toHaveValue(
       '2026-03-10',
     );
   });
@@ -75,7 +75,7 @@ describe('RecurringPrompt', () => {
   it('leaves out the last month when the user unticks it', async () => {
     const user = userEvent.setup();
     const { onConfirm } = renderPrompt([feb, mar]);
-    await user.click(screen.getByRole('checkbox', { name: 'Add Phone for 2026-03-10' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Add Phone for 2026-03' }));
     await user.click(screen.getByRole('button', { name: 'Add 1 expense' }));
     await waitFor(() => expect(onConfirm).toHaveBeenCalled());
     expect(onConfirm.mock.calls[0]![0].map((p) => p.month)).toEqual(['2026-02']);
@@ -89,10 +89,10 @@ describe('RecurringPrompt', () => {
     const user = userEvent.setup();
     const { onConfirm } = renderPrompt([feb, mar]);
 
-    await user.click(screen.getByRole('checkbox', { name: 'Add Phone for 2026-02-10' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Add Phone for 2026-02' }));
 
     // March came off with it, so no hole can be left behind.
-    expect(screen.getByRole('checkbox', { name: 'Add Phone for 2026-03-10' })).not.toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'Add Phone for 2026-03' })).not.toBeChecked();
     expect(screen.getByRole('button', { name: /^Add 0 expenses$/ })).toBeDisabled();
     expect(onConfirm).not.toHaveBeenCalled();
   });
@@ -101,10 +101,10 @@ describe('RecurringPrompt', () => {
     const user = userEvent.setup();
     renderPrompt([feb, mar]);
 
-    await user.click(screen.getByRole('checkbox', { name: 'Add Phone for 2026-02-10' }));
-    await user.click(screen.getByRole('checkbox', { name: 'Add Phone for 2026-03-10' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Add Phone for 2026-02' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Add Phone for 2026-03' }));
 
-    expect(screen.getByRole('checkbox', { name: 'Add Phone for 2026-02-10' })).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'Add Phone for 2026-02' })).toBeChecked();
     expect(screen.getByRole('button', { name: 'Add 2 expenses' })).toBeEnabled();
   });
 
@@ -113,7 +113,7 @@ describe('RecurringPrompt', () => {
     const gym = makePending({ ruleId: 'r2', month: '2026-03', item: 'Gym' });
     const { onConfirm } = renderPrompt([feb, mar, gym]);
 
-    await user.click(screen.getByRole('checkbox', { name: 'Add Phone for 2026-02-10' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Add Phone for 2026-02' }));
     await user.click(screen.getByRole('button', { name: 'Add 1 expense' }));
 
     await waitFor(() => expect(onConfirm).toHaveBeenCalled());
@@ -123,7 +123,7 @@ describe('RecurringPrompt', () => {
   it('records nothing for a skipped month, so it can be offered again', async () => {
     const user = userEvent.setup();
     const { onConfirm } = renderPrompt([feb, mar]);
-    await user.click(screen.getByRole('checkbox', { name: 'Add Phone for 2026-03-10' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Add Phone for 2026-03' }));
     await user.click(screen.getByRole('button', { name: 'Add 1 expense' }));
     await waitFor(() => expect(onConfirm).toHaveBeenCalled());
     const markers = onConfirm.mock.calls[0]![0].map((p) => p.marker);
@@ -136,7 +136,7 @@ describe('RecurringPrompt', () => {
   it('stops asking about exactly what was left behind, not what it opened with', async () => {
     const user = userEvent.setup();
     const { onConfirm, onDismiss } = renderPrompt([feb, mar]);
-    await user.click(screen.getByRole('checkbox', { name: 'Add Phone for 2026-03-10' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Add Phone for 2026-03' }));
     await user.click(screen.getByRole('button', { name: 'Add 1 expense' }));
 
     await waitFor(() => expect(onConfirm).toHaveBeenCalled());
@@ -156,7 +156,7 @@ describe('RecurringPrompt', () => {
     const user = userEvent.setup();
     const { onConfirm } = renderPrompt([feb]);
 
-    const input = screen.getByRole('textbox', { name: 'Ada for Phone on 2026-02-10' });
+    const input = screen.getByRole('textbox', { name: 'Ada for Phone in 2026-02' });
     await user.clear(input);
     await user.type(input, '15');
 
@@ -184,7 +184,7 @@ describe('RecurringPrompt', () => {
   it('will not write an empty list once everything has been unticked', async () => {
     const user = userEvent.setup();
     renderPrompt([feb]);
-    await user.click(screen.getByRole('checkbox', { name: 'Add Phone for 2026-02-10' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Add Phone for 2026-02' }));
     expect(screen.getByRole('button', { name: /^Add 0 expenses$/ })).toBeDisabled();
   });
 
@@ -236,7 +236,7 @@ describe('when a correction strands what the rule sets aside', () => {
     const user = userEvent.setup();
     const { onConfirm } = renderPrompt([withSlice]);
 
-    const input = screen.getByRole('textbox', { name: 'Ada for Phone on 2026-02-10' });
+    const input = screen.getByRole('textbox', { name: 'Ada for Phone in 2026-02' });
     await user.clear(input);
     await user.type(input, '8');
 
@@ -252,7 +252,7 @@ describe('when a correction strands what the rule sets aside', () => {
     const user = userEvent.setup();
     const { onConfirm } = renderPrompt([withSlice]);
 
-    const input = screen.getByRole('textbox', { name: 'Ada for Phone on 2026-02-10' });
+    const input = screen.getByRole('textbox', { name: 'Ada for Phone in 2026-02' });
     await user.clear(input);
     await user.type(input, '20');
     await user.click(screen.getByRole('button', { name: /^Add 1 expense$/ }));
@@ -300,7 +300,7 @@ describe('a payment whose amount varies', () => {
     const user = userEvent.setup();
     const { onConfirm } = renderPrompt([water]);
 
-    await user.type(screen.getByRole('textbox', { name: 'Ada for Water on 2026-02-10' }), '82.4');
+    await user.type(screen.getByRole('textbox', { name: 'Ada for Water in 2026-02' }), '82.4');
     await user.click(screen.getByRole('button', { name: /^Add 1 expense$/ }));
 
     await waitFor(() => expect(onConfirm).toHaveBeenCalled());
@@ -310,7 +310,7 @@ describe('a payment whose amount varies', () => {
   it('accepts a figure against either person', async () => {
     const user = userEvent.setup();
     const { onConfirm } = renderPrompt([water]);
-    await user.type(screen.getByRole('textbox', { name: 'Bo for Water on 2026-02-10' }), '50');
+    await user.type(screen.getByRole('textbox', { name: 'Bo for Water in 2026-02' }), '50');
     await user.click(screen.getByRole('button', { name: /^Add 1 expense$/ }));
     await waitFor(() => expect(onConfirm).toHaveBeenCalled());
     expect(onConfirm.mock.calls[0]![0][0]).toMatchObject({ amountB: '€50.00' });
@@ -321,7 +321,7 @@ describe('a payment whose amount varies', () => {
     const phone = makePending({ month: '2026-01', item: 'Phone' });
     const { onConfirm } = renderPrompt([phone, water]);
 
-    await user.click(screen.getByRole('checkbox', { name: 'Add Water for 2026-02-10' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Add Water for 2026-02' }));
     await user.click(screen.getByRole('button', { name: /^Add 1 expense$/ }));
 
     await waitFor(() => expect(onConfirm).toHaveBeenCalled());
@@ -343,7 +343,7 @@ describe('a varying bill typed as zero', () => {
     const water = makePending({ month: '2026-02', item: 'Water', amountA: '', amountVaries: true });
     const { onConfirm } = renderPrompt([water]);
 
-    await user.type(screen.getByRole('textbox', { name: 'Ada for Water on 2026-02-10' }), '0');
+    await user.type(screen.getByRole('textbox', { name: 'Ada for Water in 2026-02' }), '0');
 
     expect(screen.getByRole('button', { name: /^Add 1 expense$/ })).toBeDisabled();
     expect(screen.getByText(/needs its amount/)).toBeInTheDocument();
@@ -362,17 +362,15 @@ describe('correcting the date', () => {
 
   /** Replace the whole field rather than appending to it. */
   async function retype(user: ReturnType<typeof userEvent.setup>, label: string, value: string) {
-    const field = screen.getByRole('textbox', { name: label });
-    await user.click(field);
+    await user.click(screen.getByRole('textbox', { name: label }));
     await user.keyboard(`{Control>}a{/Control}${value}`);
-    return field;
   }
 
   it('writes the day the bill actually landed', async () => {
     const user = userEvent.setup();
     const { onConfirm } = renderPrompt([feb]);
 
-    await retype(user, 'Date for Phone on 2026-02-10', '2026-02-18');
+    await retype(user, 'Date for Phone in 2026-02', '2026-02-18');
     await user.click(screen.getByRole('button', { name: /^Add 1 expense$/ }));
 
     await waitFor(() => expect(onConfirm).toHaveBeenCalled());
@@ -400,7 +398,7 @@ describe('correcting the date', () => {
   it('takes the last day of the month', async () => {
     const user = userEvent.setup();
     const { onConfirm } = renderPrompt([feb]);
-    await retype(user, 'Date for Phone on 2026-02-10', '2026-02-28');
+    await retype(user, 'Date for Phone in 2026-02', '2026-02-28');
     await user.click(screen.getByRole('button', { name: /^Add 1 expense$/ }));
     await waitFor(() => expect(onConfirm).toHaveBeenCalled());
     expect(onConfirm.mock.calls[0]![0][0]).toMatchObject({ date: '2026-02-28' });
@@ -413,7 +411,7 @@ describe('correcting the date', () => {
     const user = userEvent.setup();
     const { onConfirm } = renderPrompt([feb]);
 
-    await retype(user, 'Date for Phone on 2026-02-10', '2026-03-05');
+    await retype(user, 'Date for Phone in 2026-02', '2026-03-05');
 
     expect(await screen.findByText(/has to stay in 2026-02/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^Add 1 expense$/ })).toBeDisabled();
@@ -421,12 +419,38 @@ describe('correcting the date', () => {
     expect(onConfirm).not.toHaveBeenCalled();
   });
 
+  // The row's handle is what it is and which month it covers, both fixed. The
+  // message names the date as it stands now — saying "on 2026-02-10" while the
+  // row reads 2026-02-18 points at the wrong row when several months of the
+  // same bill are listed.
+  it('names the corrected date when it says what is wrong', async () => {
+    const user = userEvent.setup();
+    const water = makePending({ month: '2026-02', item: 'Water', amountA: '', amountVaries: true });
+    renderPrompt([water]);
+
+    expect(await screen.findByText(/Water on 2026-02-10 needs its amount/)).toBeInTheDocument();
+
+    await retype(user, 'Date for Water in 2026-02', '2026-02-18');
+
+    expect(await screen.findByText(/Water on 2026-02-18 needs its amount/)).toBeInTheDocument();
+  });
+
+  it('keeps the same handle on a row whose date has been changed', async () => {
+    const user = userEvent.setup();
+    renderPrompt([feb]);
+    await retype(user, 'Date for Phone in 2026-02', '2026-02-18');
+    // Still reachable by the month it covers, which is what does not move.
+    expect(screen.getByRole('textbox', { name: 'Date for Phone in 2026-02' })).toHaveValue(
+      '2026-02-18',
+    );
+  });
+
   it('lets the date be put back and written', async () => {
     const user = userEvent.setup();
     const { onConfirm } = renderPrompt([feb]);
 
-    await retype(user, 'Date for Phone on 2026-02-10', '2026-03-05');
-    await retype(user, 'Date for Phone on 2026-02-10', '2026-02-20');
+    await retype(user, 'Date for Phone in 2026-02', '2026-03-05');
+    await retype(user, 'Date for Phone in 2026-02', '2026-02-20');
 
     await user.click(screen.getByRole('button', { name: /^Add 1 expense$/ }));
     await waitFor(() => expect(onConfirm).toHaveBeenCalled());
@@ -438,8 +462,8 @@ describe('correcting the date', () => {
     const mar = makePending({ month: '2026-03' });
     const { onConfirm } = renderPrompt([feb, mar]);
 
-    await user.click(screen.getByRole('checkbox', { name: 'Add Phone for 2026-03-10' }));
-    await retype(user, 'Date for Phone on 2026-03-10', '2026-05-01');
+    await user.click(screen.getByRole('checkbox', { name: 'Add Phone for 2026-03' }));
+    await retype(user, 'Date for Phone in 2026-03', '2026-05-01');
 
     await user.click(screen.getByRole('button', { name: /^Add 1 expense$/ }));
     await waitFor(() => expect(onConfirm).toHaveBeenCalled());

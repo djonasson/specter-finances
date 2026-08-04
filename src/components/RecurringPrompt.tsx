@@ -13,10 +13,10 @@ import {
 import { DateInput } from '@mantine/dates';
 import { IconAlertCircle } from '@tabler/icons-react';
 import type { PendingExpense } from '../services/recurring';
-import { monthKey } from '../services/recurring';
+import { datedInOwnMonth } from '../services/recurring';
 import type { PersonNames } from '../types/person';
 import { toNum, fromNum, notCountedProblem, dateInputValue } from '../services/utils';
-import { formatAmount, parseAmount, isIsoDate } from '../services/parsing';
+import { formatAmount, parseAmount } from '../services/parsing';
 
 /** What the user may change on a pending row before it is written. */
 interface RowEdit {
@@ -50,9 +50,8 @@ interface Props {
  *
  * The date is editable for the same reason at a smaller scale: a bill lands on
  * the 15th one month and the 18th the next, and this is the moment the bill is
- * in front of you. It is bounded to its own month, because which occurrence a
- * row is remains fixed — the marker names the month — and a date outside it
- * would file the expense in one month while its provenance said another.
+ * in front of you. It has to stay inside its own month — checked rather than
+ * bounded, for the reason on the field itself.
  *
  * Unticking a month is a **stopping point, not a hole**: it unticks every later
  * month of the same payment too. That is not a UI nicety — generation resumes
@@ -77,8 +76,8 @@ export function RecurringPrompt({ opened, names, pending, onConfirm, onDismiss }
   const editsFor = (p: PendingExpense): RowEdit =>
     edits[p.marker] ?? { amountA: p.amountA, amountB: p.amountB, date: p.date };
 
-  const setEdit = (marker: string, patch: Partial<RowEdit>, current: RowEdit) =>
-    setEdits((e) => ({ ...e, [marker]: { ...current, ...patch } }));
+  const setEdit = (p: PendingExpense, patch: Partial<RowEdit>) =>
+    setEdits((e) => ({ ...e, [p.marker]: { ...editsFor(p), ...patch } }));
   const isChosen = (p: PendingExpense) => !(p.ruleId in stopAt) || p.month < stopAt[p.ruleId];
 
   /** The months of one payment, in order — the run a stopping point cuts. */
@@ -113,7 +112,7 @@ export function RecurringPrompt({ opened, names, pending, onConfirm, onDismiss }
    * as though the bill were free, and the balance is the only record either of
    * them has.
    */
-  const unpriced = chosen.filter((p) => {
+  const unpriced = chosen.find((p) => {
     if (!p.amountVaries) return false;
     const value = editsFor(p);
     // Zero counts as no figure, not as a figure of zero. A €0 row settles as
@@ -131,10 +130,7 @@ export function RecurringPrompt({ opened, names, pending, onConfirm, onDismiss }
    * provenance said another, and the month it was moved out of would still
    * count as generated.
    */
-  const misdated = chosen.filter((p) => {
-    const { date } = editsFor(p);
-    return !isIsoDate(date) || monthKey(date) !== p.month;
-  });
+  const misdated = chosen.find((p) => !datedInOwnMonth(editsFor(p).date, p.month));
 
   /**
    * A corrected amount can strand the slice a rule sets aside against it.
@@ -153,6 +149,7 @@ export function RecurringPrompt({ opened, names, pending, onConfirm, onDismiss }
       // the raw form the forms use, and hands NaN back for anything else.
       return {
         p,
+        date: value.date,
         problem: notCountedProblem(
           {
             amountA: parseAmount(value.amountA),
@@ -164,7 +161,7 @@ export function RecurringPrompt({ opened, names, pending, onConfirm, onDismiss }
         ),
       };
     })
-    .filter((r) => r.problem !== null);
+    .find((r) => r.problem !== null);
 
   /**
    * The one thing wrong with this batch, if anything is.
@@ -174,23 +171,37 @@ export function RecurringPrompt({ opened, names, pending, onConfirm, onDismiss }
    * and a third time in the submit handler, and a fourth reason to stop is one
    * more branch here rather than an edit in four places.
    */
-  const blocker: { colour: string; message: string } | null =
-    impossible.length > 0
-      ? {
-          colour: 'red',
-          message: `${impossible[0].problem} — ${impossible[0].p.item} on ${impossible[0].p.date} sets aside more than the amount now says. Correct the amount, or untick that month and change the payment itself.`,
-        }
-      : unpriced.length > 0
-        ? {
-            colour: 'orange',
-            message: `${unpriced[0].item} on ${unpriced[0].date} needs its amount — this one is different every time, so nobody but you knows what it came to.`,
-          }
-        : misdated.length > 0
-          ? {
-              colour: 'orange',
-              message: `${misdated[0].item} has to stay in ${misdated[0].month}. That is the month this payment covers, and moving the date out of it would leave the month itself counted as done.`,
-            }
-          : null;
+  /**
+   * The one thing wrong with this batch, if anything is.
+   *
+   * Derived in one place rather than as three parallel conditions: the
+   * precedence lives here instead of being spelled out again as a negative in
+   * the markup and a third time in the submit handler, and a fourth reason to
+   * stop is one more guard rather than an edit in four places.
+   */
+  function currentBlocker(): { colour: string; message: string } | null {
+    if (impossible) {
+      return {
+        colour: 'red',
+        message: `${impossible.problem} — ${impossible.p.item} on ${impossible.date} sets aside more than the amount now says. Correct the amount, or untick that month and change the payment itself.`,
+      };
+    }
+    if (unpriced) {
+      return {
+        colour: 'orange',
+        message: `${unpriced.item} on ${editsFor(unpriced).date} needs its amount — this one is different every time, so nobody but you knows what it came to.`,
+      };
+    }
+    if (misdated) {
+      return {
+        colour: 'orange',
+        message: `${misdated.item} has to stay in ${misdated.month}. That is the month this payment covers, and moving the date out of it would leave the month itself counted as done.`,
+      };
+    }
+    return null;
+  }
+
+  const blocker = currentBlocker();
 
   const handleConfirm = async () => {
     if (blocker) return;
@@ -257,7 +268,7 @@ export function RecurringPrompt({ opened, names, pending, onConfirm, onDismiss }
                     <Table.Td>
                       <Checkbox
                         checked={included}
-                        aria-label={`Add ${p.item} for ${p.date}`}
+                        aria-label={`Add ${p.item} for ${p.month}`}
                         onChange={(e) => setChosen(p, e.currentTarget.checked)}
                       />
                     </Table.Td>
@@ -270,11 +281,11 @@ export function RecurringPrompt({ opened, names, pending, onConfirm, onDismiss }
                         why it cannot be used.
                       */}
                       <DateInput
-                        aria-label={`Date for ${p.item} on ${p.date}`}
+                        aria-label={`Date for ${p.item} in ${p.month}`}
                         valueFormat="YYYY-MM-DD"
                         disabled={!included}
                         value={value.date || null}
-                        onChange={(d) => setEdit(p.marker, { date: dateInputValue(d) }, value)}
+                        onChange={(d) => setEdit(p, { date: dateInputValue(d) })}
                       />
                     </Table.Td>
                     <Table.Td>
@@ -292,30 +303,26 @@ export function RecurringPrompt({ opened, names, pending, onConfirm, onDismiss }
                     </Table.Td>
                     <Table.Td>
                       <NumberInput
-                        aria-label={`${names.a} for ${p.item} on ${p.date}`}
+                        aria-label={`${names.a} for ${p.item} in ${p.month}`}
                         prefix="€ "
                         decimalScale={2}
                         fixedDecimalScale
                         min={0}
                         disabled={!included}
                         value={amountValue(value.amountA)}
-                        onChange={(val) =>
-                          setEdit(p.marker, { amountA: amountFromInput(val) }, value)
-                        }
+                        onChange={(val) => setEdit(p, { amountA: amountFromInput(val) })}
                       />
                     </Table.Td>
                     <Table.Td>
                       <NumberInput
-                        aria-label={`${names.b} for ${p.item} on ${p.date}`}
+                        aria-label={`${names.b} for ${p.item} in ${p.month}`}
                         prefix="€ "
                         decimalScale={2}
                         fixedDecimalScale
                         min={0}
                         disabled={!included}
                         value={amountValue(value.amountB)}
-                        onChange={(val) =>
-                          setEdit(p.marker, { amountB: amountFromInput(val) }, value)
-                        }
+                        onChange={(val) => setEdit(p, { amountB: amountFromInput(val) })}
                       />
                     </Table.Td>
                   </Table.Tr>

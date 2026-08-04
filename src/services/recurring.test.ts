@@ -11,6 +11,7 @@ import {
   pendingRecurring,
   toEveryMonths,
   describeInterval,
+  datedInOwnMonth,
 } from './recurring';
 import type { Expense, ExpenseRow } from '../types/expense';
 import type { RecurringRule, RecurringRow } from '../types/recurring';
@@ -563,5 +564,45 @@ describe('nextDueDate across intervals', () => {
     expect(nextDueDate({ start: '2020-09-20', day: 20, everyMonths: 12 }, '2026-10-01')).toBe(
       '2027-09-20',
     );
+  });
+});
+
+// ── The date a row may carry ──
+//
+// Correctable, because a bill's day wanders — but not out of its own month,
+// because that month is what says which occurrence the row is.
+
+describe('datedInOwnMonth', () => {
+  it('accepts any day inside the month', () => {
+    expect(datedInOwnMonth('2026-02-01', '2026-02')).toBe(true);
+    expect(datedInOwnMonth('2026-02-18', '2026-02')).toBe(true);
+    expect(datedInOwnMonth('2026-02-28', '2026-02')).toBe(true);
+  });
+
+  it('refuses a date in the month either side', () => {
+    expect(datedInOwnMonth('2026-01-31', '2026-02')).toBe(false);
+    expect(datedInOwnMonth('2026-03-01', '2026-02')).toBe(false);
+  });
+
+  it('refuses the same day a year out', () => {
+    expect(datedInOwnMonth('2027-02-18', '2026-02')).toBe(false);
+  });
+
+  // The month check alone would take these, since it only reads the first seven
+  // characters.
+  it('refuses a day that month never had', () => {
+    expect(datedInOwnMonth('2026-02-99', '2026-02')).toBe(false);
+    expect(datedInOwnMonth('2026-02-30', '2026-02')).toBe(false);
+  });
+
+  it('accepts the 29th only in a leap year', () => {
+    expect(datedInOwnMonth('2026-02-29', '2026-02')).toBe(false);
+    expect(datedInOwnMonth('2028-02-29', '2028-02')).toBe(true);
+  });
+
+  it('refuses anything that is not a date at all', () => {
+    expect(datedInOwnMonth('', '2026-02')).toBe(false);
+    expect(datedInOwnMonth('2026-2-5', '2026-02')).toBe(false);
+    expect(datedInOwnMonth('February', '2026-02')).toBe(false);
   });
 });
