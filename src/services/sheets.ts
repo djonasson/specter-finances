@@ -48,18 +48,6 @@ function getConfig() {
   return { spreadsheetId, sheetName };
 }
 
-interface GoogleCall {
-  /** Names the API in a failure Google sent no message of its own for. */
-  label?: string;
-  /**
-   * The 403 reasons that mean something other than "the grant is gone", named
-   * by the caller that knows them. Anything unrecognised still drops the grant:
-   * holding on to one that really was revoked leaves the app failing every
-   * request forever, so letting go is the safe default.
-   */
-  keepGrantOn?: readonly string[];
-}
-
 /**
  * A call to a Google API carrying this app's session.
  *
@@ -76,6 +64,18 @@ interface GoogleCall {
  * that send a body pass their own, which is what keeps every Sheets request
  * identical to what it was before this was split out.
  */
+interface GoogleCall {
+  /** Names the API in a failure Google sent no message of its own for. */
+  label?: string;
+  /**
+   * The 403 reasons that mean something other than "the grant is gone", named
+   * by the caller that knows them. Anything unrecognised still drops the grant:
+   * holding on to one that really was revoked leaves the app failing every
+   * request forever, so letting go is the safe default.
+   */
+  keepGrantOn?: readonly string[];
+}
+
 async function authorizedFetch(
   url: string,
   options: RequestInit = {},
@@ -139,8 +139,27 @@ async function authorizedFetch(
   return res;
 }
 
+/**
+ * A request against the granted spreadsheet, addressed by the path *within* it:
+ * `/values/A1:B2`, `:batchUpdate`, `?fields=properties.title`.
+ *
+ * The spreadsheet's own segment is built here rather than by each caller, and
+ * percent-encoded on the way. The id is read back out of localStorage, where it
+ * outlives the pick that wrote it, so it is stored text rather than a literal —
+ * and stored text interpolated raw into a URL can reach past the segment it was
+ * meant to fill and rewrite the request around it. Eighteen callers each pasting
+ * the id in themselves was eighteen chances to forget; done once, here, there is
+ * nothing left to forget.
+ *
+ * Encoding seals the segment against a different host, a grafted query and a
+ * grafted operation — not against `.` and `..`, which survive it and are then
+ * normalised away by the URL parser. That is a path within the same host under
+ * the same `drive.file` token, and writing the stored id at all takes control of
+ * this origin, which already means the token; so it is bounded, not sealed.
+ */
 async function sheetsRequest(path: string, options: RequestInit = {}) {
-  const res = await authorizedFetch(`${SHEETS_API}${path}`, {
+  const { spreadsheetId } = getConfig();
+  const res = await authorizedFetch(`${SHEETS_API}/${encodeURIComponent(spreadsheetId)}${path}`, {
     ...options,
     // Ahead of the caller's own headers, exactly as before: the spread order is
     // what decides which one wins.
@@ -151,8 +170,7 @@ async function sheetsRequest(path: string, options: RequestInit = {}) {
 
 /** Title and numeric id of every tab in the granted spreadsheet. */
 async function listSheets(): Promise<{ title: string; sheetId: number }[]> {
-  const { spreadsheetId } = getConfig();
-  const spreadsheet = await sheetsRequest(`/${spreadsheetId}?fields=sheets.properties`);
+  const spreadsheet = await sheetsRequest(`?fields=sheets.properties`);
   return (spreadsheet.sheets ?? []).map(
     (s: { properties: { title: string; sheetId: number } }) => s.properties,
   );
@@ -181,6 +199,17 @@ async function isMissingTab(e: unknown, title: string): Promise<boolean> {
 const DRIVE_API = 'https://www.googleapis.com/drive/v3/files';
 
 /**
+ * A Drive URL for one file, by the path within it.
+ *
+ * The same rule `sheetsRequest` enforces on the Sheets side, for the two calls
+ * that cannot go through it: the id is stored text, and encoding it is not a
+ * thing each caller should have to remember.
+ */
+function driveFileUrl(fileId: string, path = ''): string {
+  return `${DRIVE_API}/${encodeURIComponent(fileId)}${path}`;
+}
+
+/**
  * Ask Drive about the file we just failed to read from Sheets.
  *
  * A Sheets 404 is ambiguous: no per-file grant, wrong file type, or a grant
@@ -190,7 +219,10 @@ const DRIVE_API = 'https://www.googleapis.com/drive/v3/files';
 async function describeSheetAccess(sheetId: string, token: string): Promise<string> {
   try {
     const res = await fetch(
-      `${DRIVE_API}/${sheetId}?fields=id,name,mimeType,shortcutDetails,capabilities/canReadRevisions`,
+      driveFileUrl(
+        sheetId,
+        '?fields=id,name,mimeType,shortcutDetails,capabilities/canReadRevisions',
+      ),
       { headers: { Authorization: `Bearer ${token}` } },
     );
 
@@ -217,8 +249,7 @@ async function describeSheetAccess(sheetId: string, token: string): Promise<stri
 }
 
 /** What Google converts a native spreadsheet into: a real Excel workbook. */
-const SPREADSHEET_EXPORT_MIME =
-  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+const SPREADSHEET_EXPORT_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
 /**
  * Drive refuses to export a file over 10 MB with a 403, which is otherwise the
@@ -238,8 +269,7 @@ const EXPORT_TOO_BIG = 'exportSizeLimitExceeded';
 export async function exportSpreadsheet(): Promise<Blob> {
   const { spreadsheetId } = getConfig();
   const res = await authorizedFetch(
-    `${DRIVE_API}/${encodeURIComponent(spreadsheetId)}/export` +
-      `?mimeType=${encodeURIComponent(SPREADSHEET_EXPORT_MIME)}`,
+    driveFileUrl(spreadsheetId, `/export?mimeType=${encodeURIComponent(SPREADSHEET_EXPORT_MIME)}`),
     {},
     { label: 'Drive export', keepGrantOn: [EXPORT_TOO_BIG] },
   );
@@ -248,8 +278,7 @@ export async function exportSpreadsheet(): Promise<Blob> {
 
 /** The spreadsheet's own name, as Sheets holds it. Empty when it has none. */
 export async function fetchSpreadsheetTitle(): Promise<string> {
-  const { spreadsheetId } = getConfig();
-  const data = await sheetsRequest(`/${spreadsheetId}?fields=properties.title`);
+  const data = await sheetsRequest(`?fields=properties.title`);
   return String(data.properties?.title ?? '').trim();
 }
 
@@ -313,11 +342,9 @@ export interface ExpensesResult {
  * six cells long and reads as having none.
  */
 export async function fetchExpenses(): Promise<ExpensesResult> {
-  const { spreadsheetId, sheetName } = getConfig();
+  const { sheetName } = getConfig();
   const range = encodeURIComponent(`${sheetName}!A1:J`);
-  const data = await sheetsRequest(
-    `/${spreadsheetId}/values/${range}?valueRenderOption=UNFORMATTED_VALUE`,
-  );
+  const data = await sheetsRequest(`/values/${range}?valueRenderOption=UNFORMATTED_VALUE`);
 
   const rows: unknown[][] = data.values || [];
 
@@ -386,7 +413,7 @@ function expenseRow(cells: {
  * but dated weeks ago.
  */
 export async function addExpense(form: ExpenseFormData): Promise<void> {
-  const { spreadsheetId, sheetName } = getConfig();
+  const { sheetName } = getConfig();
   const range = encodeURIComponent(`${sheetName}!A:J`);
   const row = expenseRow({
     date: form.date,
@@ -401,7 +428,7 @@ export async function addExpense(form: ExpenseFormData): Promise<void> {
     notCountedB: formatAmount(form.notCountedB),
   });
 
-  await sheetsRequest(`/${spreadsheetId}/values/${range}:append?valueInputOption=USER_ENTERED`, {
+  await sheetsRequest(`/values/${range}:append?valueInputOption=USER_ENTERED`, {
     method: 'POST',
     body: JSON.stringify({ values: [row] }),
   });
@@ -422,7 +449,7 @@ export async function addExpense(form: ExpenseFormData): Promise<void> {
  * has neither field. One batchUpdate keeps it to a single request.
  */
 export async function updateExpense(rowIndex: ExpenseRow, form: ExpenseFormData): Promise<void> {
-  const { spreadsheetId, sheetName } = getConfig();
+  const { sheetName } = getConfig();
 
   const entered = [
     form.date,
@@ -434,7 +461,7 @@ export async function updateExpense(rowIndex: ExpenseRow, form: ExpenseFormData)
   ];
   const setAside = [formatAmount(form.notCountedA), formatAmount(form.notCountedB)];
 
-  await sheetsRequest(`/${spreadsheetId}/values:batchUpdate`, {
+  await sheetsRequest(`/values:batchUpdate`, {
     method: 'POST',
     body: JSON.stringify({
       valueInputOption: 'USER_ENTERED',
@@ -448,13 +475,11 @@ export async function updateExpense(rowIndex: ExpenseRow, form: ExpenseFormData)
 
 /** Delete a row via batchUpdate deleteDimension */
 async function deleteRow(sheetName: string, rowIndex: number): Promise<void> {
-  const { spreadsheetId } = getConfig();
-
   const sheet = (await listSheets()).find((s) => s.title === sheetName);
   if (!sheet) throw new Error(`Sheet "${sheetName}" not found`);
   const sheetId = sheet.sheetId;
 
-  await sheetsRequest(`/${spreadsheetId}:batchUpdate`, {
+  await sheetsRequest(`:batchUpdate`, {
     method: 'POST',
     body: JSON.stringify({
       requests: [
@@ -535,11 +560,8 @@ function makeMovementCrud<
 
   return {
     async fetchAll(): Promise<TRecord[]> {
-      const { spreadsheetId } = getConfig();
       const range = encodeURIComponent(`${sheetName}!A2:${lastCol}`);
-      const data = await sheetsRequest(
-        `/${spreadsheetId}/values/${range}?valueRenderOption=UNFORMATTED_VALUE`,
-      );
+      const data = await sheetsRequest(`/values/${range}?valueRenderOption=UNFORMATTED_VALUE`);
 
       const rows: unknown[][] = data.values || [];
       return rows
@@ -555,21 +577,16 @@ function makeMovementCrud<
     },
 
     async add(form: TForm): Promise<void> {
-      const { spreadsheetId } = getConfig();
       const range = encodeURIComponent(`${sheetName}!A:${lastCol}`);
-      await sheetsRequest(
-        `/${spreadsheetId}/values/${range}:append?valueInputOption=USER_ENTERED`,
-        {
-          method: 'POST',
-          body: JSON.stringify({ values: [movementRow(form, writeExtra?.(form) ?? [])] }),
-        },
-      );
+      await sheetsRequest(`/values/${range}:append?valueInputOption=USER_ENTERED`, {
+        method: 'POST',
+        body: JSON.stringify({ values: [movementRow(form, writeExtra?.(form) ?? [])] }),
+      });
     },
 
     async update(rowIndex: TRow, form: TForm): Promise<void> {
-      const { spreadsheetId } = getConfig();
       const range = encodeURIComponent(`${sheetName}!A${rowIndex}:${lastCol}${rowIndex}`);
-      await sheetsRequest(`/${spreadsheetId}/values/${range}?valueInputOption=USER_ENTERED`, {
+      await sheetsRequest(`/values/${range}?valueInputOption=USER_ENTERED`, {
         method: 'PUT',
         body: JSON.stringify({ values: [movementRow(form, writeExtra?.(form) ?? [])] }),
       });
@@ -700,9 +717,7 @@ export async function fetchRecurring(): Promise<RecurringResult> {
 
   let data;
   try {
-    data = await sheetsRequest(
-      `/${spreadsheetId}/values/${range}?valueRenderOption=UNFORMATTED_VALUE`,
-    );
+    data = await sheetsRequest(`/values/${range}?valueRenderOption=UNFORMATTED_VALUE`);
     rememberTabPresence(spreadsheetId, true);
   } catch (e) {
     // Once this session has seen the tab missing, a repeat 400 needs no second
@@ -794,11 +809,10 @@ export function columnLetter(index: number): string {
  * label too many would have produced the range `Recurring!undefined1`.
  */
 async function ensureLabels(sheet: string, row: number, firstColumn: number, labels: string[]) {
-  const { spreadsheetId } = getConfig();
   const span =
     `${sheet}!${columnLetter(firstColumn)}${row}` +
     `:${columnLetter(firstColumn + labels.length - 1)}${row}`;
-  const existing = await sheetsRequest(`/${spreadsheetId}/values/${encodeURIComponent(span)}`);
+  const existing = await sheetsRequest(`/values/${encodeURIComponent(span)}`);
   const current = (existing.values?.[0] ?? []) as unknown[];
 
   // One entry per blank cell rather than one span across them: a span from the
@@ -818,7 +832,7 @@ async function ensureLabels(sheet: string, row: number, firstColumn: number, lab
 
   if (data.length === 0) return;
 
-  await sheetsRequest(`/${spreadsheetId}/values:batchUpdate`, {
+  await sheetsRequest(`/values:batchUpdate`, {
     method: 'POST',
     body: JSON.stringify({ valueInputOption: 'USER_ENTERED', data }),
   });
@@ -890,7 +904,7 @@ export async function ensureRecurringSetup(): Promise<void> {
   if (knownTabPresence(spreadsheetId) !== true) {
     const sheets = await listSheets();
     if (!sheets.some((s) => s.title === RECURRING_SHEET)) {
-      await sheetsRequest(`/${spreadsheetId}:batchUpdate`, {
+      await sheetsRequest(`:batchUpdate`, {
         method: 'POST',
         body: JSON.stringify({
           requests: [{ addSheet: { properties: { title: RECURRING_SHEET } } }],
@@ -898,9 +912,7 @@ export async function ensureRecurringSetup(): Promise<void> {
       });
 
       await sheetsRequest(
-        `/${spreadsheetId}/values/${encodeURIComponent(
-          `${RECURRING_SHEET}!A1:L1`,
-        )}?valueInputOption=USER_ENTERED`,
+        `/values/${encodeURIComponent(`${RECURRING_SHEET}!A1:L1`)}?valueInputOption=USER_ENTERED`,
         { method: 'PUT', body: JSON.stringify({ values: [RECURRING_HEADER] }) },
       );
     }
@@ -922,9 +934,8 @@ export async function ensureRecurringSetup(): Promise<void> {
 
 export async function addRecurring(form: RecurringFormData): Promise<void> {
   await ensureRecurringSetup();
-  const { spreadsheetId } = getConfig();
   const range = encodeURIComponent(`${RECURRING_SHEET}!A:L`);
-  await sheetsRequest(`/${spreadsheetId}/values/${range}:append?valueInputOption=USER_ENTERED`, {
+  await sheetsRequest(`/values/${range}:append?valueInputOption=USER_ENTERED`, {
     method: 'POST',
     body: JSON.stringify({ values: [recurringRow(form, newRuleId())] }),
   });
@@ -942,9 +953,8 @@ export async function updateRecurring(
   form: RecurringFormData,
   id: string,
 ): Promise<void> {
-  const { spreadsheetId } = getConfig();
   const range = encodeURIComponent(`${RECURRING_SHEET}!A${rowIndex}:L${rowIndex}`);
-  await sheetsRequest(`/${spreadsheetId}/values/${range}?valueInputOption=USER_ENTERED`, {
+  await sheetsRequest(`/values/${range}?valueInputOption=USER_ENTERED`, {
     method: 'PUT',
     body: JSON.stringify({ values: [recurringRow(form, id)] }),
   });
@@ -952,9 +962,8 @@ export async function updateRecurring(
 
 /** Give a hand-added rule an id, so what it generates can be traced back. */
 export async function assignRecurringId(rowIndex: RecurringRow): Promise<void> {
-  const { spreadsheetId } = getConfig();
   const range = encodeURIComponent(`${RECURRING_SHEET}!H${rowIndex}`);
-  await sheetsRequest(`/${spreadsheetId}/values/${range}?valueInputOption=USER_ENTERED`, {
+  await sheetsRequest(`/values/${range}?valueInputOption=USER_ENTERED`, {
     method: 'PUT',
     body: JSON.stringify({ values: [[newRuleId()]] }),
   });
@@ -977,7 +986,7 @@ export async function deleteRecurring(rowIndex: RecurringRow): Promise<void> {
  */
 export async function appendGeneratedExpenses(pending: PendingExpense[]): Promise<void> {
   if (pending.length === 0) return;
-  const { spreadsheetId, sheetName } = getConfig();
+  const { sheetName } = getConfig();
   const range = encodeURIComponent(`${sheetName}!A:J`);
   const addedOn = today();
   const values = pending.map((p) =>
@@ -992,7 +1001,7 @@ export async function appendGeneratedExpenses(pending: PendingExpense[]): Promis
   );
 
   await sheetsRequest(
-    `/${spreadsheetId}/values/${range}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
+    `/values/${range}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
     { method: 'POST', body: JSON.stringify({ values }) },
   );
 }

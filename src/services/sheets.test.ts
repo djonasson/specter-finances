@@ -26,6 +26,7 @@ import {
   updateExpense,
   addExpense,
   fetchRecurring,
+  fetchSpreadsheetTitle,
   addRecurring,
   updateRecurring,
   deleteRecurring,
@@ -1711,5 +1712,117 @@ describe('what a Sheets request still sends after the auth handling moved out of
     expect(calls[1].url).toBe(calls[0].url);
     expect(calls[1].options.method).toBe(calls[0].options.method);
     expect(calls[1].options.body).toBe(calls[0].options.body);
+  });
+});
+
+// ── The spreadsheet id in the request path ──
+
+// The id is not a literal in this codebase: it is picked once and read back out
+// of localStorage on every later launch, so by the time a request is built it is
+// stored text. Interpolated raw, a stored `a/b` addresses spreadsheet `a` with
+// `b` grafted onto the front of the path — a different sheet, or a different
+// operation, than the one the caller asked for. `sheetsRequest` owns that
+// segment so no caller can get it wrong; this pins that it stays that way.
+
+describe('addressing the granted spreadsheet', () => {
+  const HOSTILE = 'a/b';
+  const ENCODED = 'a%2Fb';
+
+  const expense = {
+    date: '2026-02-01',
+    amountA: '10',
+    amountB: '',
+    notCountedA: '',
+    notCountedB: '',
+    item: 'Bread',
+    category: 'Food' as const,
+    notes: '',
+  };
+
+  const rule = {
+    start: '2026-01-10',
+    amountA: '12.99',
+    amountB: '',
+    notCountedA: '',
+    notCountedB: '',
+    item: 'Phone',
+    category: 'Various' as const,
+    notes: '',
+    day: 10,
+    everyMonths: 1,
+    amountVaries: false,
+  };
+
+  const movement = { date: '2026-02-01', from: 'A' as const, amount: '50', notes: '' };
+
+  // One entry per shape of path this module builds — a plain read, an append, a
+  // range update, both flavours of batchUpdate, and the two metadata reads.
+  const operations: [string, () => Promise<unknown>][] = [
+    ['fetchExpenses', () => fetchExpenses()],
+    ['fetchTransfers', () => fetchTransfers()],
+    ['fetchGifts', () => fetchGifts()],
+    ['fetchRecurring', () => fetchRecurring()],
+    ['fetchSpreadsheetTitle', () => fetchSpreadsheetTitle()],
+    ['addExpense', () => addExpense(expense)],
+    ['updateExpense', () => updateExpense(5 as ExpenseRow, expense)],
+    ['deleteExpense', () => deleteExpense(5 as ExpenseRow)],
+    ['addTransfer', () => addTransfer(movement)],
+    ['updateTransfer', () => updateTransfer(9 as TransferRow, movement)],
+    ['deleteTransfer', () => deleteTransfer(9 as TransferRow)],
+    ['addGift', () => addGift({ ...movement, giftKind: 'present' })],
+    ['updateGift', () => updateGift(9 as GiftRow, { ...movement, giftKind: 'present' })],
+    ['addRecurring', () => addRecurring(rule)],
+    ['updateRecurring', () => updateRecurring(4 as RecurringRow, rule, 'r1')],
+    ['assignRecurringId', () => assignRecurringId(3 as RecurringRow)],
+    ['deleteRecurring', () => deleteRecurring(3 as RecurringRow)],
+    ['ensureRecurringSetup', () => ensureRecurringSetup()],
+    ['ensureExpenseColumnLabels', () => ensureExpenseColumnLabels()],
+    [
+      'appendGeneratedExpenses',
+      () =>
+        appendGeneratedExpenses([
+          { ...expense, recurringMarker: 'rec:r1:2026-02' } as unknown as PendingExpense,
+        ]),
+    ],
+  ];
+
+  it.each(operations)('keeps a stored id inside its own path segment: %s', async (_name, run) => {
+    clearGrantedSheetId();
+    setGrantedSheetId(HOSTILE);
+    // Enough queued answers for the multi-request operations, shaped so none of
+    // them takes an early return before reaching the network.
+    const calls = mockFetchStatuses(
+      Array.from({ length: 8 }, () => ({
+        body: { values: [[]], sheets: [{ properties: { title: 'Sheet1', sheetId: 0 } }] },
+      })),
+    );
+
+    await run().catch(() => {});
+
+    expect(calls.length).toBeGreaterThan(0);
+    for (const { url } of calls) {
+      expect(url).toContain(`/spreadsheets/${ENCODED}`);
+      // The raw form would mean a path built out of the stored value.
+      expect(url).not.toContain(`/spreadsheets/${HOSTILE}`);
+    }
+  });
+
+  // The Drive diagnostic runs inside the 403/404 branch and so never goes
+  // through sheetsRequest — the one call left addressing the file itself, and
+  // the one no other test here reaches.
+  it('keeps a stored id inside its own path segment when asking Drive what went wrong', async () => {
+    clearGrantedSheetId();
+    setGrantedSheetId(HOSTILE);
+    const calls = mockFetchStatuses([
+      { status: 404, body: { error: { message: 'Not found' } } },
+      { body: { mimeType: 'application/vnd.google-apps.spreadsheet', name: 'A sheet' } },
+    ]);
+
+    await expect(fetchExpenses()).rejects.toThrow();
+
+    const drive = calls.find((c) => c.url.includes('/drive/v3/files/'));
+    expect(drive).toBeDefined();
+    expect(drive!.url).toContain(`/drive/v3/files/${ENCODED}?`);
+    expect(drive!.url).not.toContain(`/drive/v3/files/${HOSTILE}`);
   });
 });
