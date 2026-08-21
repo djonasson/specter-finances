@@ -60,8 +60,6 @@ export function MatrixBackground({ speed }: { speed: number }) {
       style={{
         position: 'fixed',
         inset: 0,
-        zIndex: -1,
-        pointerEvents: 'none',
       }}
     />
   );

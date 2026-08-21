@@ -26,6 +26,8 @@ vi.mock('./cello/CelloBackground', async (importOriginal) => ({
 }));
 
 import { BackgroundEffect } from './backgrounds';
+import { BACKGROUNDS, STAGED_BACKGROUNDS, drawsOverTheApp } from './registry';
+import { FOOTER_HEIGHT, BEHIND_Z, SCENE_Z } from './chrome';
 
 beforeEach(() => localStorage.clear());
 afterEach(() => {
@@ -37,7 +39,9 @@ function render(settings: Record<string, unknown>) {
   const { container } = renderWithTheme(<BackgroundEffect />, settings);
   return {
     scene: container.querySelector('[data-scene]')?.getAttribute('data-scene') ?? null,
-    floor: container.querySelector('div[aria-hidden]'),
+    // Named rather than "the aria-hidden div": the scene clip is one of those
+    // too, and matching it here reported a floor for backgrounds that have none.
+    floor: container.querySelector('[data-scene-floor]'),
   };
 }
 
@@ -80,4 +84,47 @@ describe('the floor that comes with a scene', () => {
       expect(render({ backgroundEffect: stored }).floor).toBeNull();
     },
   );
+});
+
+// Which layer a background lands on, and what it may paint over, are decided by
+// the stage — never by the background. See `SceneLayer` for why; the short of it
+// is that Cello's ground painted over all five nav buttons.
+
+describe('where a background is put', () => {
+  const layerOf = (stored: string) => {
+    const { container } = renderWithTheme(<BackgroundEffect />, { backgroundEffect: stored });
+    return container.querySelector<HTMLElement>('[data-scene-layer]');
+  };
+
+  const BEHIND_THE_APP = BACKGROUNDS.map((b) => b.value).filter((v) => !drawsOverTheApp(v));
+
+  // Driven off the registry rather than a list written here, so a background
+  // added later is covered the day it is added.
+  it.each(STAGED_BACKGROUNDS)('stands %s in front of the app, off the footer', (stored) => {
+    const layer = layerOf(stored);
+    expect(layer!.style.zIndex).toBe(String(SCENE_Z));
+    expect(layer!.style.clipPath).toBe(`inset(0 0 ${FOOTER_HEIGHT}px 0)`);
+  });
+
+  it.each(STAGED_BACKGROUNDS)('renders %s inside that layer rather than beside it', (stored) => {
+    const { container } = renderWithTheme(<BackgroundEffect />, { backgroundEffect: stored });
+    expect(container.querySelector('[data-scene]')?.closest('[data-scene-layer]')).not.toBeNull();
+  });
+
+  // The other direction, and the one that cost the most to learn: the clip is a
+  // stacking context, so clipping a background that belongs behind the app
+  // hoists it in front of every row, chart and form.
+  it.each(BEHIND_THE_APP)('leaves %s behind the app, and clips it off nothing', (stored) => {
+    const layer = layerOf(stored);
+    expect(layer!.style.zIndex).toBe(String(BEHIND_Z));
+    expect(layer!.style.clipPath).toBe('');
+  });
+
+  it('lets clicks through, so no background can swallow a tap on the app', () => {
+    expect(layerOf('cello')!.style.pointerEvents).toBe('none');
+  });
+
+  it('is hidden from a screen reader, being scenery', () => {
+    expect(layerOf('cello')).toHaveAttribute('aria-hidden');
+  });
 });

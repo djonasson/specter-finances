@@ -1298,8 +1298,6 @@ export function SquirrelBackground() {
       style={{
         position: 'fixed',
         inset: 0,
-        zIndex: 101,
-        pointerEvents: 'none',
       }}
     />
   );

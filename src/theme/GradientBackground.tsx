@@ -14,8 +14,6 @@ export function GradientBackground({ gradient }: { gradient: GradientSettings })
   const style: React.CSSProperties = {
     position: 'fixed',
     inset: 0,
-    zIndex: -1,
-    pointerEvents: 'none',
     background: `linear-gradient(-45deg, ${c1}, ${c2}, ${c3}, ${c1})`,
     backgroundSize: '400% 400%',
     animation: `gradientShift ${duration}s ease infinite`,
