@@ -15,6 +15,7 @@ import { ColorInput } from '@mantine/core';
 import { useThemeSettings } from '../theme/ThemeContext';
 import type { GradientSettings } from '../theme/ThemeContext';
 import { BACKGROUND_OPTIONS } from '../theme/registry';
+import { BackupButton } from './BackupButton';
 import type { BackgroundName } from '../theme/registry';
 
 interface Props {
@@ -60,7 +61,7 @@ export function ThemeSettings({ opened, onClose }: Props) {
   };
 
   return (
-    <Drawer opened={opened} onClose={onClose} title="Theme Settings" position="right" size="sm">
+    <Drawer opened={opened} onClose={onClose} title="Settings" position="right" size="sm">
       <Stack gap="xl">
         <div>
           <Text fw={500} mb="xs">
@@ -196,6 +197,13 @@ export function ThemeSettings({ opened, onClose }: Props) {
             />
           </div>
         )}
+
+        <div>
+          <Text fw={500} mb="xs">
+            Data
+          </Text>
+          <BackupButton />
+        </div>
 
         <Button
           variant="subtle"

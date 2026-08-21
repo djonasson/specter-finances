@@ -197,11 +197,7 @@ function AuthenticatedApp() {
             <Group gap="xs">
               <InstallButton />
               <ThemeToggle />
-              <ActionIcon
-                variant="subtle"
-                onClick={() => setSettingsOpened(true)}
-                title="Theme settings"
-              >
+              <ActionIcon variant="subtle" onClick={() => setSettingsOpened(true)} title="Settings">
                 <IconSettings size={18} />
               </ActionIcon>
               <Button variant="subtle" size="xs" onClick={signOut}>

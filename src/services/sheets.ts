@@ -48,7 +48,39 @@ function getConfig() {
   return { spreadsheetId, sheetName };
 }
 
-async function sheetsRequest(path: string, options: RequestInit = {}) {
+interface GoogleCall {
+  /** Names the API in a failure Google sent no message of its own for. */
+  label?: string;
+  /**
+   * The 403 reasons that mean something other than "the grant is gone", named
+   * by the caller that knows them. Anything unrecognised still drops the grant:
+   * holding on to one that really was revoked leaves the app failing every
+   * request forever, so letting go is the safe default.
+   */
+  keepGrantOn?: readonly string[];
+}
+
+/**
+ * A call to a Google API carrying this app's session.
+ *
+ * Everything a request from here has to do apart from reading the answer: carry
+ * the token, survive it expiring mid-session, and recognise a grant that is
+ * gone. It sits apart from `sheetsRequest` because not every call to Google
+ * answers with JSON — a spreadsheet export answers with a file — and a caller
+ * reaching for a bare `fetch` to get at those bytes would quietly lose the
+ * refresh and the grant handling along with the parsing it did not want.
+ *
+ * The Response comes back unread, so the caller picks `json()` or `blob()`.
+ *
+ * No Content-Type is set here: a GET with no body must not claim one. Callers
+ * that send a body pass their own, which is what keeps every Sheets request
+ * identical to what it was before this was split out.
+ */
+async function authorizedFetch(
+  url: string,
+  options: RequestInit = {},
+  { label = 'Sheets API', keepGrantOn = [] }: GoogleCall = {},
+): Promise<Response> {
   let token = getAccessToken();
   if (!token) throw new Error('Not authenticated');
 
@@ -56,25 +88,22 @@ async function sheetsRequest(path: string, options: RequestInit = {}) {
   // later response fails the first one may already have dropped the grant.
   const targetSheet = getGrantedSheetId() ?? 'unknown';
 
-  let res = await fetch(`${SHEETS_API}${path}`, {
-    ...options,
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-      ...options.headers,
-    },
-  });
-
-  if (res.status === 401) {
-    token = await refreshToken();
-    res = await fetch(`${SHEETS_API}${path}`, {
+  // Reads `token` when called, not when defined, so the retry below sends the
+  // refreshed one.
+  const send = () =>
+    fetch(url, {
       ...options,
       headers: {
         Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
         ...options.headers,
       },
     });
+
+  let res = await send();
+
+  if (res.status === 401) {
+    token = await refreshToken();
+    res = await send();
   }
 
   if (res.status === 403 || res.status === 404) {
@@ -83,6 +112,15 @@ async function sheetsRequest(path: string, options: RequestInit = {}) {
     // carrying the API's own wording, which is the only clue to *why*.
     const body = await res.json().catch(() => ({}));
     const detail = body.error?.message || `HTTP ${res.status}`;
+
+    // Not every 403 is a lost grant, and only the caller knows which of its own
+    // are not. Sending someone back to the picker over one of those asks them to
+    // re-grant a sheet they already hold, and changes nothing.
+    const reason = String(body.error?.errors?.[0]?.reason ?? '');
+    if (reason && keepGrantOn.includes(reason)) {
+      throw new SheetsApiError(res.status, detail);
+    }
+
     // Name the id, and ask Drive about the same file: "not found" alone cannot
     // distinguish a wrong file, a missing grant, or a grant Sheets refuses.
     const diagnosis = token
@@ -95,9 +133,19 @@ async function sheetsRequest(path: string, options: RequestInit = {}) {
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new SheetsApiError(res.status, err.error?.message || `Sheets API error: ${res.status}`);
+    throw new SheetsApiError(res.status, err.error?.message || `${label} error: ${res.status}`);
   }
 
+  return res;
+}
+
+async function sheetsRequest(path: string, options: RequestInit = {}) {
+  const res = await authorizedFetch(`${SHEETS_API}${path}`, {
+    ...options,
+    // Ahead of the caller's own headers, exactly as before: the spread order is
+    // what decides which one wins.
+    headers: { 'Content-Type': 'application/json', ...options.headers },
+  });
   return res.json();
 }
 
@@ -166,6 +214,43 @@ async function describeSheetAccess(sheetId: string, token: string): Promise<stri
   } catch {
     return 'Drive check could not be completed.';
   }
+}
+
+/** What Google converts a native spreadsheet into: a real Excel workbook. */
+const SPREADSHEET_EXPORT_MIME =
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
+/**
+ * Drive refuses to export a file over 10 MB with a 403, which is otherwise the
+ * shape of a grant that is gone. Re-granting would not make the sheet smaller,
+ * so this one must not cost the user their pick.
+ */
+const EXPORT_TOO_BIG = 'exportSizeLimitExceeded';
+
+/**
+ * The whole spreadsheet as one .xlsx file — every tab, as Google holds it.
+ *
+ * Drive's *export* endpoint, not `alt=media`: a Google-native spreadsheet has no
+ * bytes of its own to download, so asking for the file itself fails and only a
+ * conversion answers. `drive.file` already covers it, since it is the same file
+ * the picker granted.
+ */
+export async function exportSpreadsheet(): Promise<Blob> {
+  const { spreadsheetId } = getConfig();
+  const res = await authorizedFetch(
+    `${DRIVE_API}/${encodeURIComponent(spreadsheetId)}/export` +
+      `?mimeType=${encodeURIComponent(SPREADSHEET_EXPORT_MIME)}`,
+    {},
+    { label: 'Drive export', keepGrantOn: [EXPORT_TOO_BIG] },
+  );
+  return res.blob();
+}
+
+/** The spreadsheet's own name, as Sheets holds it. Empty when it has none. */
+export async function fetchSpreadsheetTitle(): Promise<string> {
+  const { spreadsheetId } = getConfig();
+  const data = await sheetsRequest(`/${spreadsheetId}?fields=properties.title`);
+  return String(data.properties?.title ?? '').trim();
 }
 
 /**

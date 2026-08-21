@@ -31,6 +31,9 @@ fully owned by you.
   list to just those, for when the badge is buried a few pages down.
 - **Dashboard** — charts (via Chart.js) summarizing spending by category and over
   time, with shared date filtering.
+- **Backup** — a button in the settings drawer that downloads the whole
+  spreadsheet, every tab, as a single Excel file. Upload that file back to Google
+  Drive and the sheet is restored, so it is a real backup and not a report.
 - **Installable PWA** — works offline-friendly and installs to the home screen.
 - **Theming** — light/dark mode plus customizable animated backgrounds
   (gradient, matrix, squirrel, cello) and adjustable accent color and card
@@ -225,6 +228,28 @@ would read as though the sheet were half-configured — otherwise the app shows
 
 Renaming yourself is therefore a sheet edit, not a code change.
 
+## Backing up
+
+The gear icon opens **Settings**, and under **Data** a **Back up spreadsheet**
+button downloads the whole workbook as an `.xlsx` file named after the sheet and
+dated, so today's copy does not overwrite last month's.
+
+It is a genuine copy rather than an export of what the app understands: every
+tab comes down as Google holds it, including anything typed into columns the app
+never reads, and re-uploading the file to Drive gives back a working spreadsheet.
+The download goes through Drive's export endpoint, which the app can already
+reach — the per-file grant from the picker covers it, so backing up asks for no
+new permission.
+
+Two limits worth knowing:
+
+- Drive refuses to export a file larger than **10 MB**. A sheet of household
+  expenses is nowhere near that, and if it is ever reached the button says so
+  rather than failing quietly.
+- On iOS, an installed PWA in standalone mode handles downloads inconsistently.
+  If the file does not appear, open the app in Safari itself and press the button
+  there.
+
 ## Tech stack
 
 - [React 19](https://react.dev/) + [TypeScript](https://www.typescriptlang.org/)
@@ -396,7 +421,8 @@ src/
   components/        UI components (forms, lists, dashboard, theme controls)
   hooks/             per-domain data hooks + the shared ExpensesContext
   services/          Sheets CRUD, auth, parsing, settlement math (utils.ts),
-                     and the recurring due-date rules (recurring.ts)
+                     the recurring due-date rules (recurring.ts), and the
+                     spreadsheet backup (backup.ts)
   theme/             theming context and animated backgrounds
   types/             Expense / Transfer / Gift / Recurring type definitions
 ```

@@ -12,6 +12,7 @@ vi.mock('./auth', () => ({
 }));
 
 import { setGrantedSheetId, getGrantedSheetId, clearGrantedSheetId } from './sheetAccess';
+import { mockFetchQueue, mockFetchQueue as mockFetchStatuses, urls, bodyOf } from '../test-fetch';
 import {
   fetchExpenses,
   fetchTransfers,
@@ -43,52 +44,16 @@ import { pendingRecurring } from './recurring';
 
 const SPREADSHEET_ID = 'test-sheet-id';
 
-/** Queue of responses, one per fetch call, in order. */
+// The fake `fetch` itself lives in test-fetch.ts, shared with the other suites
+// that talk to Google — what `ok` and `status` mean there decides whether the
+// app keeps the user's grant, and that judgement belongs in one place.
+//
+// These two adapt it to how this file has always been written: most tests here
+// care only about the body, and only a handful about the status.
+
+/** Queue of response bodies, one per fetch call, in order. */
 function mockFetch(responses: unknown[]) {
-  const calls: { url: string; options: RequestInit }[] = [];
-  let i = 0;
-  const fn = vi.fn(async (url: string, options: RequestInit = {}) => {
-    calls.push({ url, options });
-    const body = responses[i++] ?? {};
-    return {
-      ok: true,
-      status: 200,
-      json: async () => body,
-    } as unknown as Response;
-  });
-  vi.stubGlobal('fetch', fn);
-  return calls;
-}
-
-/** Parse the JSON body a mutation sent. */
-function bodyOf(call: { options: RequestInit }): Record<string, unknown> {
-  return JSON.parse(call.options.body as string);
-}
-
-/**
- * Like mockFetch, but each queued entry may set its own status — needed for the
- * paths that turn on one 4xx meaning something different from another.
- */
-function mockFetchStatuses(responses: { status?: number; body?: unknown }[]) {
-  const calls: { url: string; options: RequestInit }[] = [];
-  let i = 0;
-  const fn = vi.fn(async (url: string, options: RequestInit = {}) => {
-    calls.push({ url, options });
-    const r = responses[i++] ?? {};
-    const status = r.status ?? 200;
-    return {
-      ok: status >= 200 && status < 300,
-      status,
-      json: async () => r.body ?? {},
-    } as unknown as Response;
-  });
-  vi.stubGlobal('fetch', fn);
-  return calls;
-}
-
-/** Every request URL, decoded, so ranges can be matched as written. */
-function urls(calls: { url: string }[]): string[] {
-  return calls.map((c) => decodeURIComponent(c.url));
+  return mockFetchQueue(responses.map((body) => ({ body })));
 }
 
 beforeEach(() => {
@@ -1695,5 +1660,56 @@ describe('columnLetter', () => {
 
   it('never produces anything but letters', () => {
     for (let i = 0; i < 800; i++) expect(columnLetter(i)).toMatch(/^[A-Z]+$/);
+  });
+});
+
+// ── The requests the auth handling was lifted out of ──
+
+// `authorizedFetch` was extracted from `sheetsRequest` so a binary Drive export
+// could inherit the token refresh and the grant handling. Everything above is
+// the bulk of the proof that it moved nothing; these pin the two things the
+// extraction could have dropped without any of it going red — the JSON content
+// type, which the shared helper deliberately no longer adds, and the API the
+// requests are aimed at.
+
+describe('what a Sheets request still sends after the auth handling moved out of it', () => {
+  it('still declares a JSON body, on the calls that read as well as those that write', async () => {
+    // The shared helper deliberately adds no Content-Type — a request answering
+    // with a file must not claim one — so `sheetsRequest` passing it is now the
+    // only thing keeping these identical to what they were.
+    const reads = mockFetch([{ values: [] }]);
+    await fetchExpenses();
+
+    const writes = mockFetch([{}]);
+    await addTransfer({ date: '2026-08-18', amount: '10', from: 'A', notes: '' });
+
+    for (const call of [reads[0], writes[0]]) {
+      expect(call.options.headers).toMatchObject({
+        Authorization: 'Bearer test-token',
+        'Content-Type': 'application/json',
+      });
+    }
+  });
+
+  it('still aims at the Sheets API and not at the Drive one', async () => {
+    const calls = mockFetch([{ values: [] }]);
+
+    await fetchExpenses();
+
+    expect(calls[0].url.startsWith('https://sheets.googleapis.com/v4/spreadsheets/')).toBe(true);
+  });
+
+  it('repeats the whole request, body and method included, when it retries after a refresh', async () => {
+    // The retry used to be a second copy of the same fetch call written out
+    // longhand. Now one closure serves both, so a write that lost its body on
+    // the way through would silently append an empty row.
+    const calls = mockFetchStatuses([{ status: 401 }, {}]);
+
+    await addTransfer({ date: '2026-08-18', amount: '10', from: 'A', notes: '' });
+
+    expect(calls).toHaveLength(2);
+    expect(calls[1].url).toBe(calls[0].url);
+    expect(calls[1].options.method).toBe(calls[0].options.method);
+    expect(calls[1].options.body).toBe(calls[0].options.body);
   });
 });

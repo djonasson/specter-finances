@@ -112,3 +112,27 @@ describe('putting the theme back', () => {
     });
   });
 });
+
+// The drawer is the only way to reach any of this, so a section that quietly
+// stops rendering is a feature the user can no longer get at.
+
+describe('the data section', () => {
+  it('offers a backup where the user goes looking for their settings', () => {
+    renderSettings();
+
+    expect(screen.getByText('Data')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Back up spreadsheet/i })).toBeInTheDocument();
+  });
+
+  it('still offers Reset to Defaults now that the data section sits above it', () => {
+    renderSettings();
+
+    expect(screen.getByRole('button', { name: /Reset to Defaults/i })).toBeInTheDocument();
+  });
+
+  it('calls itself Settings now that it holds more than the theme', () => {
+    renderSettings();
+
+    expect(screen.getByText('Settings')).toBeInTheDocument();
+  });
+});
