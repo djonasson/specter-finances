@@ -737,27 +737,31 @@ function drawCar(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette, car: C
   const wheelY = base - wheelR;
   const wheels = [px(0.2), px(0.845)];
 
-  // The body: short, tall and upright, which is the whole of a 500's character.
+  // The body: short, tall and upright, with corners.
   //
-  // Taken off the elevation but exaggerated, because at seventy pixels wide the
-  // subtleties do not survive: transcribed faithfully it read as a long, low,
-  // rounded thing — a Beetle — since a nose that tapers and a tail that slopes
-  // away eat the length the cabin needs.
+  // The shape lives in the breaks, not in the curve. Drawn as one smooth arc
+  // from nose to tail — which is what the elevation looks like if you trace it —
+  // it comes out a Beetle: a dome over a long body. A 500 is a flat roof between
+  // two hard corners, a screen raked steeply off the front one and a tailgate
+  // that falls almost straight off the back.
   ctx.fillStyle = p.beige;
   ctx.beginPath();
-  ctx.moveTo(px(0.02), py(0.16));
-  // A blunt, tall face rather than a taper: the nose is up at nearly two thirds
-  // of the height within a twentieth of the length.
-  ctx.quadraticCurveTo(px(-0.01), py(0.42), px(0.05), py(0.6));
-  // A short, almost flat bonnet to a high belt line.
-  ctx.quadraticCurveTo(px(0.15), py(0.64), px(0.27), py(0.65));
-  // Windscreen, raked hard and short.
-  ctx.quadraticCurveTo(px(0.32), py(0.86), px(0.39), py(0.99));
-  // A long roof over the middle: nearly two fifths of the car is cabin.
-  ctx.quadraticCurveTo(px(0.57), py(1.03), px(0.76), py(0.94));
-  // The tailgate, near vertical, which is what makes it stubby rather than long.
-  ctx.quadraticCurveTo(px(0.92), py(0.87), px(0.955), py(0.5));
-  ctx.quadraticCurveTo(px(0.995), py(0.31), px(0.965), py(0.16));
+  ctx.moveTo(px(0.1), py(0.1));
+  // The face: blunt and tall, and hard up against the front wheel. Tapering to a
+  // low point out in front is what made it read as a wedge.
+  ctx.quadraticCurveTo(px(0.04), py(0.36), px(0.1), py(0.62));
+  // A short bonnet, barely rising, to the foot of the screen.
+  ctx.lineTo(px(0.25), py(0.66));
+  // Screen: steep and short.
+  ctx.quadraticCurveTo(px(0.29), py(0.79), px(0.35), py(0.98));
+  // The roof: flat, and a good third of the car.
+  ctx.lineTo(px(0.73), py(1.0));
+  // A tight corner at the back of the roof, then the tailgate — one straight
+  // fall, which is what stops the whole upper line reading as one dome.
+  ctx.quadraticCurveTo(px(0.81), py(0.98), px(0.85), py(0.86));
+  ctx.lineTo(px(0.925), py(0.36));
+  // A short, square tail rather than a rounded stub.
+  ctx.quadraticCurveTo(px(0.945), py(0.2), px(0.91), py(0.1));
   ctx.closePath();
   ctx.fill();
 
@@ -775,26 +779,26 @@ function drawCar(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette, car: C
   // sitting on one belt line the length of the car.
   /** The door glass, which she is also seen through. One shape, not two. */
   const doorWindow = () => {
-    ctx.moveTo(px(0.3), py(0.685));
-    ctx.lineTo(px(0.4), py(0.955));
-    ctx.lineTo(px(0.585), py(0.965));
-    ctx.lineTo(px(0.585), py(0.685));
+    ctx.moveTo(px(0.28), py(0.7));
+    ctx.lineTo(px(0.37), py(0.945));
+    ctx.lineTo(px(0.56), py(0.955));
+    ctx.lineTo(px(0.56), py(0.7));
     ctx.closePath();
   };
 
   ctx.fillStyle = p.glass;
   ctx.beginPath();
   doorWindow();
-  ctx.moveTo(px(0.62), py(0.685));
-  ctx.lineTo(px(0.62), py(0.955));
-  ctx.quadraticCurveTo(px(0.72), py(0.935), px(0.775), py(0.685));
+  ctx.moveTo(px(0.585), py(0.7));
+  ctx.lineTo(px(0.585), py(0.95));
+  ctx.quadraticCurveTo(px(0.7), py(0.935), px(0.755), py(0.7));
   ctx.closePath();
   ctx.fill();
 
   ctx.fillStyle = p.chrome;
   // Door handle, high on the door the way a 500's is, and the rubbing strip
   // along the belt line.
-  ctx.fillRect(px(0.49), py(0.66) - 1, 5.5, 1.5);
+  ctx.fillRect(px(0.48), py(0.675) - 1, 5.5, 1.5);
   ctx.fillRect(px(0.08), base - 9, CAR_WIDTH * 0.84, 1.2);
 
   // Her at the wheel, seen through the door window, and only while it is
@@ -835,8 +839,8 @@ function drawCar(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette, car: C
   ctx.fillStyle = p.chrome;
   discs(wheelR * 0.72);
   // The headlamp shares this pass: large, round, high in the wing.
-  ctx.moveTo(px(0.08) + 2.8, py(0.52));
-  ctx.arc(px(0.08), py(0.52), 2.8, 0, Math.PI * 2);
+  ctx.moveTo(px(0.125) + 2.4, py(0.55));
+  ctx.arc(px(0.125), py(0.55), 2.4, 0, Math.PI * 2);
   ctx.fill();
 
   ctx.fillStyle = p.beigeShade;
@@ -845,7 +849,7 @@ function drawCar(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette, car: C
 
   ctx.fillStyle = p.glass;
   ctx.beginPath();
-  ctx.arc(px(0.08), py(0.52), 1.6, 0, Math.PI * 2);
+  ctx.arc(px(0.125), py(0.55), 1.3, 0, Math.PI * 2);
   ctx.fill();
 
   ctx.restore();
