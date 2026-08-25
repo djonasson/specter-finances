@@ -25,6 +25,7 @@ import {
   carryingPizza,
   leafSway,
   girlOnFoot,
+  inPark,
   lounging,
   LOUNGER_BACK_HEIGHT,
   LOUNGER_LENGTH,
@@ -248,9 +249,26 @@ function drawGround(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette) {
  * they read as movement first and as squirrels second, which at this size is the
  * best a squirrel can hope for.
  */
-function drawSquirrels(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette, behind: boolean) {
+/**
+ * The colony in one stand of trees, on one side of them.
+ *
+ * Which stand matters: a squirrel spirals round its trunk, so each colony has
+ * to be drawn either side of its *own* trees. Both passes run against the park
+ * alone and the bananas came later, so a banana squirrel was painted before its
+ * plant either way — behind it for half the spiral and blinking out from behind
+ * the stem for the other half, which is the one thing that makes it read as an
+ * animal rather than a lift.
+ */
+function drawSquirrels(
+  ctx: CanvasRenderingContext2D,
+  scene: Scene,
+  p: Palette,
+  behind: boolean,
+  park: boolean,
+) {
   for (const squirrel of scene.squirrels) {
     if (squirrelBehind(squirrel) !== behind) continue;
+    if (inPark(scene, squirrel.tree) !== park) continue;
     const x = squirrelX(scene, squirrel);
     const y = squirrelY(scene, squirrel);
     const facing = squirrelFacing(scene, squirrel);
@@ -450,9 +468,11 @@ function drawBananaPlant(
 function drawHomeCorner(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette) {
   const base = scene.ground;
 
+  drawSquirrels(ctx, scene, p, true, false);
   for (const [plant, x] of scene.layout.bananaXs.entries()) {
     drawBananaPlant(ctx, scene, p, plant, x);
   }
+  drawSquirrels(ctx, scene, p, false, false);
 
   // The lounger: a raked back, a flat seat, and two legs, in striped canvas.
   //
@@ -720,6 +740,55 @@ function drawSchool(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette) {
  * and straight where it is straight: running the whole outline through a
  * smoother is what produced the egg.
  */
+/**
+ * The car's outline, traced from a side-on drawing of the real one rather than
+ * drawn by hand: fractions of its length and of its height to the roof,
+ * nose-left, starting at the top of the front bumper, back over the roof, down
+ * the tailgate and along the underside through both wheel wells.
+ *
+ * Hand-placed control points went round in circles here — each pass fixed the
+ * profile at one zoom and broke it at another, and an overlay of outlines
+ * scaled to the same length flattered every one of them. Tracing settles it:
+ * what is drawn is the shape the car is, to inside a pixel at the size it is
+ * drawn at. The wheel wells being part of this path is the point — cut as a
+ * separate arc over the body they read as hoops standing clear of the tyres.
+ */
+const CAR_OUTLINE: readonly (readonly [number, number])[] = [
+  [0.0, 0.345],
+  [0.014, 0.448],
+  [0.086, 0.577],
+  [0.214, 0.648],
+  [0.424, 0.945],
+  [0.588, 1.0],
+  [0.744, 1.0],
+  [0.772, 0.971],
+  [0.82, 0.971],
+  [0.828, 0.919],
+  [0.926, 0.658],
+  [0.967, 0.6],
+  [0.97, 0.516],
+  [1.0, 0.371],
+  [1.0, 0.271],
+  [0.982, 0.152],
+  [0.925, 0.139],
+  [0.9, 0.048],
+  [0.858, 0.0],
+  [0.814, 0.01],
+  [0.772, 0.094],
+  [0.718, 0.132],
+  [0.278, 0.119],
+  [0.241, 0.023],
+  [0.186, 0.0],
+  [0.149, 0.039],
+  [0.123, 0.116],
+  [0.007, 0.132],
+  [0.0, 0.271],
+];
+
+/** Where the traced wells put the wheels, and how big they are inside them. */
+const CAR_WHEEL_AT = [0.186, 0.858];
+const CAR_WHEEL_R = 0.085;
+
 function drawCar(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette, car: Car) {
   const base = scene.ground;
   // Drawn nose-left in its own coordinates, and mirrored to drive the other way
@@ -731,75 +800,53 @@ function drawCar(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette, car: C
   const px = (f: number) => -half + f * CAR_WIDTH;
   const py = (f: number) => base - f * CAR_ROOF_HEIGHT;
 
-  // A touch under the elevation's 0.111: at this size the measured figure
-  // read as too big for the body.
-  const wheelR = CAR_WIDTH * 0.1;
+  // High in the wing and set into the bonnet's own slope — a lamp placed by the
+  // old body's numbers sat off the front of this one, in the air.
+  const LAMP_X = px(0.105);
+  const LAMP_Y = py(0.5);
+  const wheelR = CAR_WIDTH * CAR_WHEEL_R;
   const wheelY = base - wheelR;
-  const wheels = [px(0.2), px(0.845)];
+  const wheels = CAR_WHEEL_AT.map(px);
 
-  // The body: short, tall and upright, with corners.
-  //
-  // The shape lives in the breaks, not in the curve. Drawn as one smooth arc
-  // from nose to tail — which is what the elevation looks like if you trace it —
-  // it comes out a Beetle: a dome over a long body. A 500 is a flat roof between
-  // two hard corners, a screen raked steeply off the front one and a tailgate
-  // that falls almost straight off the back.
+  // The body, straight off the traced outline. The wells in it are the real
+  // car's, so the wheels sit in them rather than under hoops drawn over them.
   ctx.fillStyle = p.beige;
   ctx.beginPath();
-  ctx.moveTo(px(0.1), py(0.1));
-  // The face: blunt and tall, and hard up against the front wheel. Tapering to a
-  // low point out in front is what made it read as a wedge.
-  ctx.quadraticCurveTo(px(0.04), py(0.36), px(0.1), py(0.62));
-  // A short bonnet, barely rising, to the foot of the screen.
-  ctx.lineTo(px(0.25), py(0.66));
-  // Screen: steep and short.
-  ctx.quadraticCurveTo(px(0.29), py(0.79), px(0.35), py(0.98));
-  // The roof: flat, and a good third of the car.
-  ctx.lineTo(px(0.73), py(1.0));
-  // A tight corner at the back of the roof, then the tailgate — one straight
-  // fall, which is what stops the whole upper line reading as one dome.
-  ctx.quadraticCurveTo(px(0.81), py(0.98), px(0.85), py(0.86));
-  ctx.lineTo(px(0.925), py(0.36));
-  // A short, square tail rather than a rounded stub.
-  ctx.quadraticCurveTo(px(0.945), py(0.2), px(0.91), py(0.1));
+  CAR_OUTLINE.forEach(([fx, fy], at) => {
+    if (at === 0) ctx.moveTo(px(fx), py(fy));
+    else ctx.lineTo(px(fx), py(fy));
+  });
   ctx.closePath();
   ctx.fill();
 
-  // Arches: big circular cutouts, which is half of the car's stance
-  ctx.strokeStyle = p.beigeShade;
-  ctx.lineWidth = 1.6;
-  ctx.beginPath();
-  for (const wx of wheels) {
-    ctx.moveTo(wx - wheelR - 2.2, wheelY);
-    ctx.arc(wx, wheelY, wheelR + 2.2, Math.PI, Math.PI * 2);
-  }
-  ctx.stroke();
-
   // Glass: a long door window and a small quarter light behind the pillar, both
-  // sitting on one belt line the length of the car.
+  // on one belt line the length of the car — and both cut to sit *inside* the
+  // traced roof. The forward pane is screen *and* door in one: cut to the door
+  // alone it stopped short of the A-pillar, and the whole raked windscreen —
+  // a third of the car — was left blank bodywork with the bonnet.
   /** The door glass, which she is also seen through. One shape, not two. */
   const doorWindow = () => {
-    ctx.moveTo(px(0.28), py(0.7));
-    ctx.lineTo(px(0.37), py(0.945));
-    ctx.lineTo(px(0.56), py(0.955));
-    ctx.lineTo(px(0.56), py(0.7));
+    ctx.moveTo(px(0.245), py(0.655));
+    ctx.lineTo(px(0.425), py(0.895));
+    ctx.lineTo(px(0.63), py(0.95));
+    ctx.lineTo(px(0.63), py(0.655));
     ctx.closePath();
   };
 
   ctx.fillStyle = p.glass;
   ctx.beginPath();
   doorWindow();
-  ctx.moveTo(px(0.585), py(0.7));
-  ctx.lineTo(px(0.585), py(0.95));
-  ctx.quadraticCurveTo(px(0.7), py(0.935), px(0.755), py(0.7));
+  ctx.moveTo(px(0.665), py(0.655));
+  ctx.lineTo(px(0.665), py(0.945));
+  ctx.quadraticCurveTo(px(0.775), py(0.9), px(0.805), py(0.655));
   ctx.closePath();
   ctx.fill();
 
   ctx.fillStyle = p.chrome;
   // Door handle, high on the door the way a 500's is, and the rubbing strip
   // along the belt line.
-  ctx.fillRect(px(0.48), py(0.675) - 1, 5.5, 1.5);
-  ctx.fillRect(px(0.08), base - 9, CAR_WIDTH * 0.84, 1.2);
+  ctx.fillRect(px(0.55), py(0.63) - 1, 5.5, 1.5);
+  ctx.fillRect(px(0.08), py(0.31), CAR_WIDTH * 0.84, 1.2);
 
   // Her at the wheel, seen through the door window, and only while it is
   // actually going somewhere: a head in a parked car is a person sitting in a
@@ -813,8 +860,10 @@ function drawCar(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette, car: C
     doorWindow();
     ctx.clip();
     // Her, at the size the window allows, sat down: the same body the school
-    // window takes its shadow from, so there is one of her in this file.
-    ctx.translate(px(0.44), py(0.6) + GIRL_HEIGHT * DRIVER_SCALE * 0.42);
+    // window takes its shadow from, so there is one of her in this file. Placed
+    // mid-door — against the old glass's numbers she sat in the A-pillar corner,
+    // which the clip turned into a dark wedge at the base of the screen.
+    ctx.translate(px(0.47), py(0.58) + GIRL_HEIGHT * DRIVER_SCALE * 0.42);
     ctx.scale(-DRIVER_SCALE, DRIVER_SCALE);
     girlBody(ctx, p, 0);
     ctx.restore();
@@ -837,19 +886,19 @@ function drawCar(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette, car: C
   ctx.fill();
 
   ctx.fillStyle = p.chrome;
-  discs(wheelR * 0.72);
+  discs(wheelR * 0.52);
   // The headlamp shares this pass: large, round, high in the wing.
-  ctx.moveTo(px(0.125) + 2.4, py(0.55));
-  ctx.arc(px(0.125), py(0.55), 2.4, 0, Math.PI * 2);
+  ctx.moveTo(LAMP_X + 2.2, LAMP_Y);
+  ctx.arc(LAMP_X, LAMP_Y, 2.2, 0, Math.PI * 2);
   ctx.fill();
 
   ctx.fillStyle = p.beigeShade;
-  discs(wheelR * 0.24);
+  discs(wheelR * 0.2);
   ctx.fill();
 
   ctx.fillStyle = p.glass;
   ctx.beginPath();
-  ctx.arc(px(0.125), py(0.55), 1.3, 0, Math.PI * 2);
+  ctx.arc(LAMP_X, LAMP_Y, 1.2, 0, Math.PI * 2);
   ctx.fill();
 
   ctx.restore();
@@ -1272,9 +1321,9 @@ export function drawScene(
   drawGround(ctx, scene, p);
   // The left of the scene first, and all of it behind the people: she walks in
   // front of the car and the school rather than round them.
-  drawSquirrels(ctx, scene, p, true);
+  drawSquirrels(ctx, scene, p, true, true);
   drawPark(ctx, scene, p);
-  drawSquirrels(ctx, scene, p, false);
+  drawSquirrels(ctx, scene, p, false, true);
   drawSchool(ctx, scene, p);
   if (scene.car) drawCar(ctx, scene, p, scene.car);
   drawHomeCorner(ctx, scene, p);

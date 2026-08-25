@@ -80,13 +80,13 @@ function leadFrames(steer: { gain: number; drag: number }): number {
 }
 
 /**
- * The squirrels, which live in the park and in nothing else.
+ * The squirrels: two in the park and two in the bananas, a pair for each colony
+ * so that each has somebody to kiss.
  *
  * `up` is how far along the tree one is, from the foot of the trunk at 0 to the
  * top of the crown at 1, so a squirrel's height is the tree's — it cannot climb
  * out of the band the app reserved by climbing higher than the tree it is in.
  */
-/** Two in the park and two in the bananas, which is a pair for each colony. */
 const SQUIRREL_COUNT = 4;
 /**
  * How far a squirrel will jump.
@@ -330,11 +330,12 @@ const SCHOOL_HOME = 191;
 export const CAR_WIDTH = 70;
 /** Ground to the top of the roof. The belt line is a fraction of it, in `draw.ts`. */
 /**
- * Tall enough for the length: the elevation is 2.41 to 1 measured to the roof
- * (its aerial is not the car), and 70 by 27 came out at 2.5 — long and low,
- * which is the half of "Beetle" that survives once the silhouette is right.
+ * Tall enough for the length. Measured off the same traced drawing the body's
+ * outline comes from: 733 long by 310 to the roof, its aerial excluded because
+ * an aerial is not the car — 2.37 to 1, where 70 by 27 was 2.5, long and low,
+ * which is the half of "Beetle" that survives even once the profile is right.
  */
-export const CAR_ROOF_HEIGHT = 29;
+export const CAR_ROOF_HEIGHT = 30;
 /** Parked clear of the wall, on the door side. */
 const CAR_GAP = 16;
 /** School centre to the car's far end — how far the school's block reaches right. */
@@ -553,7 +554,8 @@ export function sceneScale(width: number): number {
  * crossing. Below `SCENE_REACH` by construction — it is the tree the bird
  * already perches in, and the band is measured from him.
  */
-export const SQUIRREL_REACH = TREE_TRUNK_HEIGHT + TREE_CROWN_RADIUS + CROSS_ARC * CROSS_ARC_MAX;
+export const SQUIRREL_REACH =
+  Math.max(PERCH_HEIGHT.tree, ...BANANA_TRUNKS) + CROSS_ARC * CROSS_ARC_MAX;
 
 /**
  * How far above the ground the scene reaches with nothing in the air: the top of
@@ -898,13 +900,13 @@ export function perchX(scene: Scene): number {
   if (perch === 'car') return scene.car!.x - scene.car!.dir * ROOF_BACK;
   if (perch === 'lounger') return scene.layout.loungerX - LOUNGER_PERCH_BACK;
   // Swaying with the plant he is standing in, as in a park tree.
-  if (perch === 'banana') return scene.layout.bananaXs[0] + bananaLean(scene, 0);
+  if (perch === 'banana') return treeX(scene, scene.layout.treeXs.length);
   if (girlOut(scene)) return shoulderX(scene);
   // Swaying with the crown he is sitting in, rather than held at the trunk while
   // the tree moves around him — and inside the same edge the bird is clamped to,
   // or on a narrow window he would steer forever at a perch he cannot reach and
   // never finish landing.
-  const tree = scene.layout.treeXs[0] + treeSway(scene, 0);
+  const tree = treeX(scene, 0);
   return clamp(tree, BIRD_EDGE, Math.max(BIRD_EDGE, scene.width - BIRD_EDGE));
 }
 
@@ -917,16 +919,44 @@ export function perchX(scene: Scene): number {
  * the bananas are shorter and a squirrel measured against a park tree would
  * climb straight out of the crown it is supposed to be in.
  */
+export function treeCount(scene: Scene): number {
+  return scene.layout.treeXs.length + scene.layout.bananaXs.length;
+}
+
+/** Which of them are the park's, the bananas being the rest. */
+export function inPark(scene: Scene, at: number): boolean {
+  return at < scene.layout.treeXs.length;
+}
+
+/**
+ * Where one of them stands this frame, swaying with its own wind.
+ *
+ * Read one at a time rather than as a list: `squirrelX`, `squirrelY`,
+ * `crossArc` and `squirrelFacing` all want a single number, and building the
+ * whole park to index it once ran ~16 times a frame — a hundred-odd throwaway
+ * objects a frame, for as long as an installed PWA is left open. The same waste
+ * the leaf shapes upstream are cached to avoid.
+ */
+export function treeX(scene: Scene, at: number): number {
+  return inPark(scene, at)
+    ? scene.layout.treeXs[at] + treeSway(scene, at)
+    : scene.layout.bananaXs[at - scene.layout.treeXs.length] +
+        bananaLean(scene, at - scene.layout.treeXs.length);
+}
+
+/** And how tall it is, which is fixed for the scene's life. */
+export function treeTop(scene: Scene, at: number): number {
+  return inPark(scene, at)
+    ? PERCH_HEIGHT.tree
+    : BANANA_TRUNKS[(at - scene.layout.treeXs.length) % BANANA_TRUNKS.length];
+}
+
+/** All of them, for the once-per-jump question of which are near enough. */
 export function climbableTrees(scene: Scene): { x: number; top: number }[] {
-  const park = scene.layout.treeXs.map((x, at) => ({
-    x: x + treeSway(scene, at),
-    top: TREE_TRUNK_HEIGHT + TREE_CROWN_RADIUS,
+  return Array.from({ length: treeCount(scene) }, (_, at) => ({
+    x: treeX(scene, at),
+    top: treeTop(scene, at),
   }));
-  const bananas = scene.layout.bananaXs.map((x, at) => ({
-    x: x + bananaLean(scene, at),
-    top: BANANA_TRUNKS[at % BANANA_TRUNKS.length],
-  }));
-  return [...park, ...bananas];
 }
 
 /** How far round the tree it has got, which is what makes the climb a spiral. */
@@ -936,15 +966,13 @@ function spiralAngle(squirrel: Squirrel): number {
 
 /** How high a jump arches: further to go, higher over the park. */
 function crossArc(scene: Scene, squirrel: Squirrel): number {
-  const trees = climbableTrees(scene);
-  const gap = Math.abs(trees[squirrel.towards].x - trees[squirrel.tree].x);
+  const gap = Math.abs(treeX(scene, squirrel.towards) - treeX(scene, squirrel.tree));
   return CROSS_ARC * Math.min(CROSS_ARC_MAX, Math.max(1, gap / TREE_GAP));
 }
 
 /** Where a squirrel is across the park, arcing between trees while it crosses. */
 export function squirrelX(scene: Scene, squirrel: Squirrel): number {
-  const trees = climbableTrees(scene);
-  const from = trees[squirrel.tree].x;
+  const from = treeX(scene, squirrel.tree);
   // Wider round the crown than round the trunk, because the tree is.
   const round =
     squirrel.phase === 'kissing'
@@ -953,7 +981,7 @@ export function squirrelX(scene: Scene, squirrel: Squirrel): number {
         (TRUNK_RADIUS + (SPIRAL_CROWN_RADIUS - TRUNK_RADIUS) * squirrel.up);
   if (squirrel.phase !== 'crossing') return from + round;
 
-  const to = trees[squirrel.towards].x;
+  const to = treeX(scene, squirrel.towards);
   return from + (to - from) * (squirrel.timer / CROSS_FRAMES) + round;
 }
 
@@ -971,7 +999,7 @@ export function squirrelX(scene: Scene, squirrel: Squirrel): number {
  * pair at the top, which is what makes a kiss read as a kiss.
  */
 export function squirrelFacing(scene: Scene, squirrel: Squirrel): 1 | -1 {
-  const outward = squirrelX(scene, squirrel) >= climbableTrees(scene)[squirrel.tree].x ? 1 : -1;
+  const outward = squirrelX(scene, squirrel) >= treeX(scene, squirrel.tree) ? 1 : -1;
   return squirrel.phase === 'kissing' ? (-outward as 1 | -1) : outward;
 }
 
@@ -981,7 +1009,7 @@ export function squirrelBehind(squirrel: Squirrel): boolean {
 
 /** And how high, which is the one thing about them the app's layout cares about. */
 export function squirrelY(scene: Scene, squirrel: Squirrel): number {
-  const along = squirrel.up * climbableTrees(scene)[squirrel.tree].top;
+  const along = squirrel.up * treeTop(scene, squirrel.tree);
   if (squirrel.phase !== 'crossing') return scene.ground - along;
 
   // A hop, not a wire: highest halfway across.
@@ -1002,9 +1030,12 @@ function runSquirrels(scene: Scene, rng: Rng): void {
       }
       case 'sitting': {
         if (--squirrel.timer > 0) break;
-        // High in the crown, it may go across to a neighbour instead of back down.
-        const others = otherTrees(scene, squirrel.tree);
-        if (squirrel.up > 0.5 && others.length > 0 && rng() < CROSS_CHANCE) {
+        // High in the crown, it may go across to a neighbour instead of back
+        // down. The neighbours are worked out after the roll, since two thirds
+        // of the time the answer is thrown away unlooked at.
+        const others =
+          squirrel.up > 0.5 && rng() < CROSS_CHANCE ? otherTrees(scene, squirrel.tree) : [];
+        if (others.length > 0) {
           squirrel.phase = 'crossing';
           // Often at the other one, which is how they come to share a tree at
           // all; otherwise anywhere in the park.
@@ -1033,9 +1064,8 @@ function runSquirrels(scene: Scene, rng: Rng): void {
         // Arrive at the height it left at, not at the same fraction of a
         // different tree: the bananas are shorter than the park's, and a
         // fraction carried across drops it several pixels in one frame.
-        const trees = climbableTrees(scene);
-        const height = squirrel.up * trees[squirrel.tree].top;
-        squirrel.up = clamp(height / trees[squirrel.towards].top, 0, 1);
+        const height = squirrel.up * treeTop(scene, squirrel.tree);
+        squirrel.up = clamp(height / treeTop(scene, squirrel.towards), 0, 1);
         squirrel.tree = squirrel.towards;
         squirrel.phase = 'climbing';
         squirrel.dir = -1;
@@ -1048,10 +1078,12 @@ function runSquirrels(scene: Scene, rng: Rng): void {
 
 /** Every tree near enough to jump to — see `CROSS_REACH`. */
 function otherTrees(scene: Scene, tree: number): number[] {
-  const trees = climbableTrees(scene);
-  return trees
-    .map((_, at) => at)
-    .filter((at) => at !== tree && Math.abs(trees[at].x - trees[tree].x) < CROSS_REACH);
+  const from = treeX(scene, tree);
+  const near: number[] = [];
+  for (let at = 0; at < treeCount(scene); at++) {
+    if (at !== tree && Math.abs(treeX(scene, at) - from) < CROSS_REACH) near.push(at);
+  }
+  return near;
 }
 
 /**
@@ -1349,27 +1381,31 @@ export function createScene(size: SceneSize, rng: Rng): Scene {
     },
     oven: { nextPizzaIn: pizzaInterval(rng), tossing: 0, recovering: 0, thrown: false, smoke: [] },
     car: parkedNear(layout, girlX),
-    squirrels: Array.from({ length: SQUIRREL_COUNT }, (_, i) => ({
-      // The first pair into the park, the second into the bananas.
-      tree:
-        i < 2
-          ? i % layout.treeXs.length
-          : layout.treeXs.length + ((i - 2) % layout.bananaXs.length),
-      // Spread along their trees, so two of them are never one squirrel with a
-      // shadow: they start at different heights and climbing opposite ways.
-      // Within the tree, not past its top: two colonies of two, so the spread
-      // is per pair — `0.25 + i * 0.4` put the third and fourth above 1, and
-      // their first frame snapped them back down the trunk.
-      up: 0.25 + (i % 2) * 0.4,
-      dir: (i % 2 === 0 ? 1 : -1) as 1 | -1,
-      phase: 'climbing' as SquirrelPhase,
-      timer: 0,
-      towards:
-        i < 2
-          ? i % layout.treeXs.length
-          : layout.treeXs.length + ((i - 2) % layout.bananaXs.length),
-      side: i * SQUIRREL_SIDE,
-    })),
+    squirrels: Array.from({ length: SQUIRREL_COUNT }, (_, i) => {
+      // A pair per colony, in the order they are made: the first into the park
+      // and the second into the bananas. Stated once — written out again for
+      // `towards`, the two could drift apart and a squirrel would be created
+      // already mid-jump.
+      const inPair = i % 2;
+      const tree =
+        i < SQUIRREL_COUNT / 2
+          ? inPair % layout.treeXs.length
+          : layout.treeXs.length + (inPair % layout.bananaXs.length);
+      return {
+        tree,
+        towards: tree,
+        // Spread along their tree, so two of them are never one squirrel with a
+        // shadow: they start at different heights and climbing opposite ways.
+        // Within the tree, not past its top — per pair, since `0.25 + i * 0.4`
+        // put the third and fourth above 1 and their first frame snapped them
+        // back down the trunk.
+        up: 0.25 + inPair * 0.4,
+        dir: (inPair === 0 ? 1 : -1) as 1 | -1,
+        phase: 'climbing' as SquirrelPhase,
+        timer: 0,
+        side: i * SQUIRREL_SIDE,
+      };
+    }),
     schoolSmoke: [],
     pizza: null,
     hearts: [],

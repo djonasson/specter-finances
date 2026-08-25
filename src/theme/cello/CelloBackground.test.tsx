@@ -96,6 +96,57 @@ describe('keeping the scene alive', () => {
   });
 });
 
+describe("drawing at the screen's own resolution", () => {
+  /** The frame loop runs off requestAnimationFrame, which the setup stubs out. */
+  function drawOneFrame() {
+    const frame = vi.mocked(requestAnimationFrame).mock.calls[0][0];
+    act(() => frame(1000));
+  }
+
+  it('sizes the canvas buffer in device pixels, not CSS ones', () => {
+    vi.stubGlobal('devicePixelRatio', 3);
+    renderWithTheme(<CelloBackground />);
+
+    const canvas = document.querySelector('canvas')!;
+    expect(canvas.width).toBe(window.innerWidth * 3);
+    expect(canvas.height).toBe(window.innerHeight * 3);
+  });
+
+  // Without this the element lays out at its *attribute* size, so a buffer in
+  // device pixels makes the canvas itself wider than the window.
+  it('keeps the canvas the size of the window on screen', () => {
+    vi.stubGlobal('devicePixelRatio', 3);
+    renderWithTheme(<CelloBackground />);
+
+    const canvas = document.querySelector('canvas')!;
+    expect(canvas.style.width).toBe(`${window.innerWidth}px`);
+    expect(canvas.style.height).toBe(`${window.innerHeight}px`);
+  });
+
+  it('draws the scene scaled up to fill that buffer', () => {
+    vi.stubGlobal('devicePixelRatio', 2);
+    renderWithTheme(<CelloBackground />);
+    drawOneFrame();
+
+    const scale = vi.mocked(drawScene).mock.calls[0][3];
+    expect(scale).toBeCloseTo(sceneScale(window.innerWidth) * 2);
+  });
+
+  // Dragging a window between monitors changes nothing about the scene's own
+  // measurements, so the early-out would otherwise keep the old screen's buffer.
+  it('re-sizes the buffer when only the pixel ratio changes', () => {
+    vi.stubGlobal('devicePixelRatio', 1);
+    renderWithTheme(<CelloBackground />);
+    const canvas = document.querySelector('canvas')!;
+    expect(canvas.width).toBe(window.innerWidth);
+
+    vi.stubGlobal('devicePixelRatio', 2);
+    resizeTo(window.innerWidth, window.innerHeight);
+
+    expect(canvas.width).toBe(window.innerWidth * 2);
+  });
+});
+
 describe('letting go', () => {
   it('stops the frame loop and drops its listeners when it goes away', () => {
     const removeWindow = vi.spyOn(window, 'removeEventListener');

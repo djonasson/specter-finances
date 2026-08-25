@@ -29,6 +29,10 @@ import {
   schoolChimney,
   schoolRoofY,
   CAR_WIDTH,
+  inPark,
+  treeCount,
+  treeTop,
+  treeX,
   CAR_ROOF_HEIGHT,
   perchX,
   perchY,
@@ -636,12 +640,43 @@ describe('the left of the scene', () => {
     expect(carSchoolX! - CAR_WIDTH / 2).toBeGreaterThan(schoolX + SCHOOL_WIDTH / 2);
   });
 
-  // Measured off a side-on photograph of the car: 734px long by 304px to the
-  // roof, its aerial excluded because an aerial is not the car. 70 by 27 came
-  // out at 2.50 — long and low, which reads as a different car entirely, and
-  // is the shape this was drawn against an overlay of that photograph to fix.
+  // Measured off the same traced side-on drawing `CAR_OUTLINE` comes from:
+  // 733px long by 310px to the roof, its aerial excluded because an aerial is
+  // not the car. 70 by 27 came out at 2.50 — long and low, which reads as a
+  // different car, and is what tracing rather than eyeballing settled.
   it('keeps the length-to-roof proportion the real car has', () => {
-    expect(CAR_WIDTH / CAR_ROOF_HEIGHT).toBeCloseTo(734 / 304, 1);
+    expect(CAR_WIDTH / CAR_ROOF_HEIGHT).toBeCloseTo(733 / 310, 1);
+  });
+
+  // The band the app reserves over the user's own list is measured from this.
+  // Written out as the park tree's own height it was right only because the
+  // bananas happen to be shorter — raise `BANANA_TRUNK` and squirrels climb
+  // over the expense list with nothing failing.
+  it('reserves height for the tallest thing a squirrel can climb, not the park', () => {
+    const s = scene();
+    const tallest = Math.max(...Array.from({ length: treeCount(s) }, (_, at) => treeTop(s, at)));
+    expect(SQUIRREL_REACH).toBeGreaterThanOrEqual(tallest);
+  });
+
+  // The two accessors and the list are one statement of the same geometry, so
+  // reading a tree one at a time cannot drift from reading them all at once.
+  it('reads one tree the same way it reads the whole park', () => {
+    const s = scene();
+    const all = climbableTrees(s);
+    expect(all).toHaveLength(treeCount(s));
+    all.forEach((tree, at) => {
+      expect(tree.x).toBe(treeX(s, at));
+      expect(tree.top).toBe(treeTop(s, at));
+    });
+  });
+
+  it('starts each pair of squirrels in its own stand of trees', () => {
+    const s = scene();
+    const [a, b, c, d] = s.squirrels;
+    for (const squirrel of [a, b]) expect(inPark(s, squirrel.tree)).toBe(true);
+    for (const squirrel of [c, d]) expect(inPark(s, squirrel.tree)).toBe(false);
+    // Nobody is created already mid-jump: the two must be seeded together.
+    for (const squirrel of s.squirrels) expect(squirrel.towards).toBe(squirrel.tree);
   });
 
   it('plants every tree the park says it has', () => {
@@ -2305,7 +2340,7 @@ describe('the squirrels getting about, and getting together', () => {
 
   it('puts hearts over them while they are at it', () => {
     const s = quietScene(wind);
-    runUntil(s, (x) => x.squirrels.every((q) => q.phase === 'kissing'), 30000, wind);
+    runUntil(s, (x) => kissingPair(x) !== null, 30000, wind);
     const [kisser] = kissingPair(s)!;
     s.hearts.length = 0;
 
