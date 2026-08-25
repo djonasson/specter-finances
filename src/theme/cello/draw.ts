@@ -95,6 +95,8 @@ const LIGHT = {
   wood: '#7a563a',
   squirrel: '#b06a3b',
   squirrelBelly: '#e8c9a8',
+  canvas: '#4f86b8',
+  canvasStripe: '#eaf1f7',
   stem: '#8fae5e',
   stemShade: '#6f8f49',
   stemDry: '#b9ad6a',
@@ -137,6 +139,8 @@ const DARK = {
   ink: '#15120f',
   heart: '#e0567a',
   squirrel: '#8a5330',
+  canvas: '#33628c',
+  canvasStripe: '#c3d4e2',
   stem: '#5f7a41',
   stemShade: '#4a6134',
   stemDry: '#7d7448',
@@ -430,7 +434,11 @@ function drawHomeCorner(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette)
     drawBananaPlant(ctx, scene, p, plant, x);
   }
 
-  // The lounger: a raked back, a flat seat, and two legs.
+  // The lounger: a raked back, a flat seat, and two legs, in striped canvas.
+  //
+  // Its own colour, not the dress's: drawn in `p.dress` she lay on a lounger
+  // exactly the colour of her clothes, and a whole afternoon of it read as an
+  // empty chair.
   const x = scene.layout.loungerX;
   const half = LOUNGER_LENGTH / 2;
   const seat = base - LOUNGER_BACK_HEIGHT * 0.42;
@@ -444,7 +452,7 @@ function drawHomeCorner(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette)
   ctx.lineTo(x + half - 8, seat);
   ctx.stroke();
 
-  ctx.fillStyle = p.dress;
+  ctx.fillStyle = p.canvas;
   ctx.beginPath();
   ctx.moveTo(x - half, seat + 2);
   ctx.lineTo(x + half - 6, seat + 2);
@@ -462,28 +470,60 @@ function drawHomeCorner(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette)
   ctx.closePath();
   ctx.fill();
 
+  // Stripes across the canvas, which is what makes it read as a beach lounger
+  // rather than a bench.
+  ctx.strokeStyle = p.canvasStripe;
+  ctx.lineWidth = 1.6;
+  ctx.beginPath();
+  for (let stripe = 1; stripe <= 3; stripe++) {
+    const at = x - half + 6 + stripe * 8;
+    ctx.moveTo(at, seat + 2);
+    ctx.lineTo(at - 1, seat - 3);
+  }
+  ctx.stroke();
+
   if (!lounging(scene)) return;
 
-  // Her on it: stretched out along the seat, head at the raked end.
+  // Her on it, stretched out with her head at the raked end. Drawn larger than
+  // the seat she is on and in her own colours, so an afternoon here is
+  // something you can see from across the room.
   ctx.fillStyle = p.skin;
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = p.skin;
+  ctx.lineWidth = 3.2;
+  // Legs, crossed at the ankle the way anybody lies on one of these.
   ctx.beginPath();
-  ctx.ellipse(x + 2, seat - 6, half - 8, 4, 0, 0, Math.PI * 2);
-  ctx.fill();
+  ctx.moveTo(x + 1, seat - 7);
+  ctx.lineTo(x + half - 6, seat - 5);
+  ctx.moveTo(x + 1, seat - 7);
+  ctx.lineTo(x + half - 7, seat - 9);
+  ctx.stroke();
 
+  // Body: the dress from her shoulders to her knees.
   ctx.fillStyle = p.dress;
   ctx.beginPath();
-  ctx.ellipse(x + 2, seat - 6, half * 0.5, 4.4, 0, 0, Math.PI * 2);
+  ctx.ellipse(x - 5, seat - 8, half * 0.45, 5.2, -0.06, 0, Math.PI * 2);
   ctx.fill();
 
+  // An arm along her side.
+  ctx.strokeStyle = p.skin;
+  ctx.lineWidth = 2.6;
+  ctx.beginPath();
+  ctx.moveTo(x - 9, seat - 9);
+  ctx.lineTo(x - 1, seat - 6);
+  ctx.stroke();
+
+  // Head and hair, propped on the raked back.
   ctx.fillStyle = p.skin;
   ctx.beginPath();
-  ctx.arc(x - half + 2, seat - 10, 5, 0, Math.PI * 2);
+  ctx.arc(x - half + 1, seat - 12, 5.4, 0, Math.PI * 2);
   ctx.fill();
 
   ctx.fillStyle = p.hair;
   ctx.beginPath();
-  ctx.arc(x - half, seat - 11, 5, Math.PI * 0.6, Math.PI * 1.9);
+  ctx.arc(x - half - 1, seat - 13, 5.4, Math.PI * 0.55, Math.PI * 2);
   ctx.fill();
+  ctx.lineCap = 'butt';
 }
 
 /**
