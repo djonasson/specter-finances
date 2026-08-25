@@ -108,9 +108,14 @@ export function CelloBackground() {
     let ratioWatch: MediaQueryList | null = null;
     function watchPixelRatio() {
       ratioWatch?.removeEventListener('change', onRatioChange);
-      // Guarded: jsdom and older browsers have no matchMedia, and a background
-      // is never worth a crash.
-      ratioWatch = window.matchMedia?.(`(resolution: ${window.devicePixelRatio || 1}dppx)`) ?? null;
+      // Guarded on the listener, not only on `matchMedia`. Safari 13 and iOS 13
+      // return a real MediaQueryList that has `addListener` and no
+      // `addEventListener`, so the optional call still threw — synchronously,
+      // inside the effect, before the frame loop started and before the cleanup
+      // closure existed. React does not catch that: the whole app tree unmounts
+      // to a blank screen over a background nobody asked to be exact.
+      const query = window.matchMedia?.(`(resolution: ${window.devicePixelRatio || 1}dppx)`);
+      ratioWatch = typeof query?.addEventListener === 'function' ? query : null;
       ratioWatch?.addEventListener('change', onRatioChange);
     }
     function onRatioChange() {

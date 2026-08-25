@@ -56,14 +56,20 @@ list.
   grows. Worth doing behind a fake, not yet done.
 - `InstallButton.tsx` — hangs off the `beforeinstallprompt` event.
 - `ThemeToggle.tsx` — a control over `ThemeContext`, which is itself covered.
-- `theme/*Background.tsx` and `theme/cello/draw.ts` — canvas drawing, which has
-  no assertable output. **A scene's behaviour does not belong in there**: Cello
-  keeps its state machine in `theme/cello/scene.ts`, pure and taking its
-  randomness as a parameter, and its wiring in `CelloBackground.tsx` — both
-  covered, the latter behind a stubbed `getContext` and a mocked `draw`. The
-  squirrel predates that split and holds every entity in a `useEffect` closure
-  where nothing can be asserted; copy Cello's shape for the next scene, not the
-  squirrel's.
+- `theme/*Background.tsx` (what they _draw_) and `theme/cello/draw.ts` — canvas
+  drawing, which has no assertable output. What each background does with the
+  page **is** covered: `SquirrelBackground.test.tsx` and
+  `MatrixBackground.test.tsx` record the drawing calls through a stubbed
+  `getContext` and pin the coordinate space — the buffer in the screen's pixels,
+  everything drawn on it in the window's — plus the frame loop and its teardown.
+  What is still uncovered is the shape of the figures themselves.
+  **A scene's behaviour does not belong in a draw file**: Cello keeps its state
+  machine in `theme/cello/scene.ts`, pure and taking its randomness as a
+  parameter, and its wiring in `CelloBackground.tsx` — both covered, the latter
+  behind a stubbed `getContext` and a mocked `draw`. The squirrel predates that
+  split and holds every acorn, icicle and mood in a `useEffect` closure, so its
+  tests can only ask what it drew and never what it decided; copy Cello's shape
+  for the next scene, not the squirrel's.
 - `ExpenseFields.tsx`, `useTransfers.ts`, `useGifts.ts` — no logic of their own;
   exercised through `ExpenseForm`/`RecurringForm` and `useMovements` tests, plus
   a wiring test proving each wrapper drives its own tab.
@@ -278,7 +284,9 @@ on a laptop at 1.25, and on a phone at 3 every edge in the scene was upscaled
 threefold. All three steps are load-bearing. The CSS size has to be set
 explicitly, because a canvas with no width or height in its style lays out at
 its _attribute_ size, which in device pixels is wider than the window it covers.
-And the ratio is **capped at `MAX_PIXEL_RATIO`**: the buffer is the whole
+`resize` compares the window _and_ the ratio before refitting, because
+reallocating the buffer zeroes it and mobile browsers ask dozens of times as the
+URL bar collapses. And the ratio is **capped at `MAX_PIXEL_RATIO`**: the buffer is the whole
 viewport, repainted for as long as the app is open, so its cost grows with the
 square of the ratio while most of those pixels never hold anything — a scene
 only reaches its floor up the screen. Two takes the sharpness that matters at a
@@ -286,14 +294,20 @@ fraction of the paint.
 
 It lives in `chrome.ts` rather than in a scene because every canvas background
 needs it and a scene that forgot would simply be blurry — nothing would fail.
-`CelloBackground` and `MatrixBackground` both call it. **`SquirrelBackground`
-does not yet**: it reads `canvas.width` as scene coordinates in a dozen places
-and has no tests, so moving it means writing those first.
+All three canvas backgrounds call it. The squirrel took the most moving: it read
+`canvas.width` as a **scene coordinate** in sixteen places, and its own click
+handler compares the squirrel's `x` against a click's `clientX`, so a buffer in
+device pixels would have put the squirrel at twice his own position and made him
+unrescuable. Its width and height are now closure variables in CSS pixels, which
+is what the whole file already assumed they were.
 
 A ratio change is **not** a resize event: moving a window between monitors can
 leave `innerWidth` and `innerHeight` untouched, and `resize` is not specified to
-fire. `CelloBackground` watches `matchMedia('(resolution: Ndppx)')` and re-arms
-it at the new ratio. Its `resize` also keeps the buffer and the _scene_ as two
+fire. `CelloBackground` watches `matchMedia('(resolution: Ndppx)')` and re-arms it at
+the new ratio — guarded on the _listener_ rather than on `matchMedia`, since
+Safari 13 returns a real `MediaQueryList` carrying only `addListener`, and the
+throw lands inside the effect before the cleanup closure exists, so React
+unmounts the whole app to a blank screen over a background. Its `resize` also keeps the buffer and the _scene_ as two
 decisions, because `resizeScene` is not a no-op on unchanged input — it puts the
 girl back at the nearer end of her walk — so folding the ratio into one
 early-out teleported her mid-stride for a change of monitor. Clicks are still
@@ -307,6 +321,20 @@ the layout has ~500 units to place a school, a car and a walk in, and nothing in
 and clicks are divided by the same number on the way in. The alternative —
 laying the scene out differently on a phone — means every measurement in the
 file growing a narrow-window case.
+
+**The car's outline is traced, and lives in `scene.ts`.** `CAR_OUTLINE` is the
+ink contour of a side-on drawing of the real car, nose-left, wheel wells
+included — cut as a separate arc over the body they read as hoops standing clear
+of the tyres, which is what three rounds of hand-placed control points kept
+producing. It sits in `scene.ts` rather than in `draw.ts` because **a perch
+depends on it**: `ROOF_BACK` is derived from the flat of that roof, and seven —
+measured against the hand-drawn car whose apex was at 0.57 of the length — left
+the bird on the leading edge of the traced roof with his body over the
+windscreen. The same rule as `bananaLean`. Deliberately _not_ restored: the
+`beigeShade` arch stroke that used to ring each wheel. The traced wells are
+downward tabs at the contact patch rather than cutouts, so each tyre does sit on
+unbroken bodywork — checked on screen at 26x, where it reads as a wheel in a
+well, and the stroke is what made them read as hoops in the first place.
 
 **The Fiat is the middle of the scene, not scenery.** She walks the two ends —
 the park and the school at one, home and the oven at the other — and drives the
@@ -419,15 +447,33 @@ a pair ended up split across the two stands — and since kissing needs both in
 one tree and pairs are fixed at creation, neither pair could kiss again — while
 the jump itself flew through the schoolhouse. `inPark` cannot be squeezed. Crossing, a squirrel is drawn moving to the **height it will land at** rather
 than holding the height it left and dropping the difference on arrival: the
-bananas are 62 and 46, so carrying the height across and clamping it on the
-last frame swallowed 16 units at once, against the two a frame the hop itself
-moves. The arrival then lands exactly where the flight was drawn heading. Finding
+bananas are 62 and 46, so carrying the height across and clamping it on the last
+frame swallowed 16 units at once, against the two a frame the hop itself moves.
+The arrival lands exactly where the flight was drawn heading. **And `up` is not
+only a height** — the spiral is `side + up * SPIRAL_TURNS` turns — so rescaling
+it on landing also spun the squirrel round the trunk, which is the same jerk
+moved from the height into the width. The difference goes into `side`, where the
+phase lives, so it lands on the side it flew in on. `side` also has a `homeSide`
+to go back to, because a kiss sets both squirrels' sides to face each other and
+does so with the _same two angles_ whichever pair is kissing: left there, one
+kiss each put the two colonies back in lockstep.
+
+**How wide a circle it goes round is the tree's, not always the park's**
+(`treeRadius`). A park tree has a crown to orbit inside; a banana has a
+pseudostem a few units across, so a squirrel swung at the park's radius hung in
+open air beside it — and `squirrelBehind` then hid it behind a stem a fifth as
+wide for half of every turn, which is the blinking the two-pass draw exists to
+stop, in the stand it was added for. Finding
 themselves together at the top of one, they sometimes kiss, with hearts over
 them — decided in `runSquirrelPair` after the per-squirrel loop, because it takes
 two and a loop that sees one at a time cannot settle it. `up` runs 0 at the foot
 to 1 at the top of the crown, so a squirrel's height is its tree's, and
-`SQUIRREL_REACH` is taken from **the tallest tree any of them can climb**, not
-from the park's — measured off the park alone it was correct only because the
+The banana plants' positions are derived from `BANANA_TRUNKS`, one place per
+trunk, so the two lists cannot drift: a third plant added to the layout alone
+gave `treeTop` an undefined height, which became a NaN `up` that no clamp
+recovers from — the squirrel stops being drawn for the rest of the session with
+nothing thrown anywhere. `SQUIRREL_REACH` is taken from **the tallest tree any
+of them can climb**, not from the park's — measured off the park alone it was correct only because the
 bananas happen to be shorter, and raising `BANANA_TRUNK` would have sent them
 climbing over the user's own list with nothing failing. It stays below
 `SCENE_REACH`, so the reserved band still cannot grow because of them, and a
@@ -435,7 +481,11 @@ test pins that rather than a comment. Where a tree stands and
 how tall it is are read one at a time (`treeX`/`treeTop`), not by building the
 whole list: every squirrel asks several times a frame, and rebuilding it there
 threw away a hundred-odd objects a frame for as long as the app was open.
-Nothing else in the scene reads them and they read nothing else.
+Nothing else in the scene reads them, and they read nothing else — _except_ the
+one `rng` stream `step` draws from for the girl, the oven and the bird as well.
+Adding a squirrel changes how many numbers are drawn per frame and so re-rolls
+every seeded run, which is why the day-split figures below are ranges measured
+over several seeds rather than fixed numbers.
 
 **The home end has a lounger under two banana trees**, and she lies on it now
 and then (`lounging`, caught on the way past like the school's door). She still

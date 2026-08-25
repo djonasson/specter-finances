@@ -41,6 +41,7 @@ import {
   PEEL_PIVOT,
   peelAngle,
   peelSwing,
+  CAR_OUTLINE,
   CAR_ROOF_HEIGHT,
   CAR_WIDTH,
   SCHOOL_DOOR_HEIGHT,
@@ -725,51 +726,6 @@ function drawSchool(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette) {
     SCHOOL_DOOR_HEIGHT,
   );
 }
-
-/**
- * The car's outline, traced from a side-on drawing of the real one rather than
- * drawn by hand: fractions of its length and of its height to the roof,
- * nose-left, starting at the top of the front bumper, back over the roof, down
- * the tailgate and along the underside through both wheel wells.
- *
- * Hand-placed control points went round in circles here — each pass fixed the
- * profile at one zoom and broke it at another, and an overlay of outlines
- * scaled to the same length flattered every one of them. Tracing settles it:
- * what is drawn is the shape the car is, to inside a pixel at the size it is
- * drawn at. The wheel wells being part of this path is the point — cut as a
- * separate arc over the body they read as hoops standing clear of the tyres.
- */
-const CAR_OUTLINE: readonly (readonly [number, number])[] = [
-  [0.0, 0.345],
-  [0.014, 0.448],
-  [0.086, 0.577],
-  [0.214, 0.648],
-  [0.424, 0.945],
-  [0.588, 1.0],
-  [0.744, 1.0],
-  [0.772, 0.971],
-  [0.82, 0.971],
-  [0.828, 0.919],
-  [0.926, 0.658],
-  [0.967, 0.6],
-  [0.97, 0.516],
-  [1.0, 0.371],
-  [1.0, 0.271],
-  [0.982, 0.152],
-  [0.925, 0.139],
-  [0.9, 0.048],
-  [0.858, 0.0],
-  [0.814, 0.01],
-  [0.772, 0.094],
-  [0.718, 0.132],
-  [0.278, 0.119],
-  [0.241, 0.023],
-  [0.186, 0.0],
-  [0.149, 0.039],
-  [0.123, 0.116],
-  [0.007, 0.132],
-  [0.0, 0.271],
-];
 
 /** Where the traced wells put the wheels, and how big they are inside them. */
 const CAR_WHEEL_AT = [0.186, 0.858];

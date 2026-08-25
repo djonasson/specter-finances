@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { fitCanvas } from './chrome';
+import { canvasPixelRatio as pixelRatio, fitCanvas } from './chrome';
 
 export function MatrixBackground({ speed }: { speed: number }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -18,11 +18,19 @@ export function MatrixBackground({ speed }: { speed: number }) {
     // scaled the context so that nothing here has to know.
     let width = 0;
     let height = 0;
+    let ratio = 0;
     const frameInterval = Math.round(166 - speed * 15);
     let lastTime = 0;
 
     function resize() {
-      ({ width, height } = fitCanvas(canvas, ctx));
+      // Mobile browsers fire `resize` repeatedly as the URL bar collapses, often
+      // with the same numbers, and refitting reallocates and zeroes the whole
+      // buffer — four times the bytes now it is in device pixels — then
+      // re-randomises every drop, so the rain visibly restarts. Cello carries
+      // the same guard for the same reason.
+      if (window.innerWidth === width && window.innerHeight === height && ratio === pixelRatio())
+        return;
+      ({ width, height, ratio } = fitCanvas(canvas, ctx));
       columns = Math.floor(width / fontSize);
       const maxRow = Math.floor(height / fontSize);
       drops = Array.from({ length: columns }, () => Math.floor(Math.random() * maxRow));

@@ -49,6 +49,11 @@ beforeEach(() => {
   vi.mocked(resizeScene).mockClear();
   vi.mocked(clickScene).mockClear();
   vi.mocked(drawScene).mockClear();
+  // The context is shared across the file and nothing else clears it, so an
+  // assertion on `setTransform` would otherwise be satisfied by a call an
+  // earlier test in the same describe had already recorded.
+  vi.mocked(context2d.setTransform).mockClear();
+  vi.mocked(context2d.clearRect).mockClear();
   HTMLCanvasElement.prototype.getContext = vi.fn(() => context2d) as never;
   vi.stubGlobal(
     'requestAnimationFrame',
@@ -167,6 +172,111 @@ describe("drawing at the screen's own resolution", () => {
     resizeTo(window.innerWidth, window.innerHeight);
 
     expect(canvas.width).toBe(window.innerWidth * 2);
+  });
+});
+
+describe('watching for a change of screen', () => {
+  /**
+   * Captures the resolution queries and their listeners.
+   *
+   * Only those: Mantine asks the same API about the colour scheme, so the last
+   * query made is not necessarily this component's.
+   */
+  function watchQueries() {
+    const queries: { query: string; on: Array<() => void>; off: Array<() => void> }[] = [];
+    vi.stubGlobal('matchMedia', (query: string) => {
+      const entry = { query, on: [] as Array<() => void>, off: [] as Array<() => void> };
+      if (query.includes('resolution')) queries.push(entry);
+      return {
+        matches: true,
+        media: query,
+        addEventListener: (_: string, fn: () => void) => entry.on.push(fn),
+        removeEventListener: (_: string, fn: () => void) => entry.off.push(fn),
+      };
+    });
+    return queries;
+  }
+
+  // A change of monitor need not change `innerWidth` at all, and `resize` is not
+  // specified to fire for it — so the window alone is not enough to notice.
+  it('arms a query on the ratio it is drawing at', () => {
+    vi.stubGlobal('devicePixelRatio', 2);
+    const queries = watchQueries();
+
+    renderWithTheme(<CelloBackground />);
+
+    expect(queries.at(-1)!.query).toBe('(resolution: 2dppx)');
+    expect(queries.at(-1)!.on).toHaveLength(1);
+  });
+
+  it('refits the buffer and re-arms at the new ratio when the screen changes', () => {
+    vi.stubGlobal('devicePixelRatio', 1);
+    const queries = watchQueries();
+    renderWithTheme(<CelloBackground />);
+    const canvas = document.querySelector('canvas')!;
+    expect(canvas.width).toBe(window.innerWidth);
+
+    vi.stubGlobal('devicePixelRatio', 2);
+    act(() => queries.at(-1)!.on[0]());
+
+    expect(canvas.width).toBe(window.innerWidth * 2);
+    // Re-armed: the old query can never fire again, so without this one change
+    // of monitor is all it would ever notice.
+    expect(queries.at(-1)!.query).toBe('(resolution: 2dppx)');
+  });
+
+  it('lets the query go when it goes away', () => {
+    const queries = watchQueries();
+    const { unmount } = renderWithTheme(<CelloBackground />);
+
+    unmount();
+
+    expect(queries.at(-1)!.off).toHaveLength(1);
+  });
+
+  // Safari 13 hands back a real MediaQueryList with only `addListener`, and the
+  // throw lands inside the effect — before the frame loop, before the cleanup
+  // closure — so React unmounts the whole app over a background.
+  it('carries on where the screen cannot be watched at all', () => {
+    // A real MediaQueryList, of the vintage that only has `addListener` — for
+    // the resolution query alone, since the rest of the app needs a working one.
+    const real = window.matchMedia;
+    vi.stubGlobal('matchMedia', (query: string) =>
+      query.includes('resolution')
+        ? { matches: true, media: query, addListener: () => {} }
+        : real(query),
+    );
+
+    expect(() => renderWithTheme(<CelloBackground />)).not.toThrow();
+    expect(requestAnimationFrame).toHaveBeenCalled();
+  });
+});
+
+describe('two decisions, not one', () => {
+  // `resizeScene` is not a no-op on unchanged input: it puts the girl back at
+  // the nearer end of her walk. A change of monitor must not move her.
+  it('refits the buffer for a new ratio without moving the scene', () => {
+    vi.stubGlobal('devicePixelRatio', 1);
+    renderWithTheme(<CelloBackground />);
+    vi.mocked(resizeScene).mockClear();
+
+    vi.stubGlobal('devicePixelRatio', 2);
+    resizeTo(window.innerWidth, window.innerHeight);
+
+    expect(document.querySelector('canvas')!.width).toBe(window.innerWidth * 2);
+    expect(resizeScene).not.toHaveBeenCalled();
+  });
+
+  // And the other way: an identical window must not reallocate the buffer,
+  // which mobile browsers ask for dozens of times as the URL bar collapses.
+  it('leaves the buffer alone when nothing about the window changed', () => {
+    renderWithTheme(<CelloBackground />);
+    const canvas = document.querySelector('canvas')!;
+    canvas.width = 1;
+
+    resizeTo(window.innerWidth, window.innerHeight);
+
+    expect(canvas.width).toBe(1);
   });
 });
 

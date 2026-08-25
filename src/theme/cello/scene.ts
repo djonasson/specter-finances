@@ -88,14 +88,6 @@ function leadFrames(steer: { gain: number; drag: number }): number {
  * out of the band the app reserved by climbing higher than the tree it is in.
  */
 const SQUIRREL_COUNT = 4;
-/**
- * How far a squirrel will jump.
- *
- * The park is at one end of the scene and the banana trees at the other, a
- * thousand units apart: without a reach, "any other tree" includes the ones
- * across the whole scene and a jump becomes an orbit.
- */
-export const CROSS_REACH = 150;
 const CLIMB_SPEED = 0.012;
 /** Frames spent still, once it has reached one end of its climb. */
 const SQUIRREL_SIT_MIN = 30;
@@ -126,6 +118,11 @@ const KISS_APART = 4.5;
 const SPIRAL_TURNS = 1.7;
 const TRUNK_RADIUS = 4.5;
 const SPIRAL_CROWN_RADIUS = 13.5;
+/**
+ * And round a banana, which has a stem rather than a crown — near enough its own
+ * width, so the squirrel is on the plant rather than beside it.
+ */
+const BANANA_SPIRAL_RADIUS = 5.5;
 /** Where round the tree each of them starts, so two in one tree are not one. */
 const SQUIRREL_SIDE = Math.PI;
 
@@ -166,6 +163,8 @@ export const BANANA_TRUNK = 62;
  */
 export const BANANA_TRUNKS = [BANANA_TRUNK, Math.round(BANANA_TRUNK * 0.74)];
 const BANANA_SPREAD = 30;
+/** Where each plant stands relative to the lounger — one per trunk. */
+const BANANA_PLACES = [-BANANA_SPREAD, BANANA_SPREAD * 0.8];
 export const LOUNGER_LENGTH = 44;
 export const LOUNGER_BACK_HEIGHT = 21;
 /** How far into the home end the lounger stands. */
@@ -337,6 +336,56 @@ export const CAR_WIDTH = 70;
  * which is the half of "Beetle" that survives even once the profile is right.
  */
 export const CAR_ROOF_HEIGHT = 30;
+/**
+ * The car's outline, traced from a side-on drawing of the real one rather than
+ * drawn by hand: fractions of its length and of its height to the roof,
+ * nose-left, starting at the top of the front bumper, back over the roof, down
+ * the tailgate and along the underside through both wheel wells.
+ *
+ * Hand-placed control points went round in circles here — each pass fixed the
+ * profile at one zoom and broke it at another, and an overlay of outlines
+ * scaled to the same length flattered every one of them. Tracing settles it:
+ * what is drawn is the shape the car is, to inside a pixel at the size it is
+ * drawn at. The wheel wells being part of this path is the point — cut as a
+ * separate arc over the body they read as hoops standing clear of the tyres.
+ *
+ * It lives here rather than in `draw.ts` because a perch depends on it: the bird
+ * sits on this roof, and a roof the scene cannot see is a bird placed by the
+ * numbers of a car that is no longer drawn — which is exactly what `ROOF_BACK`
+ * became when the body was re-traced and it was not.
+ */
+export const CAR_OUTLINE: readonly (readonly [number, number])[] = [
+  [0.0, 0.345],
+  [0.014, 0.448],
+  [0.086, 0.577],
+  [0.214, 0.648],
+  [0.424, 0.945],
+  [0.588, 1.0],
+  [0.744, 1.0],
+  [0.772, 0.971],
+  [0.82, 0.971],
+  [0.828, 0.919],
+  [0.926, 0.658],
+  [0.967, 0.6],
+  [0.97, 0.516],
+  [1.0, 0.371],
+  [1.0, 0.271],
+  [0.982, 0.152],
+  [0.925, 0.139],
+  [0.9, 0.048],
+  [0.858, 0.0],
+  [0.814, 0.01],
+  [0.772, 0.094],
+  [0.718, 0.132],
+  [0.278, 0.119],
+  [0.241, 0.023],
+  [0.186, 0.0],
+  [0.149, 0.039],
+  [0.123, 0.116],
+  [0.007, 0.132],
+  [0.0, 0.271],
+];
+
 /** Parked clear of the wall, on the door side. */
 const CAR_GAP = 16;
 /** School centre to the car's far end — how far the school's block reaches right. */
@@ -391,7 +440,19 @@ const MIN_DRIVE = 120;
  * that is depends on which way it is pointing — measured from the nose he ends
  * up on the bonnet driving one way and the boot the other.
  */
-const ROOF_BACK = 7;
+/**
+ * Where along the car the flat of the roof runs, off the traced outline itself:
+ * the points whose height is the full `CAR_ROOF_HEIGHT`.
+ */
+const ROOF_RUN = CAR_OUTLINE.filter(([, fy]) => fy === 1).map(([fx]) => fx);
+/**
+ * How far back from the middle of the car his feet go — the middle of that flat.
+ *
+ * Derived, not chosen. Seven was measured against the hand-drawn roof, whose
+ * apex sat at 0.57 of the length; the traced roof runs 0.588 to 0.744, so seven
+ * left him perched on its leading edge with his body out over the windscreen.
+ */
+const ROOF_BACK = ((Math.min(...ROOF_RUN) + Math.max(...ROOF_RUN)) / 2 - 0.5) * CAR_WIDTH;
 /** The top of the roof, which is what he stands on. */
 const ROOF_TOP = CAR_ROOF_HEIGHT;
 /**
@@ -511,9 +572,11 @@ const BIRD_ABOVE_PERCH = HOVER_HEIGHT + HOVER_BOB + BIRD_REACH;
  * user's screen and reserving 171px, since this is the tallest thing in the
  * scene and `SCENE_REACH` is measured from it.
  */
+export const PERCH_TREE_TOP = TREE_TRUNK_HEIGHT + TREE_CROWN_RADIUS;
+
 const PERCH_HEIGHT = {
   shoulder: SHOULDER_HEIGHT,
-  tree: TREE_TRUNK_HEIGHT + TREE_CROWN_RADIUS,
+  tree: PERCH_TREE_TOP,
   car: ROOF_TOP + BIRD_SIT,
   lounger: LOUNGER_BACK_HEIGHT + BIRD_SIT,
   banana: BANANA_TRUNK,
@@ -601,6 +664,15 @@ export interface Squirrel {
   /** The tree it is crossing to, and which side of the trunk it sits on. */
   towards: number;
   side: number;
+  /**
+   * The side it was born on, to go back to after a kiss.
+   *
+   * A kiss sets `side` to face the other one, and the same two values whichever
+   * pair is kissing — so without somewhere to put the original, one kiss each
+   * left squirrels 0 and 2 holding identical phase, which is the lockstep the
+   * per-colony offset exists to prevent.
+   */
+  homeSide: number;
 }
 
 export type BirdPhase =
@@ -878,7 +950,11 @@ function layoutFor(width: number): Layout {
     carSchoolX: parkable ? schoolSpotX : null,
     carHomeX: parkable ? homeSpotX : null,
     loungerX,
-    bananaXs: [loungerX - BANANA_SPREAD, loungerX + BANANA_SPREAD * 0.8],
+    // One entry per trunk, so the two lists cannot drift: a third plant added
+    // to the layout alone gave `treeTop` an undefined height, which became a
+    // NaN `up` that no clamp recovers from — the squirrel simply stops being
+    // drawn, for the rest of the session, with nothing thrown anywhere.
+    bananaXs: BANANA_TRUNKS.map((_, plant) => loungerX + BANANA_PLACES[plant]),
     girlLeft: GIRL_MARGIN,
     girlRight,
   };
@@ -956,6 +1032,19 @@ export function treeTop(scene: Scene, at: number): number {
   return inPark(scene, at) ? PERCH_HEIGHT.tree : BANANA_TRUNKS[at - scene.layout.treeXs.length];
 }
 
+/**
+ * How wide a circle it goes round, up in the crown.
+ *
+ * A park tree has a crown to orbit inside. A banana has none — its pseudostem is
+ * a few units across — so a squirrel swung at the park's radius hung in open air
+ * beside it, and `squirrelBehind` then hid it behind a stem a fifth as wide for
+ * half of every turn: the blinking the two-pass draw exists to stop, in the
+ * stand it was added for.
+ */
+export function treeRadius(scene: Scene, at: number): number {
+  return inPark(scene, at) ? SPIRAL_CROWN_RADIUS : BANANA_SPIRAL_RADIUS;
+}
+
 /** How far round the tree it has got, which is what makes the climb a spiral. */
 function spiralAngle(squirrel: Squirrel): number {
   return squirrel.side + squirrel.up * SPIRAL_TURNS * Math.PI * 2;
@@ -964,7 +1053,11 @@ function spiralAngle(squirrel: Squirrel): number {
 /** How high a jump arches: further to go, higher over the park. */
 function crossArc(scene: Scene, squirrel: Squirrel): number {
   const gap = Math.abs(treeX(scene, squirrel.towards) - treeX(scene, squirrel.tree));
-  return CROSS_ARC * Math.min(CROSS_ARC_MAX, Math.max(1, gap / TREE_GAP));
+  // Against its own stand's spacing. Measured against the park's, a hop between
+  // the bananas — which stand further apart than the park's trees — read as
+  // further than it is and arced higher than the plants are tall.
+  const spacing = inPark(scene, squirrel.tree) ? TREE_GAP : BANANA_SPREAD * 1.8;
+  return CROSS_ARC * Math.min(CROSS_ARC_MAX, Math.max(1, gap / spacing));
 }
 
 /** Where a squirrel is across the park, arcing between trees while it crosses. */
@@ -975,7 +1068,7 @@ export function squirrelX(scene: Scene, squirrel: Squirrel): number {
     squirrel.phase === 'kissing'
       ? Math.sin(spiralAngle(squirrel)) * KISS_APART
       : Math.sin(spiralAngle(squirrel)) *
-        (TRUNK_RADIUS + (SPIRAL_CROWN_RADIUS - TRUNK_RADIUS) * squirrel.up);
+        (TRUNK_RADIUS + (treeRadius(scene, squirrel.tree) - TRUNK_RADIUS) * squirrel.up);
   if (squirrel.phase !== 'crossing') return from + round;
 
   const to = treeX(scene, squirrel.towards);
@@ -1084,7 +1177,18 @@ function runSquirrels(scene: Scene, rng: Rng): void {
         // Exactly where `squirrelY` has been drawing it arriving, so the last
         // frame of the flight and the first frame of the climb are the same
         // height.
-        squirrel.up = arrivalUp(scene, squirrel);
+        //
+        // `up` is not only a height: the spiral is `side + up * SPIRAL_TURNS`
+        // turns, so landing lower on a shorter tree also spun it round the
+        // trunk — 26 units sideways in one frame between the two bananas, and
+        // half the time it popped from in front of the stem to behind it. That
+        // is the same jerk this fix removed from the height, moved into the
+        // width. The phase lives in `side`, so the difference goes there.
+        const landed = arrivalUp(scene, squirrel);
+        const turn = (squirrel.up - landed) * SPIRAL_TURNS * Math.PI * 2;
+        squirrel.side += turn;
+        squirrel.homeSide += turn;
+        squirrel.up = landed;
         squirrel.tree = squirrel.towards;
         squirrel.phase = 'climbing';
         squirrel.dir = -1;
@@ -1096,25 +1200,27 @@ function runSquirrels(scene: Scene, rng: Rng): void {
 }
 
 /**
- * Every tree it will jump to: another in its own stand, near enough to reach.
+ * Every tree it will jump to: the others in its own stand.
  *
- * The stand is checked first and it is the load-bearing half. Distance alone
- * looked like it separated the two colonies, and does at the width the tests
- * used — but the scene squeezes as the window narrows, and below about 385px
- * the nearest park tree and the nearest banana come within `CROSS_REACH` of
- * each other. Squirrels then emigrated: measured over seeded runs at 320-375px,
- * a pair would split across the two stands within twenty seconds and stay
- * split, and since kissing needs both in one tree and pairs are fixed at
- * creation, neither pair could ever kiss again. The jump also flew straight
- * through the schoolhouse. `inPark` cannot be squeezed.
+ * The stand is the whole of it. This used to be a distance — 150 units — which
+ * looked like it separated the two colonies and does at a desktop width, but
+ * the scene squeezes as the window narrows and below about 385px the nearest
+ * park tree and the nearest banana came within that of each other. Squirrels
+ * emigrated: over seeded runs at 320-375px a pair split across the two stands
+ * within twenty seconds and stayed split, and since kissing needs both in one
+ * tree and pairs are fixed at creation, neither pair could kiss again. The jump
+ * flew through the schoolhouse on the way.
+ *
+ * The distance is gone rather than kept alongside: within a stand the widest
+ * gap is 88 units of park or 54 of banana, so it could never once have excluded
+ * anything, and a predicate that cannot fire is a trap — raise `TREE_GAP` past
+ * it and a squirrel would simply stop crossing, with no test to notice.
  */
 function otherTrees(scene: Scene, tree: number): number[] {
-  const from = treeX(scene, tree);
   const stand = inPark(scene, tree);
   const near: number[] = [];
   for (let at = 0; at < treeCount(scene); at++) {
-    if (at === tree || inPark(scene, at) !== stand) continue;
-    if (Math.abs(treeX(scene, at) - from) < CROSS_REACH) near.push(at);
+    if (at !== tree && inPark(scene, at) === stand) near.push(at);
   }
   return near;
 }
@@ -1147,10 +1253,14 @@ function runSquirrelPair(scene: Scene, rng: Rng, one: Squirrel, two: Squirrel): 
       });
     }
     if (one.timer > 0) return;
-    // Down the tree again, and back to their own business.
+    // Down the tree again, and back to their own business — on their own side
+    // of it. The kiss writes the same two angles into whichever pair is at it,
+    // so leaving them there had both colonies climbing in step once each had
+    // kissed once.
     for (const squirrel of [one, two]) {
       squirrel.phase = 'climbing';
       squirrel.dir = -1;
+      squirrel.side = squirrel.homeSide;
     }
     return;
   }
@@ -1420,6 +1530,13 @@ export function createScene(size: SceneSize, rng: Rng): Scene {
       // `towards`, the two could drift apart and a squirrel would be created
       // already mid-jump.
       const inPair = i % 2;
+      // A half turn between the pair and a quarter between the colonies. On the
+      // global index `SQUIRREL_SIDE` being pi made squirrel 2's side of 2pi
+      // identical to squirrel 0's 0 once `sin`/`cos` had it, so the two colonies
+      // climbed in perfect lockstep at opposite ends of the scene — the "one
+      // squirrel with a shadow" the spread exists to prevent, with `up` and
+      // `dir` fixed for it and this left behind.
+      const born = inPair * SQUIRREL_SIDE + (i < SQUIRREL_COUNT / 2 ? 0 : SQUIRREL_SIDE / 2);
       const tree =
         i < SQUIRREL_COUNT / 2
           ? inPair % layout.treeXs.length
@@ -1436,13 +1553,8 @@ export function createScene(size: SceneSize, rng: Rng): Scene {
         dir: (inPair === 0 ? 1 : -1) as 1 | -1,
         phase: 'climbing' as SquirrelPhase,
         timer: 0,
-        // A quarter turn apart, and each colony offset from the other. On the
-        // global index `SQUIRREL_SIDE` being pi made squirrel 2's side of 2pi
-        // identical to squirrel 0's 0 once `sin`/`cos` had it, so the two
-        // colonies climbed in perfect lockstep at opposite ends of the scene —
-        // the "one squirrel with a shadow" the spread exists to prevent, with
-        // `up` and `dir` fixed for it and this left behind.
-        side: inPair * SQUIRREL_SIDE + (i < SQUIRREL_COUNT / 2 ? 0 : SQUIRREL_SIDE / 2),
+        side: born,
+        homeSide: born,
       };
     }),
     schoolSmoke: [],
