@@ -435,17 +435,18 @@ const PEEL_SWEEP = 1.1;
 /**
  * How far through the swing the pizza leaves.
  *
- * Not at the end: at the top of the arc the tip is travelling almost straight
- * left, so a pizza let go there is thrown sideways rather than up and over. He
- * lets go on the way up and the peel follows through, which is both what a
- * throw looks like and what puts the pizza over the scene.
+ * Not at the end: the further round the arc, the flatter the tip is travelling,
+ * so a pizza let go late is thrown sideways rather than up and over. He lets go
+ * early and the peel follows through, which is both what a throw looks like and
+ * what puts the pizza over the scene. Tuned against the carry point as the
+ * paddle actually draws it — measured off a mirrored one, this read as 0.55.
  */
-export const PEEL_RELEASE_SWING = 0.55;
+export const PEEL_RELEASE_SWING = 0.28;
 /**
  * The wrist. The paddle's own speed is a lob — it clears his hat and little
  * else — so the throw carries the snap that a swinging arm ends with.
  */
-const PEEL_SNAP = 1.9;
+const PEEL_SNAP = 2.9;
 /** Enough to keep two throws from being the same, and no more. */
 const TOSS_JITTER = 0.12;
 
@@ -759,7 +760,14 @@ export interface Scene {
   layout: Layout;
   bird: Bird;
   girl: Girl;
-  oven: { nextPizzaIn: number; tossing: number; recovering: number; smoke: Puff[] };
+  oven: {
+    nextPizzaIn: number;
+    tossing: number;
+    recovering: number;
+    /** Whether this swing has already let its pizza go. */
+    thrown: boolean;
+    smoke: Puff[];
+  };
   car: Car | null;
   /** Scenery with a life of its own; nothing else in the scene reads it. */
   squirrels: Squirrel[];
@@ -1284,7 +1292,7 @@ export function createScene(size: SceneSize, rng: Rng): Scene {
       dueAtSchool: false,
       restPerch: 'lounger',
     },
-    oven: { nextPizzaIn: pizzaInterval(rng), tossing: 0, recovering: 0, smoke: [] },
+    oven: { nextPizzaIn: pizzaInterval(rng), tossing: 0, recovering: 0, thrown: false, smoke: [] },
     car: parkedNear(layout, girlX),
     squirrels: Array.from({ length: SQUIRREL_COUNT }, (_, i) => ({
       tree: i % layout.treeXs.length,
@@ -1490,7 +1498,11 @@ function walkGirl(scene: Scene, rng: Rng): void {
   // Caught on the way past the lounger, from either side — an afternoon on it is
   // something she chooses now and then, not every time she walks by.
   const { loungerX } = scene.layout;
-  const crossedLounger = (wasAt - loungerX) * (girl.x - loungerX) <= 0;
+  // Strictly across it: she is pinned to the lounger while she lies on it, so on
+  // the frame she stands up she is still exactly on it — and "at most zero"
+  // counts standing still as a crossing, which is an afternoon she never gets
+  // up from.
+  const crossedLounger = (wasAt - loungerX) * (girl.x - loungerX) < 0;
   if (crossedLounger && rng() < LOUNGE_CHANCE) {
     girl.x = loungerX;
     girl.phase = 'lounging';
@@ -1542,7 +1554,7 @@ export function peelSwingAt(framesIn: number): number {
  * let it go.
  */
 export function carryingPizza(scene: Scene): boolean {
-  return scene.oven.tossing > 0 && !scene.pizza;
+  return scene.oven.tossing > 0 && !scene.oven.thrown;
 }
 
 /** Where the peel is now: swinging, following through, or level. */
@@ -1562,9 +1574,12 @@ export function peelTip(scene: Scene, swing = peelSwing(scene)): { x: number; y:
   const angle = peelAngle(swing);
   const cos = Math.cos(angle);
   const sin = Math.sin(angle);
+  // The same rotation of the same point the drawing makes — `PEEL_CARRY_ABOVE`
+  // is already negative, being above the blade, so negating it here again put
+  // the pizza 24px away on the other side of the paddle.
   return {
-    x: scene.layout.pizzaioloX + PEEL_PIVOT.x + PEEL_CARRY_ALONG * cos - -PEEL_CARRY_ABOVE * sin,
-    y: scene.ground + PEEL_PIVOT.y + PEEL_CARRY_ALONG * sin + -PEEL_CARRY_ABOVE * cos,
+    x: scene.layout.pizzaioloX + PEEL_PIVOT.x + PEEL_CARRY_ALONG * cos - PEEL_CARRY_ABOVE * sin,
+    y: scene.ground + PEEL_PIVOT.y + PEEL_CARRY_ALONG * sin + PEEL_CARRY_ABOVE * cos,
   };
 }
 
@@ -1591,6 +1606,7 @@ function runOven(scene: Scene, rng: Rng): void {
         spin: (rng() - 0.5) * 0.16,
         rotation: 0,
       };
+      oven.thrown = true;
       oven.nextPizzaIn = pizzaInterval(rng);
     }
     // The arm carries on past the release, then comes back down to level.
@@ -1607,7 +1623,10 @@ function runOven(scene: Scene, rng: Rng): void {
   if (oven.nextPizzaIn > 0) oven.nextPizzaIn--;
   // A pizza already in the air means this one waits: two at once would leave one
   // of them uncatchable, and a pizza nobody eats is a pizza wasted.
-  if (oven.nextPizzaIn <= 0 && !scene.pizza) oven.tossing = TOSS_FRAMES;
+  if (oven.nextPizzaIn <= 0 && !scene.pizza) {
+    oven.tossing = TOSS_FRAMES;
+    oven.thrown = false;
+  }
 }
 
 function movePizza(scene: Scene): void {
@@ -2001,13 +2020,25 @@ function callable(phase: BirdPhase): boolean {
  */
 function blowKiss(scene: Scene): void {
   if (scene.hearts.length >= MAX_HEARTS) return;
-  scene.hearts.push({
-    kind: 'kiss',
-    angle: 0,
-    x: scene.girl.x + scene.girl.dir * 4,
-    y: scene.ground - GIRL_HEIGHT * 0.9,
-    life: DRIFT_LIFE,
-  });
+  const head = girlHead(scene);
+  scene.hearts.push({ kind: 'kiss', angle: 0, x: head.x, y: head.y, life: DRIFT_LIFE });
+}
+
+/**
+ * Where her head is, standing or lying down.
+ *
+ * Lying on the lounger she is horizontal, with her head at the raked end and a
+ * third of her standing height off the ground — a kiss sent from where she
+ * *stands* appears up in the banana leaves with nobody under it.
+ */
+export function girlHead(scene: Scene): { x: number; y: number } {
+  if (lounging(scene)) {
+    return {
+      x: scene.layout.loungerX - LOUNGER_LENGTH / 2,
+      y: scene.ground - LOUNGER_BACK_HEIGHT * 0.9,
+    };
+  }
+  return { x: scene.girl.x + scene.girl.dir * 4, y: scene.ground - GIRL_HEIGHT * 0.9 };
 }
 
 /**

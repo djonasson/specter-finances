@@ -1072,7 +1072,11 @@ function drawGirl(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette) {
 
   ctx.save();
   ctx.translate(girl.x, ground);
-  if (girl.dir === -1) ctx.scale(-1, 1);
+  // Turned by `facing`, not by `dir`: `dir` snaps and `facing` eases, and the
+  // shoulder the bird sits on follows `facing`. Drawn off `dir` she is already
+  // round while his perch is still crossing her, so he rides on the front of her
+  // for the half-second the turn takes.
+  if (girl.facing < 0) ctx.scale(-1, 1);
   girlBody(ctx, p, Math.sin(girl.step * 0.16) * 8);
   ctx.restore();
 }

@@ -54,6 +54,9 @@ import {
   peelSwing,
   peelSwingAt,
   peelTip,
+  peelAngle,
+  PEEL_CARRY_ABOVE,
+  PEEL_CARRY_ALONG,
   PEEL_PIVOT,
   PEEL_RECOVER_FRAMES,
   GIRL_HEIGHT,
@@ -1053,6 +1056,24 @@ describe('the pizzaiolo throwing a pizza', () => {
     expect(Math.hypot(s.pizza!.vx, s.pizza!.vy)).toBeGreaterThan(6);
   });
 
+  it('lets it go from where the paddle is drawing it, not from a mirror of that', () => {
+    // Worked out the way `draw.ts` does it — rotate the carry point about the
+    // pivot — rather than by asking `peelTip`. Both peel tests above take their
+    // reference from `peelTip` itself, so a sign error inside it moves the test
+    // with the bug: the pizza left 24px from the paddle, under the blade rather
+    // than on it, and nothing went red.
+    const s = atRelease();
+    const angle = peelAngle(peelSwing(s));
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    const drawn = {
+      x: s.layout.pizzaioloX + PEEL_PIVOT.x + PEEL_CARRY_ALONG * cos - PEEL_CARRY_ABOVE * sin,
+      y: s.ground + PEEL_PIVOT.y + PEEL_CARRY_ALONG * sin + PEEL_CARRY_ABOVE * cos,
+    };
+
+    expect(Math.hypot(s.pizza!.x - drawn.x, s.pizza!.y - drawn.y)).toBeLessThan(1);
+  });
+
   it('lobs it over the scene rather than skimming it sideways', () => {
     // The shape of the throw, which no other assertion here pins: released too
     // far round the arc the tip is travelling almost straight sideways, and the
@@ -1097,6 +1118,19 @@ describe('the pizzaiolo throwing a pizza', () => {
     }
     for (let i = 1; i < swings.length; i++) expect(swings[i]).toBeLessThan(swings[i - 1]);
     expect(swings.at(-1)).toBe(0);
+  });
+
+  it('throws one pizza per swing, whatever becomes of the first', () => {
+    // The arm carries on for a few frames after letting go, and "am I still
+    // carrying it" was answered with "is there a pizza in the scene" — so a
+    // pizza that left the scene inside that window armed the release again.
+    const s = atRelease();
+    s.pizza = null;
+
+    while (s.oven.tossing > 0) {
+      step(s, steady);
+      expect(s.pizza).toBeNull();
+    }
   });
 
   it('holds the peel level whenever there is nothing being thrown', () => {
@@ -1510,6 +1544,22 @@ describe('calling him down with a kiss', () => {
     // From her mouth: up where her head is, not somewhere about her knees.
     expect(s.ground - kisses(s)[0].y).toBeGreaterThan(GIRL_HEIGHT * 0.75);
     expect(s.ground - kisses(s)[0].y).toBeLessThan(GIRL_HEIGHT * 1.1);
+  });
+
+  it('sends it from where her head is when she is lying down, not where she stands', () => {
+    // Lying down her head is at the raked end of the lounger, a third of her
+    // standing height off the ground: sent from where she stands, the heart
+    // appears up in the banana leaves with nobody under it.
+    const s = quietScene(eager);
+    runUntil(s, (x) => x.girl.phase === 'lounging', 20000, eager);
+    s.bird.phase = 'escorting';
+    s.hearts.length = 0;
+
+    clickScene(s, s.girl.x, s.ground - 12);
+    const kiss = s.hearts.find((heart) => heart.kind === 'kiss')!;
+
+    expect(s.ground - kiss.y).toBeLessThan(GIRL_HEIGHT * 0.6);
+    expect(kiss.x).toBeLessThan(s.layout.loungerX);
   });
 
   it('lets the kiss rise and fade like the ones he sends her', () => {
@@ -1948,6 +1998,19 @@ describe('the lounger at the home end', () => {
     expect(Math.abs(s.girl.x - s.layout.loungerX)).toBeLessThan(2);
 
     runUntil(s, (x) => x.girl.phase === 'walking', 4000, eager);
+  });
+
+  it('does not lie straight back down on the frame she gets up', () => {
+    // She is pinned to the lounger while she lies on it, so the frame she stands
+    // up she is still exactly on it — and "caught on the way past" was true of
+    // standing still. With a roll that always takes the chance, that is an
+    // afternoon she never gets up from.
+    const s = quietScene(eager);
+    runUntil(s, (x) => x.girl.phase === 'lounging', 20000, eager);
+    runUntil(s, (x) => x.girl.phase === 'walking', 2000, eager);
+
+    step(s, eager);
+    expect(s.girl.phase).toBe('walking');
   });
 
   it('walks past it most times rather than lying down on every pass', () => {
