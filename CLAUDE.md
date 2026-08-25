@@ -288,8 +288,10 @@ end she is at and is out of the middle either way. That chance
 (`LEAVE_HOME_CHANCE`) is what sets the shape of her day: boarding on the first
 arrival gave each end exactly one lap, and since the school end is wider and has
 a visit inside it, she was at work two thirds of the time and home for a tenth
-of it. It is now roughly **44% home** (a quarter of that on the lounger),
-**15% driving** and **40% at school and in the park**, which `scene.test.ts` measures over three seeded days rather than
+of it. It is now roughly **44% home** (with a good part of that on the
+lounger — pinned as its own share, since the chance to lie down says nothing
+about how many afternoons she actually gets), **16% driving** and **40% at
+school and in the park**, which `scene.test.ts` measures over three seeded days rather than
 assuming — the split is set by five constants pulling against each other and no
 one of them states it. The home end is a **share** of the room between the
 school's car and the end of her walk (`HOME_WALK_SHARE`), not a fixed distance:

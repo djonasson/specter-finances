@@ -1815,11 +1815,12 @@ describe('how her day divides', () => {
   function day(seed: number) {
     const rng = seeded(seed);
     const s = createScene({ width: 1440, height: 900, ground: 800 }, rng);
-    const tally = { home: 0, driving: 0, work: 0 };
+    const tally = { home: 0, driving: 0, work: 0, lounging: 0 };
     const frames = 120000;
     for (let i = 0; i < frames; i++) {
       step(s, rng);
       const { phase, x } = s.girl;
+      if (phase === 'lounging') tally.lounging++;
       if (phase === 'driving' || phase === 'boarding' || phase === 'alighting') tally.driving++;
       // Lying on the lounger under the banana trees is being at home, and is
       // most of what being at home looks like.
@@ -1831,11 +1832,18 @@ describe('how her day divides', () => {
       home: (tally.home / frames) * 100,
       driving: (tally.driving / frames) * 100,
       work: (tally.work / frames) * 100,
+      lounging: (tally.lounging / frames) * 100,
     };
   }
 
   it.each([1, 7, 99])('spends her day at home, driving and at school (seed %i)', (seed) => {
-    const { home, driving, work } = day(seed);
+    const { home, driving, work, lounging } = day(seed);
+
+    // A good part of being home is spent on the lounger. Pinned as a share
+    // rather than left to `LOUNGE_CHANCE`, which says nothing about how often
+    // she actually gets an afternoon out of it.
+    expect(lounging).toBeGreaterThanOrEqual(9);
+    expect(lounging).toBeLessThanOrEqual(24);
 
     expect(home).toBeGreaterThanOrEqual(38);
     expect(home).toBeLessThanOrEqual(52);
@@ -1998,6 +2006,28 @@ describe('the lounger at the home end', () => {
     expect(Math.abs(s.girl.x - s.layout.loungerX)).toBeLessThan(2);
 
     runUntil(s, (x) => x.girl.phase === 'walking', 4000, eager);
+  });
+
+  it('lies down coming from either side of it', () => {
+    // The door is caught only on the way west (`wasRightOfDoor`); the lounger is
+    // deliberately not, and nothing else says so. One-sided, she would walk past
+    // it half the time for no reason a viewer could see.
+    const rng = seeded(12);
+    const s = quietScene(rng);
+    const from = new Set<number>();
+    let previous = s.girl.phase;
+    let heading = s.girl.dir;
+
+    for (let i = 0; i < 120000 && from.size < 2; i++) {
+      const wasHeading = s.girl.dir;
+      step(s, rng);
+      if (s.girl.phase === 'lounging' && previous !== 'lounging') from.add(wasHeading);
+      previous = s.girl.phase;
+      heading = wasHeading;
+    }
+
+    expect(from).toEqual(new Set([1, -1]));
+    expect(heading).toBeDefined();
   });
 
   it('does not lie straight back down on the frame she gets up', () => {

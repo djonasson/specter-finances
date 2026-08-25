@@ -161,8 +161,11 @@ export const LOUNGER_LENGTH = 44;
 export const LOUNGER_BACK_HEIGHT = 21;
 /** How far into the home end the lounger stands. */
 const LOUNGER_ALONG = 0.45;
-/** How likely she is to lie down, caught on the way past. */
-const LOUNGE_CHANCE = 0.18;
+/**
+ * How likely she is to lie down, caught on the way past — from either side of
+ * it, unlike the school's door, which she only takes on the way west.
+ */
+const LOUNGE_CHANCE = 0.42;
 const LOUNGE_MIN = 320;
 const LOUNGE_SPREAD = 520;
 /** Where he sits on the lounger: at the head of it, beside her. */
@@ -360,7 +363,7 @@ const HOME_WALK_MAX = 260;
  * Turning round instead keeps her at the end she is at — and out of the middle
  * either way, which is what the car is for.
  */
-const LEAVE_HOME_CHANCE = 0.76;
+const LEAVE_HOME_CHANCE = 0.82;
 /** She has been in, and the park is on the way back: home at the first chance. */
 const LEAVE_SCHOOL_CHANCE = 1;
 /** A drive shorter than this is not worth getting in for. */
