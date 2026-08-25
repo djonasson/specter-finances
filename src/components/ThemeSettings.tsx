@@ -7,6 +7,7 @@ import {
   ColorPicker,
   Select,
   Slider,
+  Checkbox,
   Button,
   Text,
   useMantineColorScheme,
@@ -14,9 +15,15 @@ import {
 import { ColorInput } from '@mantine/core';
 import { useThemeSettings } from '../theme/ThemeContext';
 import type { GradientSettings } from '../theme/ThemeContext';
-import { BACKGROUND_OPTIONS } from '../theme/registry';
+import {
+  BACKGROUND_CHOICE_OPTIONS,
+  BACKGROUND_OPTIONS,
+  backgroundFor,
+  PLAIN_BACKGROUND,
+  RANDOM_BACKGROUND,
+} from '../theme/registry';
 import { BackupButton } from './BackupButton';
-import type { BackgroundName } from '../theme/registry';
+import type { BackgroundChoice } from '../theme/registry';
 
 interface Props {
   opened: boolean;
@@ -42,12 +49,16 @@ export function ThemeSettings({ opened, onClose }: Props) {
     primaryColor,
     customColorHex,
     backgroundEffect,
+    randomPool,
+    resolvedBackground,
     matrixSpeed,
     cardOpacity,
     gradient,
     setPrimaryColor,
     setCustomColor,
     setBackgroundEffect,
+    setRandomPool,
+    shuffleBackground,
     setMatrixSpeed,
     setCardOpacity,
     setGradient,
@@ -114,11 +125,62 @@ export function ThemeSettings({ opened, onClose }: Props) {
           </Text>
           <Select
             value={backgroundEffect}
-            onChange={(val) => setBackgroundEffect((val ?? 'none') as BackgroundName)}
-            data={BACKGROUND_OPTIONS}
+            onChange={(val) => setBackgroundEffect((val ?? PLAIN_BACKGROUND) as BackgroundChoice)}
+            data={BACKGROUND_CHOICE_OPTIONS}
             allowDeselect={false}
           />
-          {backgroundEffect === 'matrix' && (
+          {backgroundEffect === RANDOM_BACKGROUND && (
+            <>
+              {/* The name goes on the group itself, not on a heading beside it:
+                  a `Text` above is read as unrelated prose, leaving five boxes
+                  announced as "None, Matrix, Gradient…" with nothing saying what
+                  they configure. */}
+              <Checkbox.Group
+                label="Shuffle between"
+                value={randomPool}
+                onChange={setRandomPool}
+                mt="md"
+              >
+                <Stack gap="xs" mt="xs">
+                  {BACKGROUND_OPTIONS.map((background) => (
+                    <Checkbox
+                      key={background.value}
+                      // Named explicitly rather than left to Mantine's generated
+                      // id, which is derived from a random seed: under a stubbed
+                      // `Math.random` every box shares one id and every label
+                      // points at the first of them, so the boxes cannot be told
+                      // apart by name. Deterministic ids also make the labels
+                      // legible in a DOM dump.
+                      id={`shuffle-${background.value}`}
+                      value={background.value}
+                      label={background.label}
+                    />
+                  ))}
+                </Stack>
+              </Checkbox.Group>
+              <Text size="sm" mt="xs">
+                {randomPool.length > 0
+                  ? // The picker says "Random", so this is the only place the
+                    // background actually on screen is named. Keyed on the pool
+                    // rather than on what it resolved to: a pool holding only
+                    // the plain background is a blank screen somebody asked for,
+                    // and reporting that as "nothing ticked" would be untrue.
+                    `This launch: ${backgroundFor(resolvedBackground)?.label}.`
+                  : 'Nothing ticked, so no background is showing.'}
+              </Text>
+              {randomPool.length > 0 && (
+                // Mantine's Select fires no change when the option already
+                // showing is picked again, so "Random" cannot re-offer itself.
+                // Without this the only way to a different scene is a relaunch.
+                <Button variant="light" size="xs" mt="xs" onClick={shuffleBackground}>
+                  Shuffle again
+                </Button>
+              )}
+            </>
+          )}
+          {/* The controls below belong to the background on screen, not to the
+              setting: with a shuffle, the setting names no background at all. */}
+          {resolvedBackground === 'matrix' && (
             <>
               <Text size="sm" mt="md" mb="xs">
                 Matrix Speed
@@ -136,7 +198,7 @@ export function ThemeSettings({ opened, onClose }: Props) {
               />
             </>
           )}
-          {backgroundEffect === 'gradient' && (
+          {resolvedBackground === 'gradient' && (
             <>
               <Text size="sm" mt="md" mb="xs">
                 Gradient Speed
@@ -157,18 +219,21 @@ export function ThemeSettings({ opened, onClose }: Props) {
               </Text>
               <Stack gap="xs">
                 <ColorInput
+                  id="gradient-color-1"
                   label="Color 1"
                   value={gradient.colors[0]}
                   onChange={(hex) => updateGradientColor(0, hex)}
                   format="hex"
                 />
                 <ColorInput
+                  id="gradient-color-2"
                   label="Color 2"
                   value={gradient.colors[1]}
                   onChange={(hex) => updateGradientColor(1, hex)}
                   format="hex"
                 />
                 <ColorInput
+                  id="gradient-color-3"
                   label="Color 3"
                   value={gradient.colors[2]}
                   onChange={(hex) => updateGradientColor(2, hex)}
@@ -179,7 +244,7 @@ export function ThemeSettings({ opened, onClose }: Props) {
           )}
         </div>
 
-        {backgroundEffect !== 'none' && (
+        {resolvedBackground !== PLAIN_BACKGROUND && (
           <div>
             <Text fw={500} mb="xs">
               Card Transparency

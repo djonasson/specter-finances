@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { cleanup } from '@testing-library/react';
-import { renderWithTheme } from '../test-utils';
+import { renderWithTheme, rolling, shufflingBetween } from '../test-utils';
 
 // The real scenes are canvas animations, and jsdom has no canvas — every one of
 // them would dereference the null its getContext returns. Standing in for them
@@ -42,6 +42,7 @@ function render(settings: Record<string, unknown>) {
     // Named rather than "the aria-hidden div": the scene clip is one of those
     // too, and matching it here reported a floor for backgrounds that have none.
     floor: container.querySelector('[data-scene-floor]'),
+    layer: container.querySelector<HTMLElement>('[data-scene-layer]'),
   };
 }
 
@@ -91,10 +92,7 @@ describe('the floor that comes with a scene', () => {
 // is that Cello's ground painted over all five nav buttons.
 
 describe('where a background is put', () => {
-  const layerOf = (stored: string) => {
-    const { container } = renderWithTheme(<BackgroundEffect />, { backgroundEffect: stored });
-    return container.querySelector<HTMLElement>('[data-scene-layer]');
-  };
+  const layerOf = (stored: string) => render({ backgroundEffect: stored }).layer;
 
   const BEHIND_THE_APP = BACKGROUNDS.map((b) => b.value).filter((v) => !drawsOverTheApp(v));
 
@@ -126,5 +124,37 @@ describe('where a background is put', () => {
 
   it('is hidden from a screen reader, being scenery', () => {
     expect(layerOf('cello')).toHaveAttribute('aria-hidden');
+  });
+});
+
+// A shuffled background is a background: it needs the same layer, floor and clip
+// as the one that was chosen by name. Reading the choice instead of what it
+// resolved to draws nothing at all — the registry has no `random` entry.
+describe('a background that was shuffled', () => {
+  const shuffled = (pool: string[], roll = 0) => {
+    rolling(roll);
+    return render(shufflingBetween(...pool));
+  };
+
+  afterEach(() => vi.restoreAllMocks());
+
+  it('renders the scene the shuffle landed on', () => {
+    expect(shuffled(['matrix', 'cello'], 0.99).scene).toBe('cello');
+    cleanup();
+    expect(shuffled(['matrix', 'cello'], 0).scene).toBe('matrix');
+  });
+
+  it('comes with the floor that scene stands in', () => {
+    expect(shuffled(['cello']).floor).not.toBeNull();
+  });
+
+  it('stands the scene it landed on in front of the app, off the footer', () => {
+    const { layer } = shuffled(['cello']);
+    expect(layer!.style.zIndex).toBe(String(SCENE_Z));
+    expect(layer!.style.clipPath).toBe(`inset(0 0 ${FOOTER_HEIGHT}px 0)`);
+  });
+
+  it('renders no scene at all when there was nothing to pick from', () => {
+    expect(shuffled([]).scene).toBeNull();
   });
 });

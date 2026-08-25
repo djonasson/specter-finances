@@ -1,10 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import type { ReactElement } from 'react';
 import {
+  BACKGROUND_CHOICE_OPTIONS,
+  BACKGROUND_OPTIONS,
   BACKGROUNDS,
   backgroundFor,
   drawsOverTheApp,
+  isBackgroundChoice,
   isBackgroundName,
+  RANDOM_BACKGROUND,
   stageFloorHeight,
 } from './registry';
 
@@ -88,5 +92,36 @@ describe('recognising a stored background name', () => {
     expect(isBackgroundName(null)).toBe(false);
     expect(isBackgroundName(7)).toBe(false);
     expect(isBackgroundName({ value: 'matrix' })).toBe(false);
+  });
+});
+
+// "Random" is a choice the picker offers, not a background: it has nothing to
+// render and no floor to stand in, and an entry in BACKGROUNDS would have the
+// stage asking it for both.
+describe('offering a random background', () => {
+  it('is not a background the app can draw', () => {
+    expect(backgroundFor(RANDOM_BACKGROUND)).toBeUndefined();
+    expect(isBackgroundName(RANDOM_BACKGROUND)).toBe(false);
+    expect(drawsOverTheApp(RANDOM_BACKGROUND)).toBe(false);
+    expect(stageFloorHeight(RANDOM_BACKGROUND)).toBe(0);
+  });
+
+  it('is offered by the picker alongside every real background', () => {
+    expect(BACKGROUND_CHOICE_OPTIONS.map((option) => option.value)).toEqual([
+      ...BACKGROUND_OPTIONS.map((option) => option.value),
+      RANDOM_BACKGROUND,
+    ]);
+    const random = BACKGROUND_CHOICE_OPTIONS.at(-1);
+    expect(random?.label.trim()).not.toBe('');
+  });
+
+  it('is accepted as a stored choice, unlike a name no background answers to', () => {
+    expect(isBackgroundChoice(RANDOM_BACKGROUND)).toBe(true);
+    for (const background of BACKGROUNDS) {
+      expect(isBackgroundChoice(background.value)).toBe(true);
+    }
+    expect(isBackgroundChoice('pinball')).toBe(false);
+    expect(isBackgroundChoice(null)).toBe(false);
+    expect(isBackgroundChoice(7)).toBe(false);
   });
 });

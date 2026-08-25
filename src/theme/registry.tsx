@@ -75,6 +75,9 @@ export const BACKGROUNDS = [
 ] as const satisfies readonly BackgroundDescriptor[];
 
 /** The picker's options, shaped once here rather than on every render. */
+/** Every background's name, shaped once here rather than on every call that wants them. */
+export const BACKGROUND_NAMES: BackgroundName[] = BACKGROUNDS.map(({ value }) => value);
+
 export const BACKGROUND_OPTIONS = BACKGROUNDS.map(({ value, label }) => ({ value, label }));
 
 /**
@@ -85,6 +88,12 @@ export const BACKGROUND_OPTIONS = BACKGROUNDS.map(({ value, label }) => ({ value
  * already the component in `backgrounds.tsx` that renders one of these.
  */
 export type BackgroundName = (typeof BACKGROUNDS)[number]['value'];
+
+/**
+ * The background that draws nothing. Named here rather than spelled out wherever
+ * something falls back to it, so the fallback is typed as a background.
+ */
+export const PLAIN_BACKGROUND = 'none' satisfies BackgroundName;
 
 export function backgroundFor(value: string): BackgroundDescriptor | undefined {
   return BACKGROUNDS.find((background) => background.value === value);
@@ -113,3 +122,28 @@ export function drawsOverTheApp(value: string): boolean {
 export const STAGED_BACKGROUNDS = BACKGROUNDS.filter((background) =>
   drawsOverTheApp(background.value),
 ).map((background) => background.value);
+
+/**
+ * The picker's other entry: shuffle between the backgrounds the user ticked,
+ * once per launch.
+ *
+ * Deliberately *not* an entry in `BACKGROUNDS` — it has nothing to render and no
+ * floor to stand in, so the stage would be asking it for both and getting the
+ * wrong answer. It is a choice about which background to show, and everything
+ * downstream reads the background it resolved to instead.
+ */
+export const RANDOM_BACKGROUND = 'random';
+
+/** What the setting may hold: a background, or the instruction to pick one. */
+export type BackgroundChoice = BackgroundName | typeof RANDOM_BACKGROUND;
+
+/** The picker's own options: the backgrounds, plus the shuffle. */
+export const BACKGROUND_CHOICE_OPTIONS = [
+  ...BACKGROUND_OPTIONS,
+  { value: RANDOM_BACKGROUND, label: 'Random' },
+];
+
+/** As `isBackgroundName`, for the setting that may also hold the shuffle. */
+export function isBackgroundChoice(value: unknown): value is BackgroundChoice {
+  return value === RANDOM_BACKGROUND || isBackgroundName(value);
+}

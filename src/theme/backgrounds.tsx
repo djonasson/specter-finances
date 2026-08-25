@@ -4,7 +4,9 @@ import { BackgroundFloor, SceneLayer } from './BackgroundStage';
 
 export function BackgroundEffect() {
   const settings = useThemeSettings();
-  const background = backgroundFor(settings.backgroundEffect);
+  // The background on screen, which is not always the one in the setting: a
+  // `random` choice names no background at all, only the pool it shuffles.
+  const background = backgroundFor(settings.resolvedBackground);
 
   return (
     <>

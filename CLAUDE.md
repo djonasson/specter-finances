@@ -215,9 +215,51 @@ Mantine v8 component library with Tabler icons. Five routes: `/` (Dashboard with
 
 **Backgrounds are listed once, in `theme/registry.tsx`, and that is the only place any of them is named.** The `BackgroundName` union is derived from the list, so a background cannot be half-added, and `loadSettings` validates a stored name against it with `isBackgroundName` — storage outlives releases, and an unrecognised name used to render nothing at all. (The union is `BackgroundName`, not `BackgroundEffect`: that name belongs to the component in `backgrounds.tsx` that renders one.)
 
+**"Random" is a choice, not a background.** It has nothing to render and no
+floor to stand in, so an entry in `BACKGROUNDS` would have the stage asking it
+for both and getting the wrong answer: it lives beside the list as
+`RANDOM_BACKGROUND`, and the setting is a `BackgroundChoice` (`BackgroundName |
+'random'`). What the app draws is `resolvedBackground` on the theme context, and
+**everything that reacts to a background reads that** — the scene in
+`backgrounds.tsx`, the floor and clip in `BackgroundStage.tsx`, and the chrome
+the card tint leaves alone. Reading the choice instead draws nothing at all.
+
+The roll lives in `theme/random.ts`, pure and **taking its randomness as a
+parameter** the way `cello/scene.ts` does, so a shuffle is something a test can
+hold still. It is rolled once per launch and deliberately never stored: once per
+launch means a fresh pick each launch, and a stored roll would freeze the first
+shuffle forever. It re-rolls on three things — choosing Random afresh, pressing
+**Shuffle again**, and a pool change that leaves the background on screen out of
+the pool. Not on every tick, which would yank the scene away while someone is
+still building the list. The button is not a convenience: Mantine's `Select`
+fires no `onChange` when the option already showing is picked again, so "Random"
+cannot re-offer itself and a relaunch would otherwise be the only way to a
+different scene.
+
+**What is stored is what the user turned _off_** (`randomExcluded`), and the
+pool is derived from it against the registry (`poolFrom`). Stored as the list
+that was ticked, the pool would freeze: the whole settings object is written
+back on any theme change, so a background added to `BACKGROUNDS` later would
+join the shuffle of nobody who had ever touched their settings. Exclusions also
+make the load path fail safe — dropping a stored name this build does not know
+puts a background back _into_ the shuffle, where the same pruning over stored
+inclusions emptied the pool and left a blank screen the user never chose.
+
+A pool with nothing in it resolves to `none`, and the drawer says so. Note the
+drawer keys that sentence on the **pool**, not on what it resolved to: a pool
+holding only the plain background is a blank screen somebody asked for, and
+reporting that as "nothing ticked" would be untrue.
+
+The provider holds the settings and the roll in **one state atom** (`ThemeState`).
+Apart, each writer of the pair reads the other out of the render scope, which
+inside a React batch is the value from before the batch — a pool change followed
+by a re-roll in the same handler then rolls against the pool it just replaced.
+The roll _value_ is still drawn outside the updater, since React invokes those
+twice under StrictMode.
+
 A background that draws _over_ the app rather than behind it (canvas at z-index 101, not −1) declares a `floor` — how tall a band it stands in — and the layout obeys: `BackgroundFloor` masks everything above the band, `BackgroundSpacer` reserves the matching scroll room inside `AppShell.Main`, and `ThemeContext` leaves the header and footer out of the card-transparency tint so the scene does not show through the chrome it stands on. `App.tsx` names no theme and does not read the theme context at all; asking the registry is the whole point, and `FOOTER_HEIGHT` in `theme/chrome.ts` is the single source for the height the AppShell footer and the floor both depend on.
 
-**What a background may paint on is granted by the system, not chosen by the theme.** `BackgroundEffect` wraps whichever background is showing in `SceneClip`, which takes the footer's band away from the ones that draw over the app. It has to: a scene's canvas is fixed across the whole viewport, so the navigation bar is underneath it, and Cello's opaque ground painted straight over all five buttons — an app that could not be navigated, with no error to notice. A new scene cannot opt out, because a new scene does not render the clip; the registry does, and `backgrounds.test.tsx` drives that assertion off `BACKGROUNDS` so a background added later is covered the day it is added. Two details are load-bearing: it is `clip-path`, not `overflow: hidden`, because a `position: fixed` canvas escapes an ancestor's overflow; and the clip **must** carry `SCENE_Z` itself, because clipping makes it a stacking context and a canvas's own z-index is then resolved inside it and never reaches the page — leaving that off sinks the whole scene behind the app. The scenes still set a z-index of their own; inside the clip it is inert. And it wraps **only** the backgrounds that draw over the app: that stacking context is a one-way door, so the gradient and matrix at `z-index: -1` get hoisted in front of the whole app by it — wrapping them "for uniformity" left the gradient covering every row, chart and form with only the nav bar showing. `backgrounds.test.tsx` pins both directions against `drawsOverTheApp`.
+**What a background may paint on is granted by the system, not chosen by the theme.** `BackgroundEffect` wraps whichever background is showing in `SceneLayer`, which takes the footer's band away from the ones that draw over the app. It has to: a scene's canvas is fixed across the whole viewport, so the navigation bar is underneath it, and Cello's opaque ground painted straight over all five buttons — an app that could not be navigated, with no error to notice. A new scene cannot opt out, because a new scene does not render the clip; the registry does, and `backgrounds.test.tsx` drives that assertion off `BACKGROUNDS` so a background added later is covered the day it is added. Two details are load-bearing: it is `clip-path`, not `overflow: hidden`, because a `position: fixed` canvas escapes an ancestor's overflow; and the clip **must** carry `SCENE_Z` itself, because clipping makes it a stacking context and a canvas's own z-index is then resolved inside it and never reaches the page — leaving that off sinks the whole scene behind the app. The scenes still set a z-index of their own; inside the clip it is inert. And it wraps **only** the backgrounds that draw over the app: that stacking context is a one-way door, so the gradient and matrix at `z-index: -1` get hoisted in front of the whole app by it — wrapping them "for uniformity" left the gradient covering every row, chart and form with only the nav bar showing. `backgrounds.test.tsx` pins both directions against `drawsOverTheApp`.
 
 The `floor` belongs to the scene, and Cello's is **derived, not chosen**: `SCENE_REACH` is the taller of its chimney cap and its bird at the top of his hover, and `CELLO_FLOOR` adds the ground clearance. Anything above the floor is painted over the user's own list, so a hand-picked number goes stale the moment the scenery grows — but what is _thrown_ is deliberately outside it. A pizza sailing up over the app, like the squirrel's falling acorns, is the point.
 

@@ -1,7 +1,32 @@
 import type { ReactElement } from 'react';
+import { vi } from 'vitest';
 import { render } from '@testing-library/react';
 import { MantineProvider } from '@mantine/core';
 import { ThemeProvider, STORAGE_KEY } from './theme/ThemeContext';
+import { RANDOM_BACKGROUND } from './theme/registry';
+import { excludedFor } from './theme/random';
+
+/**
+ * Stored settings that shuffle between exactly these backgrounds.
+ *
+ * The setting holds what was turned *off*, so a test that wants two backgrounds
+ * in the shuffle would otherwise write out everything else. Built on the app's
+ * own `excludedFor`, which `random.test.ts` pins directly.
+ */
+export function shufflingBetween(...pool: string[]) {
+  return { backgroundEffect: RANDOM_BACKGROUND, randomExcluded: excludedFor(pool) };
+}
+
+/**
+ * Holds the shuffle still. `pickBackground` takes its roll as a parameter, so
+ * stubbing the one call to `Math.random()` fixes which background comes up.
+ *
+ * Note this also fixes Mantine's `randomId()`, which is why the controls whose
+ * labels a test reaches by name carry explicit ids.
+ */
+export function rolling(value: number) {
+  return vi.spyOn(Math, 'random').mockReturnValue(value);
+}
 
 /**
  * Components under test read Mantine's theme and color scheme.

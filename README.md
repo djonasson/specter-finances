@@ -37,7 +37,9 @@ fully owned by you.
 - **Installable PWA** — works offline-friendly and installs to the home screen.
 - **Theming** — light/dark mode plus customizable animated backgrounds
   (gradient, matrix, squirrel, cello) and adjustable accent color and card
-  opacity.
+  opacity. Pick **Random** instead of one of them to shuffle between the ones
+  you tick: a background is drawn once per launch, and _Shuffle again_ picks
+  another without waiting.
 - **Mobile-first** — responsive tables and a bottom navigation bar.
 
 ## Transfers vs. gifts

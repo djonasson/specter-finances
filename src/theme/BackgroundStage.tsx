@@ -18,7 +18,7 @@ import { FOOTER_HEIGHT, BEHIND_Z, FLOOR_Z, SCENE_Z } from './chrome';
  * zero — so they read it the same way rather than each asking the registry.
  */
 function useStageFloor(): number {
-  return stageFloorHeight(useThemeSettings().backgroundEffect);
+  return stageFloorHeight(useThemeSettings().resolvedBackground);
 }
 
 /** Room to scroll the last row clear of the floor, not just level with it. */
