@@ -484,45 +484,49 @@ function drawHomeCorner(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette)
 
   if (!lounging(scene)) return;
 
-  // Her on it, stretched out with her head at the raked end. Drawn larger than
-  // the seat she is on and in her own colours, so an afternoon here is
-  // something you can see from across the room.
-  ctx.fillStyle = p.skin;
+  // Her on it, stretched out with her head at the raked end.
+  //
+  // Everything sits *on* the canvas rather than over it: drawn as a body the
+  // width of the seat she covered the stripes and most of the blue, and the
+  // lounger read as having turned the colour of her dress.
+  const top = seat - 3;
+
   ctx.lineCap = 'round';
   ctx.strokeStyle = p.skin;
-  ctx.lineWidth = 3.2;
+  ctx.lineWidth = 2.4;
   // Legs, crossed at the ankle the way anybody lies on one of these.
   ctx.beginPath();
-  ctx.moveTo(x + 1, seat - 7);
-  ctx.lineTo(x + half - 6, seat - 5);
-  ctx.moveTo(x + 1, seat - 7);
-  ctx.lineTo(x + half - 7, seat - 9);
+  ctx.moveTo(x + 2, top - 1.5);
+  ctx.lineTo(x + half - 7, top - 0.5);
+  ctx.moveTo(x + 2, top - 1.5);
+  ctx.lineTo(x + half - 8, top - 3.5);
   ctx.stroke();
 
-  // Body: the dress from her shoulders to her knees.
+  // The dress, from her shoulders to her knees — half the seat, no more.
   ctx.fillStyle = p.dress;
   ctx.beginPath();
-  ctx.ellipse(x - 5, seat - 8, half * 0.45, 5.2, -0.06, 0, Math.PI * 2);
+  ctx.ellipse(x - 4, top - 2.6, 8, 2.9, -0.05, 0, Math.PI * 2);
   ctx.fill();
 
   // An arm along her side.
   ctx.strokeStyle = p.skin;
-  ctx.lineWidth = 2.6;
+  ctx.lineWidth = 1.8;
   ctx.beginPath();
-  ctx.moveTo(x - 9, seat - 9);
-  ctx.lineTo(x - 1, seat - 6);
+  ctx.moveTo(x - 9, top - 3);
+  ctx.lineTo(x - 2, top - 1.6);
   ctx.stroke();
 
-  // Head and hair, propped on the raked back.
+  // Head and hair, propped up on the raked back.
   ctx.fillStyle = p.skin;
   ctx.beginPath();
-  ctx.arc(x - half + 1, seat - 12, 5.4, 0, Math.PI * 2);
+  ctx.arc(x - half + 2, top - 5, 4.2, 0, Math.PI * 2);
   ctx.fill();
 
   ctx.fillStyle = p.hair;
   ctx.beginPath();
-  ctx.arc(x - half - 1, seat - 13, 5.4, Math.PI * 0.55, Math.PI * 2);
+  ctx.arc(x - half, top - 5.8, 4.2, Math.PI * 0.5, Math.PI * 2);
   ctx.fill();
+
   ctx.lineCap = 'butt';
 }
 
