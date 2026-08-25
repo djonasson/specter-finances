@@ -245,12 +245,10 @@ function drawGround(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette) {
 }
 
 /**
- * Two of them, living in the park trees and in nothing else. Small enough that
- * they read as movement first and as squirrels second, which at this size is the
- * best a squirrel can hope for.
- */
-/**
  * The colony in one stand of trees, on one side of them.
+ *
+ * Small enough that they read as movement first and as squirrels second, which
+ * at this size is the best a squirrel can hope for.
  *
  * Which stand matters: a squirrel spirals round its trunk, so each colony has
  * to be drawn either side of its *own* trees. Both passes run against the park
@@ -729,18 +727,6 @@ function drawSchool(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette) {
 }
 
 /**
- * The car, in fractions of its own length and height, nose at the left. Drawn
- * before the girl, so she walks in front of it rather than round it.
- *
- * Measured off a side elevation rather than shaped by hand, because by hand it
- * came out a Beetle, then a coupe, then an egg. Three things decide whether it
- * reads as a 500: the wheels are nearly a quarter of the length and sit right at
- * the corners, the roof is a single gentle arc peaking at the middle, and the
- * tail is *round* — a steep straight hatch is a Panda. Curves where it curves
- * and straight where it is straight: running the whole outline through a
- * smoother is what produced the egg.
- */
-/**
  * The car's outline, traced from a side-on drawing of the real one rather than
  * drawn by hand: fractions of its length and of its height to the roof,
  * nose-left, starting at the top of the front bumper, back over the roof, down
@@ -870,8 +856,8 @@ function drawCar(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette, car: C
   }
 
   // Wheels: a thin black sidewall around a wide alloy. One pass per colour over
-  // both of them — and no spokes: at a wheel radius of eight pixels they were
-  // 2px lines nobody could resolve, checked at 1:1 on screen.
+  // both of them — and no spokes: at a wheel radius of six pixels they were
+  // sub-pixel lines nobody could resolve, checked at 1:1 on screen.
   /** Both wheels in one pass, at whatever radius this layer of them wants. */
   const discs = (radius: number) => {
     ctx.beginPath();

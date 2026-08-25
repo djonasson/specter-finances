@@ -323,15 +323,16 @@ export const SCHOOL_REACH = Math.max(
 const SCHOOL_HOME = 191;
 
 /**
- * Taken off a photograph of the car rather than guessed: a 500 is 2.27 times as
- * long as it is tall, its wheels are near enough a fifth of its length, and it
- * has almost no overhang at either end. Drawn by eye it comes out a Beetle.
+ * How long the car is. Everything else about its shape is a fraction of this,
+ * including the traced outline it is drawn from (`CAR_OUTLINE`, in `draw.ts`).
  */
 export const CAR_WIDTH = 70;
-/** Ground to the top of the roof. The belt line is a fraction of it, in `draw.ts`. */
 /**
- * Tall enough for the length. Measured off the same traced drawing the body's
- * outline comes from: 733 long by 310 to the roof, its aerial excluded because
+ * Ground to the top of the roof; the belt line is a fraction of it, in
+ * `draw.ts`.
+ *
+ * Tall enough for the length: measured off the same traced drawing the body's
+ * outline comes from, 733 long by 310 to the roof, its aerial excluded because
  * an aerial is not the car — 2.37 to 1, where 70 by 27 was 2.5, long and low,
  * which is the half of "Beetle" that survives even once the profile is right.
  */
@@ -550,9 +551,15 @@ export function sceneScale(width: number): number {
 }
 
 /**
- * The highest a squirrel gets: the top of the crown it is in, plus the arc of a
- * crossing. Below `SCENE_REACH` by construction — it is the tree the bird
- * already perches in, and the band is measured from him.
+ * The highest a squirrel gets: the top of the tallest thing it can climb, plus
+ * the arc of a crossing.
+ *
+ * Off the whole list rather than off the park, which was right only for as long
+ * as the bananas happened to be shorter than a park tree — raise `BANANA_TRUNK`
+ * past it and squirrels would climb over the user's own list with nothing to
+ * say so. It stays under `SCENE_REACH`, which is measured from the bird in a
+ * park tree, so the reserved band does not grow because of them; a test pins
+ * that rather than this comment.
  */
 export const SQUIRREL_REACH =
   Math.max(PERCH_HEIGHT.tree, ...BANANA_TRUNKS) + CROSS_ARC * CROSS_ARC_MAX;
@@ -946,17 +953,7 @@ export function treeX(scene: Scene, at: number): number {
 
 /** And how tall it is, which is fixed for the scene's life. */
 export function treeTop(scene: Scene, at: number): number {
-  return inPark(scene, at)
-    ? PERCH_HEIGHT.tree
-    : BANANA_TRUNKS[(at - scene.layout.treeXs.length) % BANANA_TRUNKS.length];
-}
-
-/** All of them, for the once-per-jump question of which are near enough. */
-export function climbableTrees(scene: Scene): { x: number; top: number }[] {
-  return Array.from({ length: treeCount(scene) }, (_, at) => ({
-    x: treeX(scene, at),
-    top: treeTop(scene, at),
-  }));
+  return inPark(scene, at) ? PERCH_HEIGHT.tree : BANANA_TRUNKS[at - scene.layout.treeXs.length];
 }
 
 /** How far round the tree it has got, which is what makes the climb a spiral. */
@@ -1007,14 +1004,37 @@ export function squirrelBehind(squirrel: Squirrel): boolean {
   return squirrel.phase !== 'crossing' && Math.cos(spiralAngle(squirrel)) < 0;
 }
 
+/**
+ * How far up the tree it will be when it lands.
+ *
+ * The height it left at, unless the tree it is heading for is too short to hold
+ * it — the bananas are 62 and 46, so the taller one's crown is above the
+ * shorter one's top and a squirrel crossing between them has to come down.
+ */
+function arrivalUp(scene: Scene, squirrel: Squirrel): number {
+  const height = squirrel.up * treeTop(scene, squirrel.tree);
+  return clamp(height / treeTop(scene, squirrel.towards), 0, 1);
+}
+
 /** And how high, which is the one thing about them the app's layout cares about. */
 export function squirrelY(scene: Scene, squirrel: Squirrel): number {
   const along = squirrel.up * treeTop(scene, squirrel.tree);
   if (squirrel.phase !== 'crossing') return scene.ground - along;
 
-  // A hop, not a wire: highest halfway across.
+  // Across to the height it will land at, rather than holding the height it
+  // left at and dropping the difference on the arrival frame. Carrying the
+  // height across and clamping it on arrival looked like it preserved the
+  // height, and does when the two trees are the same — but between the two
+  // bananas the clamp swallowed 16 units in a single frame, against a climb of
+  // half a unit, which is the jerk that carrying it was meant to remove.
   const through = squirrel.timer / CROSS_FRAMES;
-  return scene.ground - along - Math.sin(through * Math.PI) * crossArc(scene, squirrel);
+  const landing = arrivalUp(scene, squirrel) * treeTop(scene, squirrel.towards);
+  // A hop, not a wire: highest halfway across.
+  return (
+    scene.ground -
+    (along + (landing - along) * through) -
+    Math.sin(through * Math.PI) * crossArc(scene, squirrel)
+  );
 }
 
 function runSquirrels(scene: Scene, rng: Rng): void {
@@ -1061,11 +1081,10 @@ function runSquirrels(scene: Scene, rng: Rng): void {
       case 'crossing': {
         squirrel.timer++;
         if (squirrel.timer < CROSS_FRAMES) break;
-        // Arrive at the height it left at, not at the same fraction of a
-        // different tree: the bananas are shorter than the park's, and a
-        // fraction carried across drops it several pixels in one frame.
-        const height = squirrel.up * treeTop(scene, squirrel.tree);
-        squirrel.up = clamp(height / treeTop(scene, squirrel.towards), 0, 1);
+        // Exactly where `squirrelY` has been drawing it arriving, so the last
+        // frame of the flight and the first frame of the climb are the same
+        // height.
+        squirrel.up = arrivalUp(scene, squirrel);
         squirrel.tree = squirrel.towards;
         squirrel.phase = 'climbing';
         squirrel.dir = -1;
@@ -1076,12 +1095,26 @@ function runSquirrels(scene: Scene, rng: Rng): void {
   }
 }
 
-/** Every tree near enough to jump to — see `CROSS_REACH`. */
+/**
+ * Every tree it will jump to: another in its own stand, near enough to reach.
+ *
+ * The stand is checked first and it is the load-bearing half. Distance alone
+ * looked like it separated the two colonies, and does at the width the tests
+ * used — but the scene squeezes as the window narrows, and below about 385px
+ * the nearest park tree and the nearest banana come within `CROSS_REACH` of
+ * each other. Squirrels then emigrated: measured over seeded runs at 320-375px,
+ * a pair would split across the two stands within twenty seconds and stay
+ * split, and since kissing needs both in one tree and pairs are fixed at
+ * creation, neither pair could ever kiss again. The jump also flew straight
+ * through the schoolhouse. `inPark` cannot be squeezed.
+ */
 function otherTrees(scene: Scene, tree: number): number[] {
   const from = treeX(scene, tree);
+  const stand = inPark(scene, tree);
   const near: number[] = [];
   for (let at = 0; at < treeCount(scene); at++) {
-    if (at !== tree && Math.abs(treeX(scene, at) - from) < CROSS_REACH) near.push(at);
+    if (at === tree || inPark(scene, at) !== stand) continue;
+    if (Math.abs(treeX(scene, at) - from) < CROSS_REACH) near.push(at);
   }
   return near;
 }
@@ -1403,7 +1436,13 @@ export function createScene(size: SceneSize, rng: Rng): Scene {
         dir: (inPair === 0 ? 1 : -1) as 1 | -1,
         phase: 'climbing' as SquirrelPhase,
         timer: 0,
-        side: i * SQUIRREL_SIDE,
+        // A quarter turn apart, and each colony offset from the other. On the
+        // global index `SQUIRREL_SIDE` being pi made squirrel 2's side of 2pi
+        // identical to squirrel 0's 0 once `sin`/`cos` had it, so the two
+        // colonies climbed in perfect lockstep at opposite ends of the scene —
+        // the "one squirrel with a shadow" the spread exists to prevent, with
+        // `up` and `dir` fixed for it and this left behind.
+        side: inPair * SQUIRREL_SIDE + (i < SQUIRREL_COUNT / 2 ? 0 : SQUIRREL_SIDE / 2),
       };
     }),
     schoolSmoke: [],

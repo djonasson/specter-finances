@@ -39,7 +39,10 @@ import { CelloBackground } from './CelloBackground';
 
 // Only what the frame loop itself touches: everything else goes through
 // drawScene, which is mocked.
-const context2d = { clearRect: vi.fn() } as unknown as CanvasRenderingContext2D;
+const context2d = {
+  clearRect: vi.fn(),
+  setTransform: vi.fn(),
+} as unknown as CanvasRenderingContext2D;
 
 beforeEach(() => {
   vi.mocked(createScene).mockClear();
@@ -104,12 +107,23 @@ describe("drawing at the screen's own resolution", () => {
   }
 
   it('sizes the canvas buffer in device pixels, not CSS ones', () => {
-    vi.stubGlobal('devicePixelRatio', 3);
+    vi.stubGlobal('devicePixelRatio', 2);
     renderWithTheme(<CelloBackground />);
 
     const canvas = document.querySelector('canvas')!;
-    expect(canvas.width).toBe(window.innerWidth * 3);
-    expect(canvas.height).toBe(window.innerHeight * 3);
+    expect(canvas.width).toBe(window.innerWidth * 2);
+    expect(canvas.height).toBe(window.innerHeight * 2);
+  });
+
+  // The buffer is the whole viewport, cleared and repainted forty times a
+  // second: its cost grows with the square of the ratio, and a phone at 3 is
+  // the device least able to pay it. Two is where the sharpness stops being
+  // worth the paint.
+  it('stops following the device beyond twice, however dense the screen', () => {
+    vi.stubGlobal('devicePixelRatio', 3);
+    renderWithTheme(<CelloBackground />);
+
+    expect(document.querySelector('canvas')!.width).toBe(window.innerWidth * 2);
   });
 
   // Without this the element lays out at its *attribute* size, so a buffer in
@@ -123,13 +137,22 @@ describe("drawing at the screen's own resolution", () => {
     expect(canvas.style.height).toBe(`${window.innerHeight}px`);
   });
 
-  it('draws the scene scaled up to fill that buffer', () => {
+  // Two scales, applied in two places and deliberately not multiplied together
+  // here: the screen's ratio goes on the context once, and the scene's own
+  // scale goes on top of it every frame.
+  it("puts the screen's ratio on the context and leaves the scene its own scale", () => {
     vi.stubGlobal('devicePixelRatio', 2);
+    // Set here rather than inherited: an earlier test in this file assigns
+    // `window.innerWidth` directly and jsdom never puts it back, so a scene
+    // scale of 1 would let a regression that dropped the scale entirely still
+    // satisfy this.
+    window.innerWidth = 400;
     renderWithTheme(<CelloBackground />);
     drawOneFrame();
 
-    const scale = vi.mocked(drawScene).mock.calls[0][3];
-    expect(scale).toBeCloseTo(sceneScale(window.innerWidth) * 2);
+    expect(context2d.setTransform).toHaveBeenCalledWith(2, 0, 0, 2, 0, 0);
+    expect(sceneScale(400)).not.toBe(1);
+    expect(vi.mocked(drawScene).mock.calls[0][3]).toBeCloseTo(sceneScale(400));
   });
 
   // Dragging a window between monitors changes nothing about the scene's own
