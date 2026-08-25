@@ -161,6 +161,22 @@ const DARK = {
 /** Where the pepperoni sits, as a fraction of the radius. */
 /** How big she is at the window, against her full height on the terrace. */
 const SHADOW_SCALE = 0.36;
+/**
+ * The school's windows: how far below the eaves they hang, and how big they are.
+ *
+ * Balanced between the eaves and the ground rather than set near the top — hung
+ * 20px down at 20 tall, they left twice as much wall below them as above and the
+ * building read as though its windows had floated up. Named because four things
+ * depend on the height, the silhouette at the pane among them.
+ */
+const WINDOW_BELOW_EAVES = 24;
+const WINDOW_HEIGHT = 26;
+const WINDOW_WIDTH = 22;
+/**
+ * How far below the top of the pane her head sits, so the frame cuts her at the
+ * chest whatever the window's height — closer in, her hair alone fills it.
+ */
+const SHADOW_HEAD_BELOW_TOP = 9;
 /** Her at the wheel: smaller again, since a door window is not a school window. */
 const DRIVER_SCALE = 0.26;
 
@@ -639,12 +655,14 @@ function drawSchool(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette) {
   ctx.restore();
 
   // Both windows in one path per style, as the trunks and the paving are
-  const windowY = eaves + 20;
+  const windowY = eaves + WINDOW_BELOW_EAVES;
   ctx.fillStyle = schoolLit(scene) ? p.windowLit : p.glass;
   ctx.strokeStyle = p.stone;
   ctx.lineWidth = 2;
   ctx.beginPath();
-  for (const wx of [x - 27, x + 27]) ctx.rect(wx - 11, windowY, 22, 20);
+  for (const wx of [x - 27, x + 27]) {
+    ctx.rect(wx - WINDOW_WIDTH / 2, windowY, WINDOW_WIDTH, WINDOW_HEIGHT);
+  }
   ctx.fill();
   ctx.stroke();
 
@@ -654,7 +672,7 @@ function drawSchool(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette) {
   if (schoolLit(scene)) {
     ctx.save();
     ctx.beginPath();
-    ctx.rect(x - 38, windowY, 22, 20);
+    ctx.rect(x - 27 - WINDOW_WIDTH / 2, windowY, WINDOW_WIDTH, WINDOW_HEIGHT);
     ctx.clip();
 
     ctx.globalAlpha = 0.42;
@@ -662,7 +680,7 @@ function drawSchool(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette) {
     // to face out through the wall. Standing still, so no stride, and set back
     // far enough that the frame cuts her at the chest rather than the chin:
     // closer in, her hair alone filled the pane and she read as a blot.
-    ctx.translate(x - 27, windowY + 20 + GIRL_HEIGHT * SHADOW_SCALE - 17);
+    ctx.translate(x - 27, windowY + SHADOW_HEAD_BELOW_TOP + GIRL_HEIGHT * SHADOW_SCALE);
     ctx.scale(SHADOW_SCALE, SHADOW_SCALE);
     girlBody(ctx, p, 0, p.ink);
     ctx.restore();
