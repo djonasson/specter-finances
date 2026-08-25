@@ -54,7 +54,10 @@ beforeEach(() => {
   // earlier test in the same describe had already recorded.
   vi.mocked(context2d.setTransform).mockClear();
   vi.mocked(context2d.clearRect).mockClear();
-  HTMLCanvasElement.prototype.getContext = vi.fn(() => context2d) as never;
+  // Spied rather than assigned: a raw assignment to the prototype is not
+  // something `restoreAllMocks` can put back, and neither is a `spyOn` left
+  // unrestored — both outlive the file and the next one sees them.
+  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(context2d as never);
   vi.stubGlobal(
     'requestAnimationFrame',
     vi.fn(() => 1),
@@ -65,6 +68,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
   localStorage.clear();
 });
 
@@ -223,6 +227,23 @@ describe('watching for a change of screen', () => {
     // Re-armed: the old query can never fire again, so without this one change
     // of monitor is all it would ever notice.
     expect(queries.at(-1)!.query).toBe('(resolution: 2dppx)');
+  });
+
+  // Re-arming drops the reference to the old query, so without this the old one
+  // stays subscribed: listeners double per change of screen, `resize` runs once
+  // per accumulated query, and each stale listener holds the whole effect
+  // closure — scene, canvas and context — alive for the life of the document.
+  it('lets the old query go when it arms the new one', () => {
+    vi.stubGlobal('devicePixelRatio', 1);
+    const queries = watchQueries();
+    renderWithTheme(<CelloBackground />);
+    const first = queries.at(-1)!;
+
+    vi.stubGlobal('devicePixelRatio', 2);
+    act(() => first.on[0]());
+
+    expect(first.off).toHaveLength(1);
+    expect(queries.at(-1)).not.toBe(first);
   });
 
   it('lets the query go when it goes away', () => {

@@ -48,6 +48,10 @@ import {
   SQUIRREL_REACH,
   homeward,
   BANANA_HEIGHT,
+  BANANA_SPREAD,
+  CAR_OUTLINE,
+  CROSS_ARC,
+  CROSS_FRAMES,
   BANANA_TRUNKS,
   PERCH_TREE_TOP,
   bananaLean,
@@ -1966,13 +1970,19 @@ describe('the squirrels in the park', () => {
       const s = createScene({ width: width / sceneScale(width), height: 300, ground: 250 }, rng);
       const born = s.squirrels.map((squirrel) => inPark(s, squirrel.tree));
 
+      // Counted rather than asserted per frame. Six widths by thirty thousand
+      // frames by four squirrels is 1.4 million `expect` calls, which cost more
+      // than every `step` behind them put together — over half this file's
+      // runtime, paid on every change the project's own rules require a run for.
+      let strayed = 0;
       for (let i = 0; i < 30000; i++) {
         step(s, rng);
         s.squirrels.forEach((squirrel, at) => {
-          expect(inPark(s, squirrel.tree)).toBe(born[at]);
-          expect(inPark(s, squirrel.towards)).toBe(born[at]);
+          if (inPark(s, squirrel.tree) !== born[at]) strayed++;
+          if (inPark(s, squirrel.towards) !== born[at]) strayed++;
         });
       }
+      expect(strayed).toBe(0);
     },
   );
 
@@ -2069,6 +2079,121 @@ describe('the squirrels in the park', () => {
     }
 
     expect(shortened).toBeGreaterThan(0);
+  });
+
+  // Derived from the traced roof, not chosen. Seven was measured against the
+  // hand-drawn car, whose apex sat at 0.57 of the length; on the traced roof
+  // that is its leading edge, with the bird's body out over the windscreen.
+  it('sits the bird on the flat of the roof the car is actually drawn with', () => {
+    const s = scene();
+    const roof = CAR_OUTLINE.filter(([, fy]) => fy === 1).map(([fx]) => fx);
+    const from = (Math.min(...roof) - 0.5) * CAR_WIDTH;
+    const to = (Math.max(...roof) - 0.5) * CAR_WIDTH;
+    expect(s.car).not.toBeNull();
+    s.car!.dir = -1;
+    // The seat is only his perch while she is getting in or driving.
+    s.girl.phase = 'boarding';
+
+    const along = perchX(s) - s.car!.x;
+
+    expect(along).toBeGreaterThan(from);
+    expect(along).toBeLessThan(to);
+    expect(along).toBeCloseTo((from + to) / 2, 5);
+  });
+
+  // A hop is normalised by its own stand's spacing, and the bananas stand
+  // exactly that far apart — so a jump between neighbours arcs by the base arc
+  // and no more. Measured against the park's 44 it would read as half again as
+  // far as it is and arc higher than the plants are tall. Taken off the flight's
+  // own two ends, so nothing here has to restate how the height is carried.
+  it('arcs a hop between neighbouring plants by the arc, not by the park', () => {
+    const rng = seeded(7);
+    const s = quietScene(rng);
+    const flights = new Map<number, { start: number; mid: number }>();
+    let measured = 0;
+    let peak = 0;
+
+    for (let i = 0; i < 40000; i++) {
+      const before = s.squirrels.map((squirrel) => squirrel.phase === 'crossing');
+      step(s, rng);
+      s.squirrels.forEach((squirrel, at) => {
+        const height = s.ground - squirrelY(s, squirrel);
+        if (squirrel.phase === 'crossing') {
+          if (inPark(s, squirrel.tree)) return;
+          const seen = flights.get(at);
+          if (!seen) flights.set(at, { start: height, mid: height });
+          else if (squirrel.timer === Math.round(CROSS_FRAMES / 2)) seen.mid = height;
+          return;
+        }
+        const seen = flights.get(at);
+        if (!seen || !before[at]) return;
+        measured++;
+        peak = Math.max(peak, seen.mid - (seen.start + height) / 2);
+        flights.delete(at);
+      });
+    }
+
+    // The base arc, plus only what the plants' own lean adds to the gap: the
+    // hop is scaled by gap over spacing, and both plants sway up to
+    // `SWAY_REACH * 0.6`. Normalised by the park's 44 instead of the bananas'
+    // own 54 it would land above this by a clear margin.
+    const swayed = 1 + (2 * SWAY_REACH * 0.6) / (BANANA_SPREAD * 1.8);
+    expect(measured).toBeGreaterThan(0);
+    expect(peak).toBeGreaterThanOrEqual(CROSS_ARC);
+    expect(peak).toBeLessThanOrEqual(CROSS_ARC * swayed);
+  });
+
+  // Anything that moves the spiral's phase has to move the phase it goes back
+  // to after a kiss, or the kiss hands it a stale one and it jumps.
+  it('keeps the side it goes home to in step with the side it is on', () => {
+    const rng = seeded(7);
+    const s = quietScene(rng);
+    let apart = 0;
+
+    for (let i = 0; i < 20000; i++) {
+      step(s, rng);
+      for (const squirrel of s.squirrels) {
+        if (squirrel.phase === 'kissing') continue;
+        if (squirrel.side !== squirrel.homeSide) apart++;
+      }
+    }
+
+    expect(apart).toBe(0);
+  });
+
+  // The clamp inside `arrivalUp`, which is the only thing holding `up` in range
+  // when the tree it lands on is shorter than the height it left at. Without it
+  // a hop from the taller banana to the shorter writes 62/46 = 1.35, the
+  // squirrel is drawn above the plant it is sitting in, and the next frame's
+  // climb snaps it back — both jerks this branch removed, reintroduced at once.
+  // Checked on the frame *after* the landing as well as the landing itself.
+  it('never lands further up a tree than the tree goes', () => {
+    const rng = seeded(7);
+    const s = quietScene(rng);
+    let landings = 0;
+
+    for (let i = 0; i < 40000; i++) {
+      const crossing = s.squirrels.map((squirrel) => squirrel.phase === 'crossing');
+      step(s, rng);
+      s.squirrels.forEach((squirrel, at) => {
+        if (!crossing[at] || squirrel.phase === 'crossing') return;
+        landings++;
+        expect(squirrel.up).toBeGreaterThanOrEqual(0);
+        expect(squirrel.up).toBeLessThanOrEqual(1);
+      });
+    }
+
+    expect(landings).toBeGreaterThan(0);
+  });
+
+  // `crossArc` normalises a banana hop by `BANANA_SPREAD * 1.8`, which is the
+  // gap these two entries produce — so the places and that spacing have to stay
+  // in step. Collapsed onto one spot the plants draw over each other, both
+  // squirrels orbit one trunk, and a jump between them travels nowhere.
+  it('stands the two banana plants the distance their hop is measured against', () => {
+    const { bananaXs } = quietScene().layout;
+    expect(bananaXs).toHaveLength(BANANA_TRUNKS.length);
+    expect(Math.abs(bananaXs[1] - bananaXs[0])).toBeCloseTo(BANANA_SPREAD * 1.8, 5);
   });
 
   // Asserted on `createScene`'s own output, before a frame runs: `climbing`

@@ -29,7 +29,10 @@ let ctx: CanvasRenderingContext2D & { calls: Call[] };
 
 beforeEach(() => {
   ctx = recordingContext();
-  HTMLCanvasElement.prototype.getContext = vi.fn(() => ctx) as never;
+  // Spied rather than assigned: a raw assignment to the prototype is not
+  // something `restoreAllMocks` can put back, and neither is a `spyOn` left
+  // unrestored — both outlive the file and the next one sees them.
+  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(ctx as never);
   vi.stubGlobal(
     'requestAnimationFrame',
     vi.fn(() => 1),
@@ -40,7 +43,13 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
+
+/** What `fitCanvas` will be drawing at, cap included. */
+function ratio() {
+  return Math.min(window.devicePixelRatio || 1, 2);
+}
 
 function runFrame(at = 1000) {
   const frame = vi.mocked(requestAnimationFrame).mock.calls.at(-1)![0];
@@ -115,11 +124,18 @@ describe('not refitting for nothing', () => {
   });
 
   it('does refit when the window really did change', () => {
+    // Sized explicitly first. jsdom never restores `innerWidth`, so an earlier
+    // test in this file leaves the window at 400x700 — and then this one's own
+    // resize is a no-op the guard early-outs on, and the assertion is satisfied
+    // by the fit that happened at mount. It passed with the resize listener
+    // deleted altogether.
+    resizeTo(900, 600);
     render(<MatrixBackground speed={5} />);
+    expect(document.querySelector('canvas')!.width).toBe(900 * ratio());
 
     resizeTo(400, 700);
 
-    expect(document.querySelector('canvas')!.width).toBe(400 * Math.min(devicePixelRatio || 1, 2));
+    expect(document.querySelector('canvas')!.width).toBe(400 * ratio());
   });
 });
 

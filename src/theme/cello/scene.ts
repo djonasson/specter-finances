@@ -95,8 +95,8 @@ const SQUIRREL_SIT_SPREAD = 90;
 /** How likely it is to cross to the next tree instead of climbing back down. */
 const CROSS_CHANCE = 0.35;
 /** How long the crossing takes, and how far it arcs above the two crowns. */
-const CROSS_FRAMES = 26;
-const CROSS_ARC = 12;
+export const CROSS_FRAMES = 26;
+export const CROSS_ARC = 12;
 /** How much further a longer jump arcs, capped so it stays inside the band. */
 const CROSS_ARC_MAX = 1.6;
 /** How often a jump is aimed at the other one rather than at a tree at random. */
@@ -162,7 +162,7 @@ export const BANANA_TRUNK = 62;
  * as wallpaper; the shorter one is what makes them a pair.
  */
 export const BANANA_TRUNKS = [BANANA_TRUNK, Math.round(BANANA_TRUNK * 0.74)];
-const BANANA_SPREAD = 30;
+export const BANANA_SPREAD = 30;
 /** Where each plant stands relative to the lounger — one per trunk. */
 const BANANA_PLACES = [-BANANA_SPREAD, BANANA_SPREAD * 0.8];
 export const LOUNGER_LENGTH = 44;

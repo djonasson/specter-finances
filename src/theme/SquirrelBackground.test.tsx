@@ -63,7 +63,10 @@ let ctx: CanvasRenderingContext2D & { calls: Call[] };
 
 beforeEach(() => {
   ctx = recordingContext();
-  HTMLCanvasElement.prototype.getContext = vi.fn(() => ctx) as never;
+  // Spied rather than assigned: a raw assignment to the prototype is not
+  // something `restoreAllMocks` can put back, and neither is a `spyOn` left
+  // unrestored — both outlive the file and the next one sees them.
+  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(ctx as never);
   // jsdom has no Path2D, and the tail is built out of one.
   vi.stubGlobal(
     'Path2D',
@@ -87,6 +90,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 /**
@@ -146,14 +150,17 @@ describe('covering the window', () => {
   });
 
   it('stands the squirrel in the middle of a window that changed size', () => {
+    // Every acorn pinned to x = 0, so the only thing that can be drawn in the
+    // middle is the squirrel. Left random, `resize` scatters twelve of them
+    // across the window and several land in the middle on almost every run —
+    // the assertion passed with the re-centring deleted.
+    vi.spyOn(Math, 'random').mockReturnValue(0);
     renderWithTheme(<SquirrelBackground />);
     resizeTo(400, 700);
     runFrames(1);
 
-    // Nothing else is drawn near the middle of the floor on the first frame
-    // after a resize, which is where `resize` puts him.
-    const middle = translations().some(([x]) => Math.abs(x - 200) < 60);
-    expect(middle).toBe(true);
+    const middle = translations().filter(([x]) => Math.abs(x - 200) < 60);
+    expect(middle.length).toBeGreaterThan(0);
   });
 });
 
