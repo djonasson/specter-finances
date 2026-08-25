@@ -2,7 +2,8 @@ import type { ReactNode } from 'react';
 import { MatrixBackground } from './MatrixBackground';
 import { GradientBackground } from './GradientBackground';
 import { SquirrelBackground } from './SquirrelBackground';
-import { CelloBackground, CELLO_FLOOR } from './cello/CelloBackground';
+import { CelloBackground } from './cello/CelloBackground';
+import { celloFloor } from './cello/scene';
 import type { GradientSettings } from './ThemeContext';
 
 /**
@@ -35,7 +36,7 @@ export interface BackgroundDescriptor {
    * what it throws — a pizza sailing up over the app, like the squirrel's
    * falling acorns, is meant to be seen there.
    */
-  floor?: number;
+  floor?: (width: number) => number;
 }
 
 /**
@@ -61,7 +62,9 @@ export const BACKGROUNDS = [
     value: 'squirrel',
     label: 'Squirrel',
     render: () => <SquirrelBackground />,
-    floor: 80,
+    // A constant: this scene is one bird's worth of ground, and it is drawn the
+    // same size whatever the window is.
+    floor: () => 80,
   },
   {
     value: 'cello',
@@ -69,8 +72,9 @@ export const BACKGROUNDS = [
     render: () => <CelloBackground />,
     // Taller than the squirrel's: this scene has a domed oven on a plinth and
     // two people standing beside it, not one bird's worth of ground. The scene
-    // works the number out from its own geometry rather than being told it.
-    floor: CELLO_FLOOR,
+    // works the number out from its own geometry rather than being told it —
+    // including how small it draws itself on a narrow window.
+    floor: celloFloor,
   },
 ] as const satisfies readonly BackgroundDescriptor[];
 
@@ -108,14 +112,22 @@ export function isBackgroundName(value: unknown): value is BackgroundName {
   return typeof value === 'string' && BACKGROUNDS.some((background) => background.value === value);
 }
 
-/** See `floor` above: how tall a band this background stands in, if any. */
-export function stageFloorHeight(value: string): number {
-  return backgroundFor(value)?.floor ?? 0;
+/**
+ * See `floor` above: how tall a band this background stands in on a window this
+ * wide, or zero if it stands in none.
+ */
+export function stageFloorHeight(value: string, width: number): number {
+  return backgroundFor(value)?.floor?.(width) ?? 0;
 }
 
-/** Derived from the same number, so the two can never disagree. */
+/**
+ * Whether it draws over the app at all — a fact about the scene, so it is read
+ * off the presence of a floor rather than off a height measured at some width.
+ * Asking for a height here would mean picking a width to ask about, and the
+ * answer must not depend on one.
+ */
 export function drawsOverTheApp(value: string): boolean {
-  return stageFloorHeight(value) > 0;
+  return backgroundFor(value)?.floor !== undefined;
 }
 
 /** The ones that draw over the app, for anything that has to cover them all. */

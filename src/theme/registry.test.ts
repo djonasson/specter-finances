@@ -47,7 +47,7 @@ describe('the list of backgrounds', () => {
   it('has nothing to say about a background it does not have', () => {
     expect(backgroundFor('pinball')).toBeUndefined();
     expect(drawsOverTheApp('pinball')).toBe(false);
-    expect(stageFloorHeight('pinball')).toBe(0);
+    expect(stageFloorHeight('pinball', 1440)).toBe(0);
   });
 });
 
@@ -72,6 +72,27 @@ describe('what each entry actually renders', () => {
     }
     // Two entries sharing a component means one of them silently shows the other.
     expect(new Set(components).size).toBe(components.length);
+  });
+});
+
+// A scene drawn smaller on a narrow window needs a smaller band, or the app
+// holds back a strip of the user's list for empty sky. The registry asks the
+// background rather than storing a number, so a scene that does not care about
+// the width simply ignores it.
+describe('how tall a band a background asks for', () => {
+  it('lets a scene ask for less of a narrow window than of a wide one', () => {
+    expect(stageFloorHeight('cello', 360)).toBeLessThan(stageFloorHeight('cello', 1440));
+  });
+
+  it('lets a scene that does not care about the width ask for the same either way', () => {
+    expect(stageFloorHeight('squirrel', 360)).toBe(stageFloorHeight('squirrel', 1440));
+  });
+
+  it('asks for nothing at all from a background that draws behind the app', () => {
+    for (const width of [360, 1440]) {
+      expect(stageFloorHeight('matrix', width)).toBe(0);
+      expect(stageFloorHeight('none', width)).toBe(0);
+    }
   });
 });
 
@@ -103,7 +124,7 @@ describe('offering a random background', () => {
     expect(backgroundFor(RANDOM_BACKGROUND)).toBeUndefined();
     expect(isBackgroundName(RANDOM_BACKGROUND)).toBe(false);
     expect(drawsOverTheApp(RANDOM_BACKGROUND)).toBe(false);
-    expect(stageFloorHeight(RANDOM_BACKGROUND)).toBe(0);
+    expect(stageFloorHeight(RANDOM_BACKGROUND, 1440)).toBe(0);
   });
 
   it('is offered by the picker alongside every real background', () => {

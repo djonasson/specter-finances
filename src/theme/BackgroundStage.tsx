@@ -1,7 +1,8 @@
+import { useSyncExternalStore } from 'react';
 import type { ReactNode } from 'react';
 import { useThemeSettings } from './ThemeContext';
-import { stageFloorHeight } from './registry';
-import { FOOTER_HEIGHT, BEHIND_Z, FLOOR_Z, SCENE_Z } from './chrome';
+import { drawsOverTheApp, stageFloorHeight } from './registry';
+import { footerHeight, FOOTER_HEIGHT, BEHIND_Z, FLOOR_Z, SCENE_Z } from './chrome';
 
 /**
  * The two pieces of layout a background that draws over the app needs from the
@@ -18,7 +19,58 @@ import { FOOTER_HEIGHT, BEHIND_Z, FLOOR_Z, SCENE_Z } from './chrome';
  * zero — so they read it the same way rather than each asking the registry.
  */
 function useStageFloor(): number {
-  return stageFloorHeight(useThemeSettings().resolvedBackground);
+  return stageFloorHeight(useThemeSettings().resolvedBackground, useWindowWidth());
+}
+
+/**
+ * The window's width, kept current.
+ *
+ * A scene may draw itself smaller on a narrow window and ask for a smaller band
+ * with it, so the band is not a number to read once at mount: a phone turned to
+ * landscape would go on masking the portrait band for the rest of the session.
+ */
+function useWindowWidth(): number {
+  return useSyncExternalStore(
+    subscribeToResize,
+    () => window.innerWidth,
+    () => 0,
+  );
+}
+
+/**
+ * The footer's height as the page actually laid it out.
+ *
+ * The mask and the clip are positioned from the footer's top edge, and a scene
+ * puts its ground there too — but the scene measures it (`footerHeight`) while
+ * these used the configured number. The two agree only while the footer is
+ * exactly 60px: at a larger text size or a browser zoom the scenery stands
+ * higher than the band drawn to hide it, so the top of it is painted over the
+ * user's list while the ground paints into the navigation bar.
+ */
+function useFooterHeight(): number {
+  return useSyncExternalStore(subscribeToResize, footerHeight, () => FOOTER_HEIGHT);
+}
+
+/**
+ * One listener for the whole stage, however many pieces of it are on screen.
+ *
+ * Each piece subscribing for itself put three `resize` handlers on a window that
+ * fires the event tens of times through a single drag, all to read one number
+ * they all read the same way.
+ */
+const resizeListeners = new Set<() => void>();
+
+function announceResize(): void {
+  for (const listener of resizeListeners) listener();
+}
+
+function subscribeToResize(onChange: () => void): () => void {
+  if (resizeListeners.size === 0) window.addEventListener('resize', announceResize);
+  resizeListeners.add(onChange);
+  return () => {
+    resizeListeners.delete(onChange);
+    if (resizeListeners.size === 0) window.removeEventListener('resize', announceResize);
+  };
 }
 
 /** Room to scroll the last row clear of the floor, not just level with it. */
@@ -31,6 +83,7 @@ const SPARE_SCROLL = 20;
  */
 export function BackgroundFloor() {
   const height = useStageFloor();
+  const footer = useFooterHeight();
   if (!height) return null;
 
   return (
@@ -39,7 +92,7 @@ export function BackgroundFloor() {
       data-scene-floor
       style={{
         position: 'fixed',
-        bottom: FOOTER_HEIGHT,
+        bottom: footer,
         left: 0,
         right: 0,
         height,
@@ -88,7 +141,12 @@ export function BackgroundFloor() {
  * able to swallow a tap on the app behind it.
  */
 export function SceneLayer({ children }: { children: ReactNode }) {
-  const overTheApp = useStageFloor() > 0;
+  const footer = useFooterHeight();
+  // Asked of the background rather than measured off its band: which layer a
+  // scene belongs on is a fact about the scene, and reading it as "a height
+  // above zero at this width" both re-derives it and drags a resize
+  // subscription into a component that has no use for the width.
+  const overTheApp = drawsOverTheApp(useThemeSettings().resolvedBackground);
 
   return (
     <div
@@ -99,7 +157,7 @@ export function SceneLayer({ children }: { children: ReactNode }) {
         inset: 0,
         zIndex: overTheApp ? SCENE_Z : BEHIND_Z,
         pointerEvents: 'none',
-        ...(overTheApp ? { clipPath: `inset(0 0 ${FOOTER_HEIGHT}px 0)` } : {}),
+        ...(overTheApp ? { clipPath: `inset(0 0 ${footer}px 0)` } : {}),
       }}
     >
       {children}

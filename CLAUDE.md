@@ -90,10 +90,12 @@ Run them in this order, because each one's fixes are the next one's input:
 1. **`/simplify`** — reuse, duplication, and altitude. Cheapest to act on while
    the code is still fresh, and it shrinks what the other two have to read.
 2. **`/code-review`** — correctness. This is the one that catches a moved sign or
-   a wrong row index, which on this app is real money moved silently.
-   **Claude cannot launch this one** — it is user-triggered and billed. Ask for
-   it explicitly, say the branch is ready for it, and wait; do not quietly treat
-   the step as done because it could not be run.
+   a wrong row index, which on this app is real money moved silently. Claude runs
+   this one like any other skill. Only **`/code-review ultra`** — the deep
+   multi-agent cloud review — is user-triggered and billed: Claude cannot launch
+   that one by any route, so it asks for it explicitly, says the branch is ready,
+   and waits. Either way, never quietly treat the step as done because it was not
+   run.
 3. **`/security-review`** — the token lives in localStorage and the OAuth scope
    grants access to a real person's Drive file, so anything touching auth,
    `sheetAccess`, or what gets written to the sheet needs a look.
@@ -257,15 +259,142 @@ by a re-roll in the same handler then rolls against the pool it just replaced.
 The roll _value_ is still drawn outside the updater, since React invokes those
 twice under StrictMode.
 
-A background that draws _over_ the app rather than behind it (canvas at z-index 101, not −1) declares a `floor` — how tall a band it stands in — and the layout obeys: `BackgroundFloor` masks everything above the band, `BackgroundSpacer` reserves the matching scroll room inside `AppShell.Main`, and `ThemeContext` leaves the header and footer out of the card-transparency tint so the scene does not show through the chrome it stands on. `App.tsx` names no theme and does not read the theme context at all; asking the registry is the whole point, and `FOOTER_HEIGHT` in `theme/chrome.ts` is the single source for the height the AppShell footer and the floor both depend on.
+A background that draws _over_ the app rather than behind it (canvas at z-index 101, not −1) declares a `floor` — **a function of the window's width**, since a scene may draw itself smaller on a narrow one and should then ask for less of it — and the layout obeys: `BackgroundFloor` masks everything above the band, `BackgroundSpacer` reserves the matching scroll room inside `AppShell.Main`, and `ThemeContext` leaves the header and footer out of the card-transparency tint so the scene does not show through the chrome it stands on. `App.tsx` names no theme and does not read the theme context at all; asking the registry is the whole point, and `FOOTER_HEIGHT` in `theme/chrome.ts` is the single source for the height the AppShell footer and the floor both depend on. `BackgroundStage` reads the width through `useSyncExternalStore` on `resize`, so the band is re-measured rather than fixed at mount — read once, a phone turned to landscape masks the portrait band for the rest of the session. `drawsOverTheApp` is deliberately _not_ derived from the height any more: whether a scene stands in a band is a fact about the scene, and asking for a height would mean picking a width to ask about.
 
 **What a background may paint on is granted by the system, not chosen by the theme.** `BackgroundEffect` wraps whichever background is showing in `SceneLayer`, which takes the footer's band away from the ones that draw over the app. It has to: a scene's canvas is fixed across the whole viewport, so the navigation bar is underneath it, and Cello's opaque ground painted straight over all five buttons — an app that could not be navigated, with no error to notice. A new scene cannot opt out, because a new scene does not render the clip; the registry does, and `backgrounds.test.tsx` drives that assertion off `BACKGROUNDS` so a background added later is covered the day it is added. Two details are load-bearing: it is `clip-path`, not `overflow: hidden`, because a `position: fixed` canvas escapes an ancestor's overflow; and the clip **must** carry `SCENE_Z` itself, because clipping makes it a stacking context and a canvas's own z-index is then resolved inside it and never reaches the page — leaving that off sinks the whole scene behind the app. The scenes still set a z-index of their own; inside the clip it is inert. And it wraps **only** the backgrounds that draw over the app: that stacking context is a one-way door, so the gradient and matrix at `z-index: -1` get hoisted in front of the whole app by it — wrapping them "for uniformity" left the gradient covering every row, chart and form with only the nav bar showing. `backgrounds.test.tsx` pins both directions against `drawsOverTheApp`.
 
-The `floor` belongs to the scene, and Cello's is **derived, not chosen**: `SCENE_REACH` is the taller of its chimney cap and its bird at the top of his hover, and `CELLO_FLOOR` adds the ground clearance. Anything above the floor is painted over the user's own list, so a hand-picked number goes stale the moment the scenery grows — but what is _thrown_ is deliberately outside it. A pizza sailing up over the app, like the squirrel's falling acorns, is the point.
+The `floor` belongs to the scene, and Cello's is **derived, not chosen**: `SCENE_REACH` is the taller of its chimney cap and its bird at the top of his hover, and `celloFloor(width)` scales that by `sceneScale(width)` and adds the ground clearance — which stays in **screen** pixels, since `CelloBackground` works the ground out in screen pixels before dividing by the scale. Rounded **up**, so a band can never be half a pixel shorter than the scenery standing in it. Anything above the floor is painted over the user's own list, so a hand-picked number goes stale the moment the scenery grows — but what is _thrown_ is deliberately outside it. A pizza sailing up over the app, like the squirrel's falling acorns, is the point.
 
-Cello's left is a park, a school and a light beige Fiat 500 parked outside it, mirroring the oven on the right. One thing there moves on its own: she lets herself into the school now and then, the window lights while she is inside, and the bird — having no shoulder to sit on — waits in the nearest tree. That last part is **a substituted target, not a new phase**: `perchX`/`perchY` return her shoulder or the treetop, and `perched`, `escorting` and even a dive for a passing pizza go on working without knowing she is gone. Two things follow from `perched` holding him _at_ his perch by setting his position every frame, and both were jerks worth naming: he must fly the last of the way down (`landing`) rather than entering `perched` from a hover and covering the whole hover height in one frame, and when the perch itself becomes a different perch — she goes in, she comes out — he notices for himself: `bird.perchedOn` remembers which perch he took, and `perched` puts him back in the air when it no longer matches `currentPerch`. **Identity, not distance, and not the caller's memory**: keying it on the two girl transitions that cause it today would leave the next cause to reintroduce the jump, while a geometry check would make `perched` doubt its own invariant and break every deliberate placement. The lit window and the swinging door are **derived from her phase** rather than stored, so a lit window with nobody in it is not a state the scene can reach, and `treeSway` is pure so the wind is something a test can hold. The chimney stands on the right-hand slope with its foot **cut to the pitch** — drawn square it had one corner buried in the roof and the other hanging over air — and smokes only while she is in there, through the same puff machinery the oven uses. Her silhouette at the window is gated on the same `schoolLit`, so the light, the smoke and the shadow cannot disagree about whether anybody is home. Sizes live in `scene.ts` beside `SCENE_REACH`, which counts the chimney rather than the ridge (it stands part way down a slope, so it is the taller) and is otherwise derived from one list of **perch heights** (`PERCH_HEIGHT`) plus how far above one he gets — the same list `perchY` places him with, so a perch added there cannot be forgotten here. He sits _in_ the crown rather than on top of it, which is both what a bird does and the difference between reserving 198px of the user's list and 171px: the band is measured from wherever he settles highest, so where he sits in a tree, not the park itself, is what costs screen. It grew 158px → 171px.
+Cello's left is a park, a school and a light beige Fiat 500 — which she drives, see below — mirroring the oven on the right. One thing there moves on its own: she lets herself into the school now and then, the window lights while she is inside, and the bird — having no shoulder to sit on — waits in the nearest tree. That last part is **a substituted target, not a new phase**: `perchX`/`perchY` return her shoulder or the treetop, and `perched`, `escorting` and even a dive for a passing pizza go on working without knowing she is gone. Two things follow from `perched` holding him _at_ his perch by setting his position every frame, and both were jerks worth naming: he must fly the last of the way down (`landing`) rather than entering `perched` from a hover and covering the whole hover height in one frame, and when the perch itself becomes a different perch — she goes in, she comes out — he notices for himself: `bird.perchedOn` remembers which perch he took, and `perched` puts him back in the air when it no longer matches `currentPerch`. **Identity, not distance, and not the caller's memory**: keying it on the two girl transitions that cause it today would leave the next cause to reintroduce the jump, while a geometry check would make `perched` doubt its own invariant and break every deliberate placement. The lit window and the swinging door are **derived from her phase** rather than stored, so a lit window with nobody in it is not a state the scene can reach, and `treeSway` is pure so the wind is something a test can hold. The chimney stands on the right-hand slope with its foot **cut to the pitch** — drawn square it had one corner buried in the roof and the other hanging over air — and smokes only while she is in there, through the same puff machinery the oven uses. Her silhouette at the window is gated on the same `schoolLit`, so the light, the smoke and the shadow cannot disagree about whether anybody is home. Sizes live in `scene.ts` beside `SCENE_REACH`, which counts the chimney rather than the ridge (it stands part way down a slope, so it is the taller) and is otherwise derived from one list of **perch heights** (`PERCH_HEIGHT`) plus how far above one he gets — the same list `perchY` places him with, so a perch added there cannot be forgotten here. He sits _in_ the crown rather than on top of it, which is both what a bird does and the difference between reserving 198px of the user's list and 171px: the band is measured from wherever he settles highest, so where he sits in a tree, not the park itself, is what costs screen. It grew 158px → 171px.
 
-**The left of the scene is capped, not just placed.** `schoolX` is bounded by her walking range and by the pizzaiolo, because two things it did otherwise were invisible until someone opened a phone: at 320px the door sat _past the end of her walk_, so she could never cross it and the entire visit — light, door, tree perch — was dead; and the car, growing rightwards out of the school, was drawn straight through the pizzaiolo at every phone width. On a window with no room for one, `carX` is `null` and no car is drawn. Order of sacrifice: the park goes first, then the car, and the school always stays on screen because it is the only part anybody interacts with.
+**The scene is drawn to scale, and works in its own units.** `sceneScale(width)`
+runs from 1 at `SCENE_FULL_WIDTH` down to `SCENE_MIN_SCALE` at a phone's width,
+and `CelloBackground` hands the scene a stage of `width / scale` — so at 360px
+the layout has ~500 units to place a school, a car and a walk in, and nothing in
+`scene.ts` knows the window got smaller. `drawScene` applies the one `ctx.scale`,
+and clicks are divided by the same number on the way in. The alternative —
+laying the scene out differently on a phone — means every measurement in the
+file growing a narrow-window case.
+
+**The Fiat is the middle of the scene, not scenery.** She walks the two ends —
+the park and the school at one, home and the oven at the other — and drives the
+stretch between them, with the bird in the seat beside her. The car waits at
+`carSchoolX` or `carHomeX`; **home is the oven end**, which is what the
+pizzaiolo is cooking for. Both are `null` together on a window with no room to
+park one clear of him, or too narrow for the drive to be worth getting in for,
+and then nothing about the drive happens at all. Reaching the car she either gets in or **turns round** —
+the car is the end of her walk when she is not taking it, so she stays at the
+end she is at and is out of the middle either way. That chance
+(`LEAVE_HOME_CHANCE`) is what sets the shape of her day: boarding on the first
+arrival gave each end exactly one lap, and since the school end is wider and has
+a visit inside it, she was at work two thirds of the time and home for a tenth
+of it. It is now roughly **44% home** (a quarter of that on the lounger),
+**15% driving** and **40% at school and in the park**, which `scene.test.ts` measures over three seeded days rather than
+assuming — the split is set by five constants pulling against each other and no
+one of them states it. The home end is a **share** of the room between the
+school's car and the end of her walk (`HOME_WALK_SHARE`), not a fixed distance:
+fixed, a wide window gets a home end she crosses in a moment and a narrow one
+has no room to drive at all. Which end the car is parked at is held as `car.at`, not recovered by
+comparing `x` to a layout number — the same rule as `bird.perchedOn`, and for
+the same reason: the first thing that nudges the car by a pixel would make it
+unboardable for ever, with nothing to see but a girl who stopped taking it. It
+starts parked at whichever end she was dropped into the scene at — and **she is
+dropped at an end**, never in between: placed anywhere in her range, she can
+open the scene mid-way with the car behind her and walk the entire middle on
+foot, which is the one journey the car exists to prevent. `resizeScene` puts her
+back to the nearer end for the same reason, since a window that changes size
+moves both ends underneath her.
+
+**A drive to the school is an errand.** Alighting there sets `girl.dueAtSchool`,
+and the door lets her in on it regardless of `VISIT_CHANCE` — driving somewhere
+and not going in is a car park, not an errand. She leaves the school heading
+**west**, into the park: leaving eastwards walks her straight back to the car,
+and the park then never gets walked at all.
+
+**The oven cooks for someone who is coming home** (`homeward`). No pizza while
+she is at the school end, in the park, or being driven there — he is making them
+for her, and one tossed while she is away is one nobody is there for. A window
+with no car has no ends to be at, so the old rule stands there. This is also
+what makes the two clickable things worth clicking: with the oven running
+regardless, the bird spent about half the scene's life lying on the ground too
+full to fly.
+
+**"Settled" is measured against the perch, not against the ground**
+(`perchVX`/`settledOnPerch`). Her shoulder walks and the car drives; a bird
+holding station over a car doing 3px a frame has a speed of 3, so a check
+against zero meant he could only ever land on something stopped — he flew above
+the car for entire drives and got in only during the pause while she boarded.
+
+**She turns, rather than flipping.** `girl.facing` eases between −1 and 1 while
+`dir` snaps, because the shoulder he sits on is the one _behind_ her: taken off
+`dir`, a turn moved his perch the width of her body in a single frame with
+`perched` pinning him to it — a 26px teleport across her, twice a lap, for as
+long as the scene ran. `boarding`/`driving`/`alighting` mirror the school's
+`entering`/`inside`/`leaving`, and the speed is taken from how far the car has
+come and how far is left rather than from a stored velocity — so it eases at both
+ends by construction, and a resize that moves the spots changes only how quickly
+it arrives. `resizeScene` puts her back on her feet when a window loses its car.
+
+**The seat is a third perch, and that is the whole of it.** `PERCH_HEIGHT` gains
+`car`, `currentPerch` returns it while she is boarding or driving, and the
+`perchedOn` identity rule already in `perched` flies him over — the same
+mechanism that moves him to the tree when she goes into the school. A pizza still
+beats the drive, and he comes back to whichever perch is current afterwards
+without either feature knowing about the other.
+
+**The throw comes out of the swing.** `peelSwingAt`/`peelAngle`/`peelTip` live in
+`scene.ts` and `draw.ts` reads them, because the two owning separate copies is
+exactly what the old throw was: the pizza was born beside his head while the peel
+held it an arm's length up and to the right, so it hopped backwards out of the
+paddle as it was released. It now leaves **from the tip**, along the path the
+carry point was already travelling, snapped up by the wrist (`PEEL_SNAP`) — the
+paddle's own speed is a lob. It goes at `PEEL_RELEASE_SWING`, part way round
+rather than at the top of the arc, where the tip is travelling almost straight
+left and a pizza let go there is thrown sideways; the arm follows through and
+eases back over `PEEL_RECOVER_FRAMES`. `movePizza` runs **before** `runOven` so a
+pizza released this frame is drawn at the tip rather than a frame's flight away
+from it.
+
+**Clicking her is the one thing in the scene the user starts that is not about
+food.** Walking, a click blows a `kiss` heart from her mouth and reaches him in
+either of the two states a call can reach (`callable`): hovering, he flies down;
+too full to fly, his digestion is cut short exactly as clicking _him_ already
+does, and the takeoff still plays out so he returns rather than appearing.
+Nothing happens if he is already on her shoulder, already on his way down, or
+has a pizza in the air or in his beak. Her hit box is much wider than she is
+drawn — she is a few pixels across on a screen a thousand wide. `clickScene` keeps working through a
+`document` listener with the canvas at `pointer-events: none`, so none of this
+costs the app a tap.
+
+**Two squirrels live in the park, and in nothing else.** They climb a **spiral**
+round a trunk rather than a straight line up one side — a squirrel on a vertical
+line reads as a lift — which means they pass behind the tree, which is why
+`drawScene` takes two passes at them: `squirrelBehind` splits them either side
+of the park. They sit in a crown a while, and jump to **any** tree in the park in
+an arc scaled to the distance, often aimed at wherever the other one is
+(`MEET_CHANCE`). Finding themselves together at the top of one, they sometimes
+kiss, with hearts over them — decided in `runSquirrelPair` after the per-squirrel
+loop, because it takes two and a loop that sees one at a time cannot settle it. `up` runs 0 at the foot to 1 at the top of the crown, so
+`SQUIRREL_REACH` is the tree the bird already perches in and the reserved band
+cannot grow because of them. Nothing else in the scene reads them and they read
+nothing else.
+
+**The home end has a lounger under two banana trees**, and she lies on it now
+and then (`lounging`, caught on the way past like the school's door). She still
+counts as **home** while she is there, so the oven goes on working and a pizza
+sails over while she suns herself. `BANANA_HEIGHT` is **derived** from the leaves' own shapes
+(`bananaLeaves`, in `scene.ts` so that the reach it decides is part of the scene
+rather than of the drawing), and the plants lean through `bananaLean` — also in
+`scene.ts`, because a perch depends on it: a lean the scene cannot see is a bird
+held at a fixed point while the crown slides out from under him, which is the
+very thing `perchX` swaying with a park tree exists to prevent.
+Where the bird waits it out is chosen **once, when she lies down**
+(`girl.restPerch`, the head of the lounger or a banana tree): decided per frame
+it would change under him every frame, and `perched` follows the perch — he
+would bounce between the two for the whole afternoon. His own hover cycle is
+what makes the third case, flying about above her, happen by itself.
+
+**The left of the scene is capped, not just placed.** `schoolX` is bounded by her walking range and by the pizzaiolo, because two things it did otherwise were invisible until someone opened a phone: at 320px the door sat _past the end of her walk_, so she could never cross it and the entire visit — light, door, tree perch — was dead; and the car, growing rightwards out of the school, was drawn straight through the pizzaiolo at every phone width. On a window with no room for one, `carSchoolX` and `carHomeX` are `null` together, no car is drawn and no drive happens. Order of sacrifice: the park goes first, then the car, and the school always stays on screen because it is the only part anybody interacts with.
 
 The `/list` tab lives in the **query string** (`/list?tab=recurring`), not the path: `BottomNavItem` marks the current screen with an exact `pathname ===` match, so a sub-route would unlight Expenses — and a path change fires the four-request refetch on every tab switch.
 

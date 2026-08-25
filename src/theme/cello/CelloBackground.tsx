@@ -1,7 +1,14 @@
 import { useEffect, useRef } from 'react';
 import { useComputedColorScheme } from '@mantine/core';
 import { footerHeight } from '../chrome';
-import { createScene, resizeScene, step, clickScene, SCENE_REACH } from './scene';
+import {
+  createScene,
+  resizeScene,
+  step,
+  clickScene,
+  sceneScale,
+  GROUND_ABOVE_FOOTER,
+} from './scene';
 import { drawScene } from './draw';
 
 /**
@@ -11,15 +18,6 @@ import { drawScene } from './draw';
  * allowed to be interesting.
  */
 
-/** The scene stands this far above the app's footer. */
-const GROUND_ABOVE_FOOTER = 34;
-
-/**
- * The band this scene needs the app to reserve for it — the ground it stands on
- * plus everything standing on that ground. Derived rather than chosen, so the
- * scenery and the floor masking it cannot drift apart.
- */
-export const CELLO_FLOOR = GROUND_ABOVE_FOOTER + SCENE_REACH;
 /** ~40fps, the same budget the other canvas backgrounds keep to. */
 const FRAME_INTERVAL = 25;
 
@@ -42,18 +40,28 @@ export function CelloBackground() {
     let animationId: number;
     let lastTime = 0;
 
+    /**
+     * The stage, in the scene's own units.
+     *
+     * The scene is drawn at `scale`, so a window of 360px is a stage of 500 and
+     * the scenery on it never changes size in the units it is written in. Every
+     * measurement below is divided the same way, which is what keeps the ground
+     * landing back on the same line of the screen.
+     */
     function currentSize() {
-      const height = window.innerHeight;
+      const scale = sceneScale(window.innerWidth);
+      const ground = window.innerHeight - footerHeight() - GROUND_ABOVE_FOOTER;
       return {
-        width: window.innerWidth,
-        height,
-        ground: height - footerHeight() - GROUND_ABOVE_FOOTER,
+        width: window.innerWidth / scale,
+        height: window.innerHeight / scale,
+        ground: ground / scale,
+        scale,
       };
     }
 
     let size = currentSize();
-    canvas.width = size.width;
-    canvas.height = size.height;
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
     const scene = createScene(size, Math.random);
 
     function resize() {
@@ -66,8 +74,8 @@ export function CelloBackground() {
         return;
       }
       size = next;
-      canvas.width = next.width;
-      canvas.height = next.height;
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
       resizeScene(scene, next);
     }
 
@@ -77,14 +85,15 @@ export function CelloBackground() {
       lastTime = time;
 
       step(scene, Math.random);
-      ctx.clearRect(0, 0, size.width, size.height);
-      drawScene(ctx, scene, isDarkRef.current);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      drawScene(ctx, scene, isDarkRef.current, size.scale);
     }
 
     // The canvas takes no pointer events — it is drawn over the app, and a
     // click has to keep working on whatever is underneath it.
     function handleClick(event: MouseEvent) {
-      clickScene(scene, event.clientX, event.clientY);
+      // The window's coordinates are not the scene's on a narrow screen.
+      clickScene(scene, event.clientX / size.scale, event.clientY / size.scale);
     }
 
     animationId = requestAnimationFrame(draw);

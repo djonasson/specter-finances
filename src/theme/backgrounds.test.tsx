@@ -18,8 +18,9 @@ vi.mock('./GradientBackground', () => ({
 vi.mock('./SquirrelBackground', () => ({
   SquirrelBackground: () => <div data-scene="squirrel" />,
 }));
-// Only the component is stood in for; CELLO_FLOOR is a plain number the registry
-// reads, and a copy of it here could go stale against the scene it comes from.
+// Only the component is stood in for: the band it stands in is `celloFloor` in
+// `cello/scene.ts`, which the registry asks for the width, and a copy of that
+// here could go stale against the scene it comes from.
 vi.mock('./cello/CelloBackground', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./cello/CelloBackground')>()),
   CelloBackground: () => <div data-scene="cello" />,

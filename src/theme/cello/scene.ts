@@ -19,6 +19,8 @@ export const EATING_FRAMES = 40;
 export const FULL_FRAMES = 400;
 export const TAKEOFF_FRAMES = 30;
 export const TOSS_FRAMES = 24;
+/** How long the peel takes to come back down to level after a throw. */
+export const PEEL_RECOVER_FRAMES = 14;
 const PIZZA_INTERVAL_MIN = 500;
 const PIZZA_INTERVAL_SPREAD = 400;
 
@@ -43,6 +45,211 @@ const BIRD_REACH = 15;
 export const FULL_SCALE = 1.45;
 export const FULL_LIFT = 11;
 const GIRL_SPEED = 0.45;
+/** How close, and how closely matched in speed, counts as having landed. */
+const ARRIVE_REACH = 4.5;
+const ARRIVE_DRIFT = 1.2;
+
+/** How readily he puts his feet down once he is settled beside a perch. */
+const LANDING_CHANCE = 0.01;
+const MOVING_PERCH_LANDING = 0.07;
+
+/** How close, and how closely matched in speed, counts as ready to land. */
+const SETTLE_REACH = 14;
+const SETTLE_DRIFT = 0.8;
+/**
+ * How he flies at a perch: a spring of this stiffness against this drag.
+ *
+ * Hovering above one is loose and slow; dropping onto it is stiff and quick.
+ */
+const ESCORT_STEER = { gain: 0.012, drag: 0.92 };
+const LANDING_STEER = { gain: 0.05, drag: 0.82 };
+
+/**
+ * How far ahead of a moving perch a bird flying like this has to aim.
+ *
+ * Steering at where the perch *is* leaves him permanently behind it: chasing
+ * something moving at `v`, a spring settles at a gap of about
+ * `v * (1 - drag) / gain`. Behind a car that is further than the distance that
+ * counts as arriving, so he flew above it for whole drives. Aiming where it is
+ * *going* cancels the lag exactly — and the lead has to be worked out from the
+ * *same* gains, or a stiffer approach overshoots by as much as the loose one
+ * trailed.
+ */
+function leadFrames(steer: { gain: number; drag: number }): number {
+  return (1 - steer.drag) / steer.gain;
+}
+
+/**
+ * The squirrels, which live in the park and in nothing else.
+ *
+ * `up` is how far along the tree one is, from the foot of the trunk at 0 to the
+ * top of the crown at 1, so a squirrel's height is the tree's — it cannot climb
+ * out of the band the app reserved by climbing higher than the tree it is in.
+ */
+const SQUIRREL_COUNT = 2;
+const CLIMB_SPEED = 0.012;
+/** Frames spent still, once it has reached one end of its climb. */
+const SQUIRREL_SIT_MIN = 30;
+const SQUIRREL_SIT_SPREAD = 90;
+/** How likely it is to cross to the next tree instead of climbing back down. */
+const CROSS_CHANCE = 0.35;
+/** How long the crossing takes, and how far it arcs above the two crowns. */
+const CROSS_FRAMES = 26;
+const CROSS_ARC = 12;
+/** How much further a longer jump arcs, capped so it stays inside the band. */
+const CROSS_ARC_MAX = 1.6;
+/** How often a jump is aimed at the other one rather than at a tree at random. */
+const MEET_CHANCE = 0.45;
+/** Up at the top, together: how likely, how long, and how often a heart. */
+const KISS_CHANCE = 0.04;
+const KISS_FRAMES = 150;
+const KISS_HEART_INTERVAL = 22;
+/** How far apart they sit while they are at it. */
+const KISS_APART = 4.5;
+/**
+ * How far round the tree a full climb carries it, and how wide that circle is at
+ * the foot of the trunk and up in the crown.
+ *
+ * A squirrel going straight up one side reads as a lift rather than an animal;
+ * going round means it passes behind the trunk, which is also why the drawing
+ * makes two passes at them.
+ */
+const SPIRAL_TURNS = 1.7;
+const TRUNK_RADIUS = 4.5;
+const SPIRAL_CROWN_RADIUS = 13.5;
+/** Where round the tree each of them starts, so two in one tree are not one. */
+const SQUIRREL_SIDE = Math.PI;
+
+/**
+ * The lounger at the home end, and the two banana trees over it.
+ *
+ * Kept shorter than the park's trees so the band the app reserves is still
+ * measured from the bird in a park tree — scenery that out-reaches it is
+ * scenery drawn over the user's own list.
+ */
+/** How many leaves each plant carries; the second one is fuller. */
+const BANANA_LEAVES = [9, 10];
+/** How far a leaf reaches out, up and over, before the wobble below shapes it. */
+const LEAF_REACH = 34;
+const LEAF_RISE = 26;
+const LEAF_ARCH = 34;
+const LEAF_FALL = 31;
+const LEAF_HALF = 7;
+/**
+ * How far the plant itself leans, and which way.
+ *
+ * Here rather than in `draw.ts` because a perch depends on it: the bird sits in
+ * the crown of the first plant, and a lean the scene cannot see is a bird held
+ * at a fixed point while the crown slides out from under him — the very thing
+ * `perchX` swaying with a park tree exists to prevent.
+ */
+export function bananaLean(scene: Scene, plant: number): number {
+  return Math.sin(scene.frame * SWAY_SPEED + plant * 2.9) * SWAY_REACH * 0.6;
+}
+
+/** How far a leaf nods, and how quickly. A banana leaf is big and slow. */
+export const LEAF_SWAY = 0.07;
+const LEAF_SWAY_SPEED = 0.021;
+export const BANANA_TRUNK = 62;
+/**
+ * The two of them are not the same height. One plant beside its own copy reads
+ * as wallpaper; the shorter one is what makes them a pair.
+ */
+export const BANANA_TRUNKS = [BANANA_TRUNK, Math.round(BANANA_TRUNK * 0.74)];
+const BANANA_SPREAD = 30;
+export const LOUNGER_LENGTH = 44;
+export const LOUNGER_BACK_HEIGHT = 21;
+/** How far into the home end the lounger stands. */
+const LOUNGER_ALONG = 0.45;
+/** How likely she is to lie down, caught on the way past. */
+const LOUNGE_CHANCE = 0.18;
+const LOUNGE_MIN = 320;
+const LOUNGE_SPREAD = 520;
+/** Where he sits on the lounger: at the head of it, beside her. */
+const LOUNGER_PERCH_BACK = LOUNGER_LENGTH * 0.42;
+
+/**
+ * A number between 0 and 1 that is always the same for the same leaf.
+ *
+ * The plants need to be irregular without being restless: a leaf that took a
+ * fresh random number each frame would flap through every shape it has. Hashing
+ * its own indices gives each one its own length and angle, fixed for good.
+ */
+function leafWobble(plant: number, leaf: number, salt: number): number {
+  const n = Math.sin(plant * 12.9898 + leaf * 78.233 + salt * 37.719) * 43758.5453;
+  return n - Math.floor(n);
+}
+
+/**
+ * The shape of one banana leaf, in the crown's own coordinates: the spine's
+ * control point and tip, and how broad the blade is.
+ *
+ * In this file, not in the drawing, for two reasons. It decides how far the
+ * plant reaches above its stem, which is what `BANANA_HEIGHT` — and through it
+ * the band the app reserves — is derived from; and being fixed per leaf it can
+ * be worked out once instead of on every frame of the loop.
+ */
+export interface LeafShape {
+  control: { x: number; y: number };
+  tip: { x: number; y: number };
+  half: number;
+  /** Which of the two greens the drawing paints it in. */
+  dark: boolean;
+}
+
+const leavesByPlant = new Map<number, LeafShape[]>();
+
+export function bananaLeaves(plant: number): LeafShape[] {
+  const known = leavesByPlant.get(plant);
+  if (known) return known;
+
+  const count = BANANA_LEAVES[plant % BANANA_LEAVES.length];
+  const size = BANANA_TRUNKS[plant % BANANA_TRUNKS.length] / BANANA_TRUNK;
+  const leaves = Array.from({ length: count }, (_, leaf) => {
+    // Spread across the fan, then pushed off it: a plant whose leaves are evenly
+    // spaced and matched in length is a diagram of a plant.
+    const even = (leaf / (count - 1)) * 2 - 1;
+    // Bounded inline rather than through `clamp`: this runs while the module is
+    // still being evaluated, to derive BANANA_HEIGHT, and `clamp` is not built
+    // yet at that point.
+    const nudged = even + (leafWobble(plant, leaf, 1) - 0.5) * 0.34;
+    const across = Math.max(-1.15, Math.min(1.15, nudged));
+    const long = 0.82 + leafWobble(plant, leaf, 2) * 0.36;
+    const droop = 0.8 + leafWobble(plant, leaf, 3) * 0.5;
+    const reach = LEAF_REACH * across * size * long;
+
+    return {
+      control: { x: reach * 0.3, y: (-LEAF_ARCH * long - (1 - Math.abs(across)) * 10) * size },
+      tip: { x: reach, y: (-LEAF_RISE * long + Math.abs(across) * LEAF_FALL * droop) * size },
+      half: (LEAF_HALF - Math.abs(across) * 1.5) * size * (0.85 + leafWobble(plant, leaf, 4) * 0.3),
+      dark: leafWobble(plant, leaf, 5) >= 0.45,
+    };
+  });
+
+  leavesByPlant.set(plant, leaves);
+  return leaves;
+}
+
+/** How far above its own crown a plant's leaves get. */
+function leafReach(plant: number): number {
+  return Math.max(
+    ...bananaLeaves(plant).map((leaf) => Math.max(-leaf.control.y, -leaf.tip.y) + leaf.half),
+  );
+}
+
+/**
+ * How tall the tallest plant stands, stem and leaves together.
+ *
+ * Derived rather than chosen, like everything else the reserved band is measured
+ * from: picked by hand it goes stale the moment a leaf grows, and the check that
+ * it fits inside the band becomes two constants agreeing with each other.
+ */
+export const BANANA_HEIGHT = Math.max(
+  ...BANANA_TRUNKS.map((trunk, plant) => trunk + leafReach(plant)),
+);
+
+/** How much of a turn she gets through in one frame. */
+const TURN_STEP = 0.09;
 const GIRL_MARGIN = 28;
 /** How close to either edge the bird is ever allowed, perch included. */
 const BIRD_EDGE = 8;
@@ -59,7 +266,7 @@ export const TREE_CROWN_RADIUS = 27;
 export const TREE_HEIGHT = TREE_TRUNK_HEIGHT + TREE_CROWN_RADIUS * 2;
 export const TREE_COUNT = 3;
 /** Trees march away from the school, so a narrow window loses the far ones. */
-const TREE_GAP = 44;
+export const TREE_GAP = 44;
 const PARK_GAP = 12;
 
 export const SCHOOL_WIDTH = 92;
@@ -83,10 +290,20 @@ const ROOF_HALF = SCHOOL_WIDTH / 2 + SCHOOL_ROOF_OVERHANG;
  * stands part way down a slope, so its own top is what the reserved band has to
  * clear.
  */
-const SCHOOL_REACH = Math.max(
+/**
+ * How far along the slope the *higher* corner of the stack sits.
+ *
+ * `schoolChimney` measures the stack's top at its left corner, because that is
+ * the one that has to clear the roof. Taking the reach at the stack's centre
+ * instead under-reports the top by the roof's rise across half its width — which
+ * is a band that ends below the scenery standing in it.
+ */
+const CHIMNEY_LEFT_ALONG = CHIMNEY_ALONG - SCHOOL_CHIMNEY_WIDTH / 2 / ROOF_HALF;
+
+export const SCHOOL_REACH = Math.max(
   SCHOOL_HEIGHT,
   SCHOOL_WALL_HEIGHT +
-    SCHOOL_ROOF_HEIGHT * (1 - CHIMNEY_ALONG) +
+    SCHOOL_ROOF_HEIGHT * (1 - CHIMNEY_LEFT_ALONG) +
     SCHOOL_CHIMNEY_HEIGHT +
     SCHOOL_CHIMNEY_CAP,
 );
@@ -100,7 +317,7 @@ const SCHOOL_HOME = 191;
  */
 export const CAR_WIDTH = 70;
 /** Ground to the top of the roof. The belt line is a fraction of it, in `draw.ts`. */
-export const CAR_ROOF_HEIGHT = 29;
+export const CAR_ROOF_HEIGHT = 27;
 /** Parked clear of the wall, on the door side. */
 const CAR_GAP = 16;
 /** School centre to the car's far end — how far the school's block reaches right. */
@@ -114,14 +331,66 @@ const SCHOOL_ON_SCREEN = SCHOOL_WIDTH / 2 + 4;
 
 /** How long the door takes to swing open and shut again. */
 export const DOOR_FRAMES = 26;
+/** How long she takes getting into the car, and again getting out. */
+export const BOARD_FRAMES = 16;
+/** The car's top speed, in scene units per frame. */
+const CAR_SPEED = 2.7;
+/** Over how much of each end of the trip it pulls away and draws up. */
+const CAR_EASE = 46;
+/** The slowest it will creep, so that it always arrives. */
+const CAR_CRAWL = 0.16;
+/**
+ * How much of the room between the school's car and the end of her walk is kept
+ * for walking at the home end, rather than given to the drive.
+ *
+ * A share rather than a fixed distance: fixed, it either leaves a wide window
+ * with a home end she crosses in a moment, or leaves a narrow one with no room
+ * to drive at all — and then there is no car anywhere.
+ */
+const HOME_WALK_SHARE = 0.35;
+const HOME_WALK_MIN = 70;
+const HOME_WALK_MAX = 260;
+/**
+ * How likely she is to get in rather than turn round, each time her walk brings
+ * her back to the car.
+ *
+ * This is what sets the shape of her day. Boarding on the first arrival gave
+ * each end exactly one lap, and since the school end is wider and has a visit
+ * inside it, she was at work two thirds of the time and home for a tenth of it.
+ * Turning round instead keeps her at the end she is at — and out of the middle
+ * either way, which is what the car is for.
+ */
+const LEAVE_HOME_CHANCE = 0.76;
+/** She has been in, and the park is on the way back: home at the first chance. */
+const LEAVE_SCHOOL_CHANCE = 1;
+/** A drive shorter than this is not worth getting in for. */
+const MIN_DRIVE = 120;
+/**
+ * Where he rides: up on the roof, back over its middle.
+ *
+ * A 500's roof sits behind the centre of the car, so which side of the middle
+ * that is depends on which way it is pointing — measured from the nose he ends
+ * up on the bonnet driving one way and the boot the other.
+ */
+const ROOF_BACK = 7;
+/** The top of the roof, which is what he stands on. */
+const ROOF_TOP = CAR_ROOF_HEIGHT;
+/**
+ * How far his middle is above whatever he is standing on.
+ *
+ * His body is drawn as an ellipse centred on his position, so a perch measured
+ * at the surface buries half of him in it — which on a car roof is a bird
+ * sitting inside the car.
+ */
+const BIRD_SIT = 9;
 /**
  * Long enough to be a visit rather than a flicker: at ~40fps this is fifteen to
  * thirty-five seconds. It also has to outlast a pizza — if he is mid-mouthful
  * when she goes in he finishes it first, and a short stay meant she was back out
  * before he ever reached the trees.
  */
-const INSIDE_MIN = 600;
-const INSIDE_SPREAD = 800;
+const INSIDE_MIN = 300;
+const INSIDE_SPREAD = 400;
 /** She does not go in every time she reaches the door — most passes she turns. */
 const VISIT_CHANCE = 0.3;
 
@@ -142,6 +411,44 @@ export const OVEN_HEIGHT = OVEN_BASE_HEIGHT + OVEN_DOME_HEIGHT;
 export const CHIMNEY_HEIGHT = 24;
 /** The cap sitting on top of the chimney. */
 export const CHIMNEY_CAP = 6;
+/**
+ * The peel, measured from his feet: where it is hinged at his hands, how far
+ * along it the pizza rides, and how far above the blade the pizza sits.
+ *
+ * Here rather than in `draw.ts` because the throw is made of it — release the
+ * pizza from anywhere else and it hops out of the paddle, which is exactly what
+ * it used to do. `draw.ts` reads these too, so the two cannot disagree.
+ */
+export const PEEL_PIVOT = { x: 6, y: -44 } as const;
+export const PEEL_CARRY_ALONG = 61;
+/** Above the blade, so negative in the peel's own frame. */
+export const PEEL_CARRY_ABOVE = -12;
+/** Where the blade starts along the handle, and how deep it is. */
+export const PEEL_BLADE_ALONG = 52;
+export const PEEL_BLADE_DEPTH = 18;
+/** How far along the handle his hands are, so the arms swing with the peel. */
+export const PEEL_GRIP = 16;
+/** Level-ish, reaching into the mouth of the dome. */
+const PEEL_REST_ANGLE = -0.28;
+/** How far the whole swing carries it round. */
+const PEEL_SWEEP = 1.1;
+/**
+ * How far through the swing the pizza leaves.
+ *
+ * Not at the end: at the top of the arc the tip is travelling almost straight
+ * left, so a pizza let go there is thrown sideways rather than up and over. He
+ * lets go on the way up and the peel follows through, which is both what a
+ * throw looks like and what puts the pizza over the scene.
+ */
+export const PEEL_RELEASE_SWING = 0.55;
+/**
+ * The wrist. The paddle's own speed is a lob — it clears his hat and little
+ * else — so the throw carries the snap that a swinging arm ends with.
+ */
+const PEEL_SNAP = 1.9;
+/** Enough to keep two throws from being the same, and no more. */
+const TOSS_JITTER = 0.12;
+
 /** The pizzaiolo stands this far to the oven's left, clear of it, peel in hand. */
 const PIZZAIOLO_OFFSET = 78;
 export const PIZZAIOLO_HEIGHT = 82;
@@ -151,11 +458,16 @@ const GIRL_CLEARANCE = 52;
 const BIRD_HIT_WIDTH = 48;
 const BIRD_HIT_HEIGHT = 44;
 const PIZZAIOLO_HIT_WIDTH = 64;
+/**
+ * Much wider than she is drawn: she is a few pixels across on a screen a
+ * thousand wide, and a target the width of her body is one most taps miss.
+ */
+const GIRL_HIT_WIDTH = 72;
 
 const SMOKE_INTERVAL = 20;
-const MAX_PUFFS = 24;
+export const MAX_PUFFS = 24;
 const HEART_INTERVAL = 26;
-const MAX_HEARTS = 14;
+export const MAX_HEARTS = 14;
 /** A perched bird's occasional heart for the girl, rarer than the full one's. */
 const PERCHED_HEART_INTERVAL = 110;
 export const RING_LIFE = 120;
@@ -165,19 +477,6 @@ const RING_HEIGHT = 46;
 const RING_RADIUS_X = 22;
 const RING_RADIUS_Y = 7;
 
-/**
- * `escorting` and `perched` are the two idle states — above her, or on her
- * shoulder. Everything else is one trip through a pizza.
- */
-/**
- * How far above the ground the scene reaches with nothing in the air: the top of
- * the chimney cap, and the bird at the top of his hover.
- *
- * The floor the app reserves is derived from this rather than picked to look
- * right, so a taller oven or a higher hover cannot quietly start drawing over
- * the app's own content. What is *thrown* is deliberately not counted — a pizza
- * sailing up over the app, like the squirrel's falling acorns, is the point.
- */
 /**
  * How high above whatever he is sitting on the bird gets: hovering over it,
  * bobbing, and his own head above his middle.
@@ -195,11 +494,58 @@ const BIRD_ABOVE_PERCH = HOVER_HEIGHT + HOVER_BOB + BIRD_REACH;
 const PERCH_HEIGHT = {
   shoulder: SHOULDER_HEIGHT,
   tree: TREE_TRUNK_HEIGHT + TREE_CROWN_RADIUS,
+  car: ROOF_TOP + BIRD_SIT,
+  lounger: LOUNGER_BACK_HEIGHT + BIRD_SIT,
+  banana: BANANA_TRUNK,
 } as const;
 
 /** Which of them he is on, or would be if he flew home now. */
 export type Perch = keyof typeof PERCH_HEIGHT;
 
+/** The scene stands this far above the app's footer. */
+export const GROUND_ABOVE_FOOTER = 34;
+
+/**
+ * The window width the scene was drawn for. Wider than this changes nothing —
+ * the scenery does not grow, it just has more room to stand in.
+ */
+export const SCENE_FULL_WIDTH = 900;
+/** Narrow enough that a phone fits the scene; small enough is not smaller still. */
+export const SCENE_MIN_SCALE = 0.72;
+/** The width at which the shrinking stops, being about the narrowest phone. */
+const SCENE_MIN_WIDTH = 360;
+
+/**
+ * How large to draw the scene on a window this wide.
+ *
+ * The scene is drawn scaled rather than laid out differently, and everything in
+ * this file goes on working in the units it was written in — a phone simply
+ * hands it a wider stage (`width / sceneScale(width)`) with smaller scenery on
+ * it. At 360px unscaled there is no room between the school and the oven for a
+ * car, or for her to walk anywhere worth walking.
+ */
+export function sceneScale(width: number): number {
+  const range = SCENE_FULL_WIDTH - SCENE_MIN_WIDTH;
+  const along = (width - SCENE_MIN_WIDTH) / range;
+  return clamp(SCENE_MIN_SCALE + along * (1 - SCENE_MIN_SCALE), SCENE_MIN_SCALE, 1);
+}
+
+/**
+ * The highest a squirrel gets: the top of the crown it is in, plus the arc of a
+ * crossing. Below `SCENE_REACH` by construction — it is the tree the bird
+ * already perches in, and the band is measured from him.
+ */
+export const SQUIRREL_REACH = TREE_TRUNK_HEIGHT + TREE_CROWN_RADIUS + CROSS_ARC * CROSS_ARC_MAX;
+
+/**
+ * How far above the ground the scene reaches with nothing in the air: the top of
+ * the chimney cap, and the bird at the top of his hover.
+ *
+ * The floor the app reserves is derived from this rather than picked to look
+ * right, so a taller oven or a higher hover cannot quietly start drawing over
+ * the app's own content. What is *thrown* is deliberately not counted — a pizza
+ * sailing up over the app, like the squirrel's falling acorns, is the point.
+ */
 export const SCENE_REACH = Math.max(
   OVEN_HEIGHT + CHIMNEY_HEIGHT + CHIMNEY_CAP,
   SCHOOL_REACH,
@@ -208,6 +554,27 @@ export const SCENE_REACH = Math.max(
   // forgotten here — which is the one way the band could silently go stale.
   Math.max(...Object.values(PERCH_HEIGHT)) + BIRD_ABOVE_PERCH,
 );
+
+/**
+ * `escorting` and `perched` are the two idle states — above her, or on her
+ * shoulder. Everything else is one trip through a pizza.
+ */
+export type SquirrelPhase = 'climbing' | 'sitting' | 'crossing' | 'kissing';
+
+export interface Squirrel {
+  /** Which tree it is in — while crossing, the one it left. */
+  tree: number;
+  /** Where along that tree it is: 0 at the foot, 1 at the top of the crown. */
+  up: number;
+  /** Climbing up or down. */
+  dir: 1 | -1;
+  phase: SquirrelPhase;
+  /** Frames left in a sit, or frames into a crossing. */
+  timer: number;
+  /** The tree it is crossing to, and which side of the trunk it sits on. */
+  towards: number;
+  side: number;
+}
 
 export type BirdPhase =
   | 'escorting'
@@ -247,19 +614,78 @@ export interface Bird {
 }
 
 /**
- * `walking` is the pacing she has always done. The other three are one visit to
- * the school: through the door, a while inside with the light on, and back out.
+ * `walking` is the pacing she has always done, `entering`/`inside`/`leaving` one
+ * visit to the school, and the last three one drive: getting in, the drive
+ * itself, and getting out again. She walks the two ends of the scene — the park
+ * at one, the oven at the other — and drives the empty stretch between them.
  */
-export type GirlPhase = 'walking' | 'entering' | 'inside' | 'leaving';
+export type GirlPhase =
+  | 'lounging'
+  | 'walking'
+  | 'entering'
+  | 'inside'
+  | 'leaving'
+  | 'boarding'
+  | 'driving'
+  | 'alighting';
 
 export interface Girl {
   x: number;
   dir: 1 | -1;
+  /**
+   * Which way she is *turned*, easing between −1 and 1 rather than flipping with
+   * `dir`.
+   *
+   * The shoulder he sits on is the one behind her, so it is on the far side of
+   * her the moment she turns — and `perched` puts him exactly on it every frame.
+   * Taken straight off `dir` that is the width of her body crossed in a single
+   * frame, twice a lap, for as long as the scene runs.
+   */
+  facing: number;
+  /**
+   * Where he sits while she is lying down: the head of the lounger, or one of
+   * the banana trees over it.
+   *
+   * Chosen once, when she lies down, and held for as long as she is there.
+   * Decided per frame it would change under him every frame — `perched` follows
+   * the perch, and `perchedOn` puts him back in the air whenever it changes, so
+   * he would bounce between the two for the whole afternoon.
+   */
+  restPerch: Extract<Perch, 'lounger' | 'banana'>;
+
+  /**
+   * Set when a drive ends at the school: the next time she reaches the door she
+   * goes in, rather than taking the usual chance on it. Driving somewhere and
+   * not going in is not an errand.
+   */
+  dueAtSchool: boolean;
   /** Walk-cycle counter, so the legs move with the distance covered. */
   step: number;
   phase: GirlPhase;
   /** Frames left in a phase that ends on a timer. */
   timer: number;
+}
+
+/**
+ * The Fiat, and where it is now: parked at one of its two spots, or carrying
+ * her between them. `null` on a window with no room to park one clear of the
+ * pizzaiolo, which is also a window with no room to drive across.
+ */
+export interface Car {
+  x: number;
+  /** How fast it is going, so a bird can tell whether he is keeping station. */
+  vx: number;
+  /** Which way it is pointing, so the seat beside her stays beside her. */
+  dir: 1 | -1;
+  /**
+   * Which end it is parked at, or where it is heading while she drives.
+   *
+   * Held rather than recovered from `x`, for the reason `bird.perchedOn` is:
+   * comparing a coordinate to a layout number works only while every writer
+   * lands exactly on one, and the first thing that nudges the car by a pixel
+   * would leave it unboardable for ever — no error, she simply stops taking it.
+   */
+  at: 'school' | 'home';
 }
 
 export interface Pizza {
@@ -281,6 +707,10 @@ export interface Puff {
 }
 
 /**
+ * `kiss` is hers, and the only thing in the scene the app's own user starts: one
+ * heart from her, and he comes down to her shoulder. It rises and fades like a
+ * `drift` one, which is why the two share everything but where they begin.
+ *
  * `ring` hearts circle a bird too full to fly — that is the "wait for me" sign,
  * and nothing else uses it. A `drift` heart is a single one he lets go while
  * perched, rising off to one side, so being in love does not read as being full.
@@ -290,7 +720,7 @@ export interface Puff {
  * a test can hold rather than something only the screen knows.
  */
 export interface Heart {
-  kind: 'ring' | 'drift';
+  kind: 'ring' | 'drift' | 'kiss';
   /** Where round the bird's head this one is. Ring hearts only. */
   angle: number;
   x: number;
@@ -308,8 +738,17 @@ export interface Layout {
   schoolX: number;
   /** Where she stops to go in. She walks past it, so it is inside her range. */
   doorX: number;
-  /** `null` on a window too narrow to park it clear of the pizzaiolo. */
-  carX: number | null;
+  /**
+   * Where the car waits at each end of its drive: outside the school, and home
+   * at the oven end, short of the pizzaiolo with room to walk beyond him. Both
+   * `null` together on a window too narrow to park one clear of him, or too
+   * narrow for the drive to be worth getting in for.
+   */
+  carSchoolX: number | null;
+  carHomeX: number | null;
+  /** The lounger at the home end, and the two banana trees standing over it. */
+  loungerX: number;
+  bananaXs: number[];
 }
 
 export interface Scene {
@@ -320,7 +759,10 @@ export interface Scene {
   layout: Layout;
   bird: Bird;
   girl: Girl;
-  oven: { nextPizzaIn: number; tossing: number; smoke: Puff[] };
+  oven: { nextPizzaIn: number; tossing: number; recovering: number; smoke: Puff[] };
+  car: Car | null;
+  /** Scenery with a life of its own; nothing else in the scene reads it. */
+  squirrels: Squirrel[];
   /** Rising from the school chimney, and only while she is in there. */
   schoolSmoke: Puff[];
   /** One at a time, by construction — there is only ever one slot. */
@@ -376,7 +818,22 @@ function layoutFor(width: number): Layout {
   // On a window too narrow for both, the car goes rather than being drawn
   // through the pizzaiolo. The park has already gone by then.
   const carRight = schoolX + CAR_TAIL;
-  const parkable = carRight <= pizzaioloX - PIZZAIOLO_ROOM;
+  const schoolSpotX = schoolX + SCHOOL_WIDTH / 2 + CAR_GAP + CAR_WIDTH / 2;
+  // Short of the pizzaiolo, with a stretch of walking left beyond it: the oven
+  // end is half the scene worth watching, and a car parked at the end of her
+  // range would leave her nothing to walk there.
+  const homeSpotX =
+    girlRight - clamp((girlRight - schoolSpotX) * HOME_WALK_SHARE, HOME_WALK_MIN, HOME_WALK_MAX);
+  // Between where the car waits and the end of her walk — or, with no car to
+  // wait anywhere, simply near the end of it. Either way she passes it.
+  const homeStart = Math.max(GIRL_MARGIN, Math.min(homeSpotX, girlRight - 40));
+  const loungerX = homeStart + (girlRight - homeStart) * LOUNGER_ALONG;
+
+  const parkable =
+    carRight <= pizzaioloX - PIZZAIOLO_ROOM &&
+    homeSpotX - schoolSpotX >= MIN_DRIVE &&
+    schoolSpotX >= GIRL_MARGIN &&
+    homeSpotX <= girlRight;
 
   return {
     ovenX,
@@ -384,7 +841,10 @@ function layoutFor(width: number): Layout {
     treeXs,
     schoolX,
     doorX,
-    carX: parkable ? schoolX + SCHOOL_WIDTH / 2 + CAR_GAP + CAR_WIDTH / 2 : null,
+    carSchoolX: parkable ? schoolSpotX : null,
+    carHomeX: parkable ? homeSpotX : null,
+    loungerX,
+    bananaXs: [loungerX - BANANA_SPREAD, loungerX + BANANA_SPREAD * 0.8],
     girlLeft: GIRL_MARGIN,
     girlRight,
   };
@@ -397,14 +857,23 @@ function layoutFor(width: number): Layout {
  * nearest the school. Substituting the target rather than adding a phase is what
  * keeps "waits on the tree" and "flies about near it" out of the state machine
  * entirely: `perched` and `escorting` already steer at home, and diving for a
- * pizza mid-visit goes on working without knowing she is gone.
+ * pizza mid-visit goes on working without knowing she is gone. The seat of the
+ * car is the third of them, on the same terms.
  */
-/** Whichever perch is his while she is where she is. */
 export function currentPerch(scene: Scene): Perch {
-  return girlOut(scene) ? 'shoulder' : 'tree';
+  if (!girlOut(scene)) return 'tree';
+  if (lounging(scene)) return scene.girl.restPerch;
+  // From the moment she starts getting in, so he is already in the seat rather
+  // than chasing a car that has pulled away with her shoulder in it.
+  return inCar(scene) && scene.car ? 'car' : 'shoulder';
 }
 
 export function perchX(scene: Scene): number {
+  const perch = currentPerch(scene);
+  if (perch === 'car') return scene.car!.x - scene.car!.dir * ROOF_BACK;
+  if (perch === 'lounger') return scene.layout.loungerX - LOUNGER_PERCH_BACK;
+  // Swaying with the plant he is standing in, as in a park tree.
+  if (perch === 'banana') return scene.layout.bananaXs[0] + bananaLean(scene, 0);
   if (girlOut(scene)) return shoulderX(scene);
   // Swaying with the crown he is sitting in, rather than held at the trunk while
   // the tree moves around him — and inside the same edge the bird is clamped to,
@@ -414,8 +883,260 @@ export function perchX(scene: Scene): number {
   return clamp(tree, BIRD_EDGE, Math.max(BIRD_EDGE, scene.width - BIRD_EDGE));
 }
 
+/** How far round the tree it has got, which is what makes the climb a spiral. */
+function spiralAngle(squirrel: Squirrel): number {
+  return squirrel.side + squirrel.up * SPIRAL_TURNS * Math.PI * 2;
+}
+
+/** How high a jump arches: further to go, higher over the park. */
+function crossArc(scene: Scene, squirrel: Squirrel): number {
+  const trees = scene.layout.treeXs;
+  const gap = Math.abs(trees[squirrel.towards] - trees[squirrel.tree]);
+  return CROSS_ARC * Math.min(CROSS_ARC_MAX, Math.max(1, gap / TREE_GAP));
+}
+
+/** Where a squirrel is across the park, arcing between trees while it crosses. */
+export function squirrelX(scene: Scene, squirrel: Squirrel): number {
+  const trees = scene.layout.treeXs;
+  const from = trees[squirrel.tree] + treeSway(scene, squirrel.tree);
+  // Wider round the crown than round the trunk, because the tree is.
+  const round =
+    squirrel.phase === 'kissing'
+      ? Math.sin(spiralAngle(squirrel)) * KISS_APART
+      : Math.sin(spiralAngle(squirrel)) *
+        (TRUNK_RADIUS + (SPIRAL_CROWN_RADIUS - TRUNK_RADIUS) * squirrel.up);
+  if (squirrel.phase !== 'crossing') return from + round;
+
+  const to = trees[squirrel.towards] + treeSway(scene, squirrel.towards);
+  return from + (to - from) * (squirrel.timer / CROSS_FRAMES) + round;
+}
+
+/**
+ * Whether it is round the far side of the trunk just now.
+ *
+ * The drawing takes two passes at them because of this: one behind the trees and
+ * one in front, so going round is something you can see rather than a squirrel
+ * sliding across the bark.
+ */
+/**
+ * Which way a squirrel is turned: 1 facing right, −1 facing left.
+ *
+ * Outwards from the trunk as it goes round — and inwards, at each other, for the
+ * pair at the top, which is what makes a kiss read as a kiss.
+ */
+export function squirrelFacing(scene: Scene, squirrel: Squirrel): 1 | -1 {
+  const outward = squirrelX(scene, squirrel) >= scene.layout.treeXs[squirrel.tree] ? 1 : -1;
+  return squirrel.phase === 'kissing' ? (-outward as 1 | -1) : outward;
+}
+
+export function squirrelBehind(squirrel: Squirrel): boolean {
+  return squirrel.phase !== 'crossing' && Math.cos(spiralAngle(squirrel)) < 0;
+}
+
+/** And how high, which is the one thing about them the app's layout cares about. */
+export function squirrelY(scene: Scene, squirrel: Squirrel): number {
+  const along = squirrel.up * (TREE_TRUNK_HEIGHT + TREE_CROWN_RADIUS);
+  if (squirrel.phase !== 'crossing') return scene.ground - along;
+
+  // A hop, not a wire: highest halfway across.
+  const through = squirrel.timer / CROSS_FRAMES;
+  return scene.ground - along - Math.sin(through * Math.PI) * crossArc(scene, squirrel);
+}
+
+function runSquirrels(scene: Scene, rng: Rng): void {
+  for (const squirrel of scene.squirrels) {
+    switch (squirrel.phase) {
+      case 'climbing': {
+        squirrel.up = clamp(squirrel.up + squirrel.dir * CLIMB_SPEED, 0, 1);
+        if (squirrel.up === 0 || squirrel.up === 1) {
+          squirrel.phase = 'sitting';
+          squirrel.timer = SQUIRREL_SIT_MIN + Math.floor(rng() * SQUIRREL_SIT_SPREAD);
+        }
+        break;
+      }
+      case 'sitting': {
+        if (--squirrel.timer > 0) break;
+        // High in the crown, it may go across to a neighbour instead of back down.
+        const others = otherTrees(scene, squirrel.tree);
+        if (squirrel.up > 0.5 && others.length > 0 && rng() < CROSS_CHANCE) {
+          squirrel.phase = 'crossing';
+          // Often at the other one, which is how they come to share a tree at
+          // all; otherwise anywhere in the park.
+          const mate = scene.squirrels.find((other) => other !== squirrel);
+          const toMate = mate && mate.tree !== squirrel.tree && rng() < MEET_CHANCE;
+          squirrel.towards = toMate ? mate.tree : others[Math.floor(rng() * others.length)];
+          squirrel.timer = 0;
+          break;
+        }
+        squirrel.phase = 'climbing';
+        squirrel.dir = squirrel.up >= 1 ? -1 : 1;
+        break;
+      }
+      case 'kissing':
+        // Held by the pair below: one of them cannot decide this alone.
+        break;
+
+      case 'crossing': {
+        squirrel.timer++;
+        if (squirrel.timer < CROSS_FRAMES) break;
+        squirrel.tree = squirrel.towards;
+        squirrel.phase = 'climbing';
+        squirrel.dir = -1;
+        squirrel.timer = 0;
+        break;
+      }
+    }
+  }
+}
+
+/** Every tree but the one it is in: the whole park is theirs to jump about. */
+function otherTrees(scene: Scene, tree: number): number[] {
+  return scene.layout.treeXs.map((_, at) => at).filter((at) => at !== tree);
+}
+
+/**
+ * Where the pair of them are, if they are anywhere together.
+ *
+ * Kissing takes two, so it cannot be decided inside a loop that sees one at a
+ * time: the squirrels are checked as a pair once the whole park has moved.
+ */
+function runSquirrelPair(scene: Scene, rng: Rng): void {
+  // Two of them, by `SQUIRREL_COUNT`: a third would climb and jump like the
+  // others but never be part of a kiss, which is a silence rather than an error.
+  const [one, two] = scene.squirrels;
+  if (!one || !two) return;
+
+  if (one.phase === 'kissing' && two.phase === 'kissing') {
+    one.timer--;
+    two.timer--;
+    if (scene.frame % KISS_HEART_INTERVAL === 0 && scene.hearts.length < MAX_HEARTS) {
+      scene.hearts.push({
+        kind: 'drift',
+        angle: 0,
+        x: (squirrelX(scene, one) + squirrelX(scene, two)) / 2,
+        y: squirrelY(scene, one) - 8,
+        life: DRIFT_LIFE,
+      });
+    }
+    if (one.timer > 0) return;
+    // Down the tree again, and back to their own business.
+    for (const squirrel of [one, two]) {
+      squirrel.phase = 'climbing';
+      squirrel.dir = -1;
+    }
+    return;
+  }
+
+  const together =
+    one.tree === two.tree &&
+    [one, two].every((squirrel) => squirrel.phase === 'sitting' && squirrel.up >= 1);
+  if (!together || rng() >= KISS_CHANCE) return;
+
+  // Side by side at the top, facing one another. The spiral angle is set rather
+  // than left where the climb finished, or they would be kissing whichever way
+  // round the trunk they each happened to arrive.
+  const climbed = SPIRAL_TURNS * Math.PI * 2;
+  one.side = Math.PI / 2 - climbed;
+  two.side = -Math.PI / 2 - climbed;
+  for (const squirrel of [one, two]) {
+    squirrel.phase = 'kissing';
+    squirrel.timer = KISS_FRAMES;
+  }
+}
+
+/**
+ * How fast the perch itself is travelling.
+ *
+ * A perch is not always standing still: her shoulder walks, and the car drives.
+ * Whether he has *settled* onto one is a question about the gap between them,
+ * not about his speed over the ground — measured against zero he could only ever
+ * land on something stopped, which is why he flew above the car for the whole
+ * drive and only ever got in during the pause while she was getting in.
+ */
+export function perchVX(scene: Scene): number {
+  if (currentPerch(scene) === 'car') return scene.car?.vx ?? 0;
+  if (scene.girl.phase === 'walking') return scene.girl.dir * GIRL_SPEED;
+  return 0;
+}
+
+/**
+ * Sitting on something, rather than in the air: wings folded, and still.
+ *
+ * Here rather than in `draw.ts` because it is a fact about what he is doing —
+ * the drawing knew only about the two grounded phases, so a perched bird beat
+ * his wings on the spot for as long as he sat there.
+ */
+export function birdAtRest(scene: Scene): boolean {
+  const { phase } = scene.bird;
+  return phase === 'perched' || phase === 'full' || phase === 'eating';
+}
+
+/** Where he aims for a perch that is moving: where it will be, not where it is. */
+export function perchLeadX(scene: Scene, steer: { gain: number; drag: number }): number {
+  return perchX(scene) + perchVX(scene) * leadFrames(steer);
+}
+
+/** Near his perch, and matching its speed: close enough to put his feet down. */
+export function settledOnPerch(scene: Scene): boolean {
+  const { bird } = scene;
+  return (
+    Math.abs(bird.x - perchX(scene)) < SETTLE_REACH &&
+    Math.abs(bird.vx - perchVX(scene)) < SETTLE_DRIFT
+  );
+}
+
 export function perchY(scene: Scene): number {
   return scene.ground - PERCH_HEIGHT[currentPerch(scene)];
+}
+
+/**
+ * Whether the pizzaiolo has anyone to make a pizza for: she is at the home end
+ * of the scene, or on her way back to it. He is making them for her, and one
+ * tossed while she is at the school or in the park is one nobody is there for.
+ *
+ * A window with no car has no ends to be at, so the old rule stands: she is
+ * simply out, or she is not.
+ */
+export function homeward(scene: Scene): boolean {
+  if (!girlOut(scene)) return false;
+  const { carHomeX } = scene.layout;
+  if (!scene.car || carHomeX === null) return true;
+  if (scene.girl.phase === 'driving') return scene.girl.dir === 1;
+  // Lying on the lounger is as at-home as it gets.
+  return lounging(scene) || scene.girl.x >= carHomeX;
+}
+
+/** Walking the scene on her own legs, rather than inside the school or the car. */
+export function girlOnFoot(scene: Scene): boolean {
+  return girlOut(scene) && scene.girl.phase !== 'driving' && scene.girl.phase !== 'lounging';
+}
+
+/**
+ * Behind the wheel: she is inside the car and drawn through its window rather
+ * than standing on the road.
+ *
+ * A predicate rather than a phase comparison in `draw.ts`, for the reason all of
+ * these exist: the drawing has no assertable output, so a fact it works out for
+ * itself is a fact no test can hold. `inCar` is not the same question — it
+ * counts `boarding`, through which she is still on her feet beside the car.
+ */
+export function atTheWheel(scene: Scene): boolean {
+  return scene.girl.phase === 'driving';
+}
+
+/** Stretched out on the lounger under the banana trees. */
+export function lounging(scene: Scene): boolean {
+  return scene.girl.phase === 'lounging';
+}
+
+/** Standing at the car: getting in, driving, or getting out again. */
+export function atCar(scene: Scene): boolean {
+  return inCar(scene) || scene.girl.phase === 'alighting';
+}
+
+/** In the car, or on her way into it — either way, not walking beside it. */
+export function inCar(scene: Scene): boolean {
+  return scene.girl.phase === 'boarding' || scene.girl.phase === 'driving';
 }
 
 /** She is drawn, and has a shoulder to sit on, whenever she is not inside. */
@@ -471,28 +1192,71 @@ export function schoolChimney(scene: Scene): {
   return { left, right, top, mouth: { x: centre, y: top - SCHOOL_CHIMNEY_CAP } };
 }
 
+/**
+ * How far one banana leaf is nodding right now, in radians.
+ *
+ * Its own phase per leaf and per plant: moved as one they read as a flag rather
+ * than as a plant with leaves. Here rather than in `draw.ts` for the same reason
+ * `treeSway` is — the drawing has no assertable output.
+ */
+export function leafSway(scene: Scene, tree: number, leaf: number): number {
+  return Math.sin(scene.frame * LEAF_SWAY_SPEED + tree * 2.3 + leaf * 0.9) * LEAF_SWAY;
+}
+
 /** How far this crown is leaning right now. Pure, so the sway can be asserted. */
 export function treeSway(scene: Scene, index: number): number {
   return Math.sin(scene.frame * SWAY_SPEED + index * 1.7) * SWAY_REACH;
 }
 
 export function shoulderX(scene: Scene): number {
-  return scene.girl.x - scene.girl.dir * SHOULDER_BACK;
+  return scene.girl.x - scene.girl.facing * SHOULDER_BACK;
 }
 
 export function shoulderY(scene: Scene): number {
   return scene.ground - SHOULDER_HEIGHT;
 }
 
+/**
+ * Where she is standing when the scene opens: at one end or the other, never in
+ * between.
+ *
+ * The middle is the stretch she never walks — it is what the car is for — so
+ * being dropped into it means walking out of it on foot, which is the one
+ * journey the scene is built to avoid. With no car there are no ends, and she
+ * starts anywhere in her range as she always did.
+ */
+function startingX(layout: Layout, rng: Rng): number {
+  const { girlLeft, girlRight, carSchoolX, carHomeX } = layout;
+  if (carSchoolX === null || carHomeX === null) {
+    return clamp(girlLeft + rng() * Math.max(1, girlRight - girlLeft), girlLeft, girlRight);
+  }
+  const [from, to] = rng() < 0.5 ? [girlLeft, carSchoolX] : [carHomeX, girlRight];
+  return clamp(from + rng() * Math.max(1, to - from), from, to);
+}
+
+/**
+ * The car, waiting at whichever end she was dropped into the scene at.
+ *
+ * Parked at a fixed end it can start the session on the far side of the middle
+ * from her — and the middle is the one stretch she never walks, so she would
+ * have to cross it on foot to reach the car that exists to carry her across it.
+ */
+function parkedNear(layout: Layout, girlX: number): Car | null {
+  if (layout.carSchoolX === null || layout.carHomeX === null) return null;
+  const atSchool = girlX < (layout.carSchoolX + layout.carHomeX) / 2;
+  return {
+    x: atSchool ? layout.carSchoolX : layout.carHomeX,
+    vx: 0,
+    dir: 1,
+    at: atSchool ? 'school' : 'home',
+  };
+}
+
 const pizzaInterval = (rng: Rng) => PIZZA_INTERVAL_MIN + Math.floor(rng() * PIZZA_INTERVAL_SPREAD);
 
 export function createScene(size: SceneSize, rng: Rng): Scene {
   const layout = layoutFor(size.width);
-  const girlX = clamp(
-    layout.girlLeft + rng() * Math.max(1, layout.girlRight - layout.girlLeft),
-    layout.girlLeft,
-    layout.girlRight,
-  );
+  const girlX = startingX(layout, rng);
 
   return {
     width: size.width,
@@ -510,8 +1274,29 @@ export function createScene(size: SceneSize, rng: Rng): Scene {
       flap: 0,
       perchedOn: 'shoulder',
     },
-    girl: { x: girlX, dir: rng() < 0.5 ? -1 : 1, step: 0, phase: 'walking', timer: 0 },
-    oven: { nextPizzaIn: pizzaInterval(rng), tossing: 0, smoke: [] },
+    girl: {
+      x: girlX,
+      dir: rng() < 0.5 ? -1 : 1,
+      facing: rng() < 0.5 ? -1 : 1,
+      step: 0,
+      phase: 'walking',
+      timer: 0,
+      dueAtSchool: false,
+      restPerch: 'lounger',
+    },
+    oven: { nextPizzaIn: pizzaInterval(rng), tossing: 0, recovering: 0, smoke: [] },
+    car: parkedNear(layout, girlX),
+    squirrels: Array.from({ length: SQUIRREL_COUNT }, (_, i) => ({
+      tree: i % layout.treeXs.length,
+      // Spread along their trees, so two of them are never one squirrel with a
+      // shadow: they start at different heights and climbing opposite ways.
+      up: 0.25 + i * 0.4,
+      dir: (i % 2 === 0 ? 1 : -1) as 1 | -1,
+      phase: 'climbing' as SquirrelPhase,
+      timer: 0,
+      towards: i % layout.treeXs.length,
+      side: i * SQUIRREL_SIDE,
+    })),
     schoolSmoke: [],
     pizza: null,
     hearts: [],
@@ -530,10 +1315,22 @@ export function resizeScene(scene: Scene, size: SceneSize): void {
   scene.ground = size.ground;
   scene.layout = layoutFor(size.width);
 
-  scene.girl.x =
-    girlOut(scene) && scene.girl.phase === 'walking'
-      ? clamp(scene.girl.x, scene.layout.girlLeft, scene.layout.girlRight)
-      : scene.layout.doorX;
+  // A window that lost its car takes her out of it: the spots it drove between
+  // are gone, so there is nowhere left for the trip to end.
+  if (scene.layout.carSchoolX === null) {
+    scene.car = null;
+    if (atCar(scene)) scene.girl.phase = 'walking';
+  } else if (!scene.car) {
+    scene.car = parkedNear(scene.layout, scene.girl.x);
+  } else if (scene.girl.phase === 'driving') {
+    scene.car.x = clamp(scene.car.x, scene.layout.carSchoolX, scene.layout.carHomeX!);
+  } else {
+    // Parked: back onto the spot it is parked at, in the new coordinates. Which
+    // spot that is was never a question about where it stands.
+    scene.car.x = scene.car.at === 'school' ? scene.layout.carSchoolX : scene.layout.carHomeX!;
+  }
+
+  scene.girl.x = girlRestingX(scene);
   scene.bird.x = clamp(scene.bird.x, 0, size.width);
   scene.bird.y = clamp(scene.bird.y, 0, size.ground);
   if (scene.bird.phase === 'perched') {
@@ -544,9 +1341,112 @@ export function resizeScene(scene: Scene, size: SceneSize): void {
   if (scene.pizza) scene.pizza.x = clamp(scene.pizza.x, 0, size.width);
 }
 
+/**
+ * Where she belongs after a resize: at the car if she is at it, at the door if
+ * the door has her, and otherwise back inside the walk the new window allows.
+ */
+function girlRestingX(scene: Scene): number {
+  const { girlLeft, girlRight, carSchoolX, carHomeX, doorX, loungerX } = scene.layout;
+  if (!girlOut(scene)) return doorX;
+  if (scene.car && atCar(scene)) return scene.car.x;
+  if (lounging(scene)) return loungerX;
+  if (scene.girl.phase !== 'walking') return doorX;
+
+  const walking = clamp(scene.girl.x, girlLeft, girlRight);
+  if (carSchoolX === null || carHomeX === null) return walking;
+  // A window that changed size moves both ends, and can leave her standing in
+  // the middle she never walks. She is put back to the nearer end of it.
+  if (walking <= carSchoolX || walking >= carHomeX) return walking;
+  return walking - carSchoolX < carHomeX - walking ? carSchoolX : carHomeX;
+}
+
+/**
+ * Whether this step of her walk took her onto the parked car, going the way it
+ * would take her. The car only ever helps her across the middle: caught at the
+ * school end she must be heading for the oven, and at the oven end for home.
+ */
+function reachedCar(scene: Scene, wasAt: number): boolean {
+  const { car, girl } = scene;
+  if (!car) return false;
+  // Out of the school end towards home, or home towards the school.
+  const goingHome = car.at === 'school' && girl.dir === 1;
+  const goingToSchool = car.at === 'home' && girl.dir === -1;
+  if (!goingHome && !goingToSchool) return false;
+  return goingHome ? wasAt <= car.x && girl.x >= car.x : wasAt >= car.x && girl.x <= car.x;
+}
+
+/**
+ * The drive itself, easing away from one spot and up to the other.
+ *
+ * The speed is taken from how far it has come and how far is left rather than
+ * from a stored velocity, so it is a property of where the car is: nothing can
+ * leave it accelerating into a spot it has already reached, and a resize that
+ * moves the spots underneath it changes only how quickly it arrives.
+ */
+function driveCar(scene: Scene): void {
+  const { car, girl, layout } = scene;
+  if (!car || layout.carSchoolX === null || layout.carHomeX === null) {
+    girl.phase = 'walking';
+    return;
+  }
+
+  const target = girl.dir === 1 ? layout.carHomeX : layout.carSchoolX;
+  const from = girl.dir === 1 ? layout.carSchoolX : layout.carHomeX;
+  car.at = girl.dir === 1 ? 'home' : 'school';
+  const eased = Math.min(Math.abs(car.x - from), Math.abs(target - car.x)) / CAR_EASE;
+  const speed = CAR_SPEED * clamp(eased, CAR_CRAWL, 1);
+
+  car.dir = girl.dir;
+  car.vx = girl.dir * speed;
+  car.x += car.vx;
+  if ((girl.dir === 1 && car.x >= target) || (girl.dir === -1 && car.x <= target)) {
+    car.x = target;
+    car.vx = 0;
+    girl.phase = 'alighting';
+    girl.timer = BOARD_FRAMES;
+  }
+  girl.x = car.x;
+}
+
+/** Eases her round to face the way she is going. See `Girl.facing`. */
+function turnGirl(scene: Scene): void {
+  const { girl } = scene;
+  girl.facing = clamp(girl.facing + clamp(girl.dir - girl.facing, -TURN_STEP, TURN_STEP), -1, 1);
+}
+
 function walkGirl(scene: Scene, rng: Rng): void {
   const { girl } = scene;
   const { girlLeft, girlRight, doorX } = scene.layout;
+
+  if (girl.phase === 'driving') {
+    driveCar(scene);
+    return;
+  }
+
+  // Stretched out: she does not move through any of it, and gets up where she
+  // lay down.
+  if (girl.phase === 'lounging') {
+    girl.x = scene.layout.loungerX;
+    if (--girl.timer <= 0) girl.phase = 'walking';
+    return;
+  }
+
+  // Getting in and getting out: both are a pause beside the car, which is where
+  // she already is. Without them she appears behind the wheel of a car that was
+  // empty the frame before.
+  if (girl.phase === 'boarding' || girl.phase === 'alighting') {
+    if (scene.car) girl.x = scene.car.x;
+    if (--girl.timer > 0) return;
+    if (girl.phase === 'boarding') {
+      girl.phase = 'driving';
+      return;
+    }
+    girl.phase = 'walking';
+    // She came here to go in. The door is a few steps west of the car, so she
+    // walks into it rather than having to turn round for it.
+    if (scene.car?.at === 'school') girl.dueAtSchool = true;
+    return;
+  }
 
   // The visit runs on timers at the door; she does not move through any of it.
   if (girl.phase !== 'walking') {
@@ -559,21 +1459,61 @@ function walkGirl(scene: Scene, rng: Rng): void {
       girl.phase = 'leaving';
       girl.timer = DOOR_FRAMES;
     } else {
-      // Back out, and away from the door rather than straight into it again.
+      // Back out, and west — away from the door either way, and into the park.
+      // Leaving eastwards walks her straight back to the car, which is the whole
+      // of the school end and means the park is never walked at all.
       girl.phase = 'walking';
-      girl.dir = 1;
+      girl.dir = -1;
     }
     return;
   }
 
   const wasRightOfDoor = girl.x > doorX;
+  const wasAt = girl.x;
   girl.x += girl.dir * GIRL_SPEED;
 
-  // Caught on the way past, walking left — most passes she carries on by.
-  if (girl.dir === -1 && wasRightOfDoor && girl.x <= doorX && rng() < VISIT_CHANCE) {
+  // Caught on the way past, walking left — most passes she carries on by, unless
+  // she drove here to go in.
+  if (
+    girl.dir === -1 &&
+    wasRightOfDoor &&
+    girl.x <= doorX &&
+    (girl.dueAtSchool || rng() < VISIT_CHANCE)
+  ) {
     girl.x = doorX;
     girl.phase = 'entering';
     girl.timer = DOOR_FRAMES;
+    girl.dueAtSchool = false;
+    return;
+  }
+
+  // Caught on the way past the lounger, from either side — an afternoon on it is
+  // something she chooses now and then, not every time she walks by.
+  const { loungerX } = scene.layout;
+  const crossedLounger = (wasAt - loungerX) * (girl.x - loungerX) <= 0;
+  if (crossedLounger && rng() < LOUNGE_CHANCE) {
+    girl.x = loungerX;
+    girl.phase = 'lounging';
+    girl.timer = LOUNGE_MIN + Math.floor(rng() * LOUNGE_SPREAD);
+    // Where he waits it out, chosen once so it does not change under him.
+    girl.restPerch = rng() < 0.5 ? 'lounger' : 'banana';
+    return;
+  }
+
+  // Reaching the car, pointed the way it goes: she gets in. Certain rather than
+  // a chance, because the two ends are where the scene is — the park at one, the
+  // oven at the other — and the stretch between them is what the car is for.
+  if (reachedCar(scene, wasAt)) {
+    girl.x = scene.car!.x;
+    const leaving = scene.car!.at === 'home' ? LEAVE_HOME_CHANCE : LEAVE_SCHOOL_CHANCE;
+    if (rng() < leaving) {
+      girl.phase = 'boarding';
+      girl.timer = BOARD_FRAMES;
+      return;
+    }
+    // Not this time: the car is the end of her walk when she is not taking it,
+    // which keeps her at this end of the scene rather than into the middle.
+    girl.dir = girl.dir === 1 ? -1 : 1;
     return;
   }
 
@@ -587,29 +1527,82 @@ function walkGirl(scene: Scene, rng: Rng): void {
   girl.step += GIRL_SPEED;
 }
 
+/** How far through its swing the peel is, `framesIn` frames into a toss. */
+export function peelSwingAt(framesIn: number): number {
+  const t = clamp(framesIn / TOSS_FRAMES, 0, 1);
+  // Squared rather than linear: a peel crossing its arc at one speed reads as a
+  // lever being cranked. A throw accelerates into the release.
+  return t * t;
+}
+
+/**
+ * Whether the pizza is still riding the paddle. The drawn pizza and the thrown
+ * one turn on the same answer: worked out again in `draw.ts`, where nothing can
+ * be asserted, the two drift and the pizza is drawn on a peel that has already
+ * let it go.
+ */
+export function carryingPizza(scene: Scene): boolean {
+  return scene.oven.tossing > 0 && !scene.pizza;
+}
+
+/** Where the peel is now: swinging, following through, or level. */
+export function peelSwing(scene: Scene): number {
+  const { tossing, recovering } = scene.oven;
+  if (tossing > 0) return peelSwingAt(TOSS_FRAMES - tossing);
+  if (recovering > 0) return recovering / PEEL_RECOVER_FRAMES;
+  return 0;
+}
+
+export function peelAngle(swing: number): number {
+  return PEEL_REST_ANGLE - swing * PEEL_SWEEP;
+}
+
+/** Where on the scene the pizza rides, at a given point in the swing. */
+export function peelTip(scene: Scene, swing = peelSwing(scene)): { x: number; y: number } {
+  const angle = peelAngle(swing);
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  return {
+    x: scene.layout.pizzaioloX + PEEL_PIVOT.x + PEEL_CARRY_ALONG * cos - -PEEL_CARRY_ABOVE * sin,
+    y: scene.ground + PEEL_PIVOT.y + PEEL_CARRY_ALONG * sin + -PEEL_CARRY_ABOVE * cos,
+  };
+}
+
 function runOven(scene: Scene, rng: Rng): void {
   const { oven } = scene;
 
   if (oven.tossing > 0) {
+    const carrying = carryingPizza(scene);
     oven.tossing--;
-    if (oven.tossing === 0) {
-      // Released at the top of the swing, up and to the left, over the scene.
+    const swing = peelSwingAt(TOSS_FRAMES - oven.tossing);
+    if (carrying && swing >= PEEL_RELEASE_SWING) {
+      // It leaves along the path it was already travelling: the carry point over
+      // the frame that let it go, snapped up by the wrist. Taking the direction
+      // from the swing itself is what keeps the throw and the peel agreeing,
+      // however the swing is later shaped.
+      const from = peelTip(scene, peelSwingAt(TOSS_FRAMES - oven.tossing - 1));
+      const to = peelTip(scene, swing);
+      const jitter = 1 + (rng() - 0.5) * TOSS_JITTER;
       scene.pizza = {
-        x: scene.layout.pizzaioloX - 18,
-        y: scene.ground - PIZZAIOLO_HEIGHT - 6,
-        vx: -(1.1 + rng() * 1.2),
-        vy: -(7 + rng() * 1.6),
+        x: to.x,
+        y: to.y,
+        vx: (to.x - from.x) * PEEL_SNAP * jitter,
+        vy: (to.y - from.y) * PEEL_SNAP * jitter,
         spin: (rng() - 0.5) * 0.16,
         rotation: 0,
       };
       oven.nextPizzaIn = pizzaInterval(rng);
     }
+    // The arm carries on past the release, then comes back down to level.
+    if (oven.tossing === 0) oven.recovering = PEEL_RECOVER_FRAMES;
     return;
   }
 
-  // He is making them for her. While she is inside, the oven waits — and the
+  if (oven.recovering > 0) oven.recovering--;
+
+  // He is making them for her. While she is away the oven waits — and the
   // countdown waits with it, so she is not met by one the instant she is back.
-  if (!girlOut(scene)) return;
+  if (!homeward(scene)) return;
 
   if (oven.nextPizzaIn > 0) oven.nextPizzaIn--;
   // A pizza already in the air means this one waits: two at once would leave one
@@ -674,10 +1667,19 @@ function flyBird(scene: Scene, rng: Rng): void {
 
     case 'escorting': {
       const bob = Math.sin(scene.frame * 0.07) * HOVER_BOB;
-      steer(bird, perchX(scene), perchY(scene) - HOVER_HEIGHT + bob, 0.012, 0.92);
+      steer(
+        bird,
+        perchLeadX(scene, ESCORT_STEER),
+        perchY(scene) - HOVER_HEIGHT + bob,
+        ESCORT_STEER.gain,
+        ESCORT_STEER.drag,
+      );
       bird.flap += 0.35;
-      const settled = Math.abs(bird.x - perchX(scene)) < 14 && Math.abs(bird.vx) < 0.8;
-      if (settled && rng() < 0.01) bird.phase = 'landing';
+      // Keener to get on something that is going somewhere: dawdling above a
+      // car he has already caught up with means the drive is over before he
+      // ever lands on it.
+      const keenness = Math.abs(perchVX(scene)) > 1 ? MOVING_PERCH_LANDING : LANDING_CHANCE;
+      if (settledOnPerch(scene) && rng() < keenness) bird.phase = 'landing';
       break;
     }
 
@@ -691,11 +1693,23 @@ function flyBird(scene: Scene, rng: Rng): void {
      * was not, which is exactly what it was.
      */
     case 'landing': {
-      steer(bird, perchX(scene), perchY(scene), 0.05, 0.82);
+      steer(
+        bird,
+        perchLeadX(scene, LANDING_STEER),
+        perchY(scene),
+        LANDING_STEER.gain,
+        LANDING_STEER.drag,
+      );
       bird.flap += 0.45;
       if (girlOut(scene)) bird.facingRight = scene.girl.dir === 1;
+      // Arrived when he is on it and going along with it. Measured to a couple
+      // of pixels in both axes and nothing else, a perch moving under him is a
+      // window he can hardly hit — so he hovered at the roof, wings beating, for
+      // a third of every drive.
       const arrived =
-        Math.abs(bird.x - perchX(scene)) < 2.5 && Math.abs(bird.y - perchY(scene)) < 2.5;
+        Math.abs(bird.x - perchX(scene)) < ARRIVE_REACH &&
+        Math.abs(bird.y - perchY(scene)) < ARRIVE_REACH &&
+        Math.abs(bird.vx - perchVX(scene)) < ARRIVE_DRIFT;
       if (arrived) {
         bird.phase = 'perched';
         bird.perchedOn = currentPerch(scene);
@@ -882,11 +1896,17 @@ function runSmoke(
 
 export function step(scene: Scene, rng: Rng): void {
   scene.frame++;
+  turnGirl(scene);
   walkGirl(scene, rng);
-  runOven(scene, rng);
+  // Moved before the oven runs, so a pizza released this frame stays at the
+  // peel's tip for the frame it is released on rather than starting a frame's
+  // flight away from the paddle that was holding it.
   movePizza(scene);
+  runOven(scene, rng);
   flyBird(scene, rng);
   runHearts(scene, rng);
+  runSquirrels(scene, rng);
+  runSquirrelPair(scene, rng);
   runSmoke(
     scene,
     scene.oven.smoke,
@@ -923,21 +1943,90 @@ export function hitsBird(scene: Scene, x: number, y: number): boolean {
   );
 }
 
+/** Anyone standing on the ground, from their feet to the top of their head. */
+function hitsStanding(
+  scene: Scene,
+  x: number,
+  y: number,
+  centre: number,
+  halfWidth: number,
+  height: number,
+): boolean {
+  return within(x, centre, halfWidth) && y >= scene.ground - height && y <= scene.ground + 8;
+}
+
+/** Her, standing on the ground — the whole of her, not just her head. */
+export function hitsGirl(scene: Scene, x: number, y: number): boolean {
+  // Lying down she is a third of her standing height, and a box the size of the
+  // standing one would take clicks meant for the banana trees above her.
+  const reach = lounging(scene) ? LOUNGER_BACK_HEIGHT + 8 : GIRL_HEIGHT;
+  return hitsStanding(scene, x, y, scene.girl.x, GIRL_HIT_WIDTH / 2, reach);
+}
+
 /** Is this point on the pizzaiolo, who stands with his feet on the ground? */
 export function hitsPizzaiolo(scene: Scene, x: number, y: number): boolean {
-  return (
-    within(x, scene.layout.pizzaioloX, PIZZAIOLO_HIT_WIDTH / 2) &&
-    y >= scene.ground - PIZZAIOLO_HEIGHT &&
-    y <= scene.ground + 8
+  return hitsStanding(
+    scene,
+    x,
+    y,
+    scene.layout.pizzaioloX,
+    PIZZAIOLO_HIT_WIDTH / 2,
+    PIZZAIOLO_HEIGHT,
   );
 }
 
+/** She can blow a kiss on her feet or on the lounger; not from inside or a car. */
+function available(phase: GirlPhase): boolean {
+  return phase === 'walking' || phase === 'lounging';
+}
+
 /**
- * The two things a click can do, and nothing else. Waking a bird who is not
- * asleep or hurrying an oven that is already busy would both be worse than
- * doing nothing, so both are refused here rather than papered over in the loop.
+ * Whether a call could reach him at all.
+ *
+ * Hovering he comes down; too full to fly he gets up. On her shoulder he is
+ * already there, on his way down he has already been called, and a pizza in the
+ * air or in his beak beats both — called off a dive he would go hungry for a
+ * wave.
+ */
+function callable(phase: BirdPhase): boolean {
+  return phase === 'escorting' || phase === 'full';
+}
+
+/**
+ * One heart, from her mouth rather than from his.
+ *
+ * Capped with the rest of them: a click is a thing a user can do as fast as they
+ * like, and a scene answering each one with a heart is a scene that can be
+ * filled with hearts.
+ */
+function blowKiss(scene: Scene): void {
+  if (scene.hearts.length >= MAX_HEARTS) return;
+  scene.hearts.push({
+    kind: 'kiss',
+    angle: 0,
+    x: scene.girl.x + scene.girl.dir * 4,
+    y: scene.ground - GIRL_HEIGHT * 0.9,
+    life: DRIFT_LIFE,
+  });
+}
+
+/**
+ * The three things a click can do, and nothing else. Calling a bird who is
+ * already sitting on her, waking one who is not asleep, or hurrying an oven that
+ * is already busy would each be worse than doing nothing, so each is refused
+ * here rather than papered over in the loop.
  */
 export function clickScene(scene: Scene, x: number, y: number): void {
+  if (available(scene.girl.phase) && callable(scene.bird.phase) && hitsGirl(scene, x, y)) {
+    blowKiss(scene);
+    // Full, he is on the ground with a whole pizza inside him: being called is
+    // as good a reason to get up as being prodded, which already works. The
+    // takeoff still plays out, so he flies back rather than appearing.
+    if (scene.bird.phase === 'full') scene.bird.timer = 0;
+    else scene.bird.phase = 'landing';
+    return;
+  }
+
   if (scene.bird.phase === 'full' && hitsBird(scene, x, y)) {
     // Digested, with a little help. The takeoff itself still plays out.
     scene.bird.timer = 0;
@@ -947,4 +2036,20 @@ export function clickScene(scene: Scene, x: number, y: number): void {
   if (hitsPizzaiolo(scene, x, y) && !scene.pizza && scene.oven.tossing === 0) {
     scene.oven.nextPizzaIn = 0;
   }
+}
+
+/**
+ * The band this scene needs the app to reserve for it — the ground it stands on
+ * plus everything standing on that ground. Derived rather than chosen, so the
+ * scenery and the floor masking it cannot drift apart.
+ *
+ * It follows the width because the scenery does: a narrow window draws the whole
+ * scene smaller, and a band sized for a full-width oven would then hold back a
+ * strip of the user's list for empty sky.
+ */
+export function celloFloor(width: number): number {
+  // Rounded up, not just rounded: a band half a pixel shorter than the scenery
+  // standing in it leaves the top of the chimney drawn over the user's list, and
+  // a fractional height gives the mask a seam to peek through.
+  return Math.ceil(GROUND_ABOVE_FOOTER + SCENE_REACH * sceneScale(width));
 }

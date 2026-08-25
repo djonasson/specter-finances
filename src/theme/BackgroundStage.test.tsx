@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { cleanup } from '@testing-library/react';
-import { renderWithTheme, rolling, shufflingBetween } from '../test-utils';
+import { renderWithTheme, resizeTo, rolling, shufflingBetween } from '../test-utils';
 import { STAGED_BACKGROUNDS, stageFloorHeight } from './registry';
-import { BackgroundFloor, BackgroundSpacer } from './BackgroundStage';
+import { BackgroundFloor, BackgroundSpacer, SceneLayer } from './BackgroundStage';
+import { FOOTER_HEIGHT } from './chrome';
 
 beforeEach(() => localStorage.clear());
 afterEach(() => {
@@ -62,7 +63,7 @@ describe('the floor a scene stands on', () => {
     const height = parseInt(
       renderStage(<BackgroundFloor />, { backgroundEffect: effect })!.style.height,
     );
-    expect(height).toBe(stageFloorHeight(effect));
+    expect(height).toBe(stageFloorHeight(effect, window.innerWidth));
   });
 });
 
@@ -82,7 +83,7 @@ describe('the room left below the content', () => {
     const spacer = parseInt(
       renderStage(<BackgroundSpacer />, { backgroundEffect: effect })!.style.height,
     );
-    expect(spacer).toBeGreaterThan(stageFloorHeight(effect));
+    expect(spacer).toBeGreaterThan(stageFloorHeight(effect, window.innerWidth));
   });
 });
 
@@ -93,17 +94,102 @@ describe('the band a shuffled scene stands in', () => {
 
   it('is as tall as the background the shuffle landed on asked for', () => {
     const floor = renderShuffled(<BackgroundFloor />, ['cello']);
-    expect(parseInt(floor!.style.height)).toBe(stageFloorHeight('cello'));
+    expect(parseInt(floor!.style.height)).toBe(stageFloorHeight('cello', window.innerWidth));
   });
 
   it('reserves scroll room that clears the floor the scene stands in', () => {
     const spacer = parseInt(renderShuffled(<BackgroundSpacer />, ['cello'])!.style.height);
-    expect(spacer).toBeGreaterThan(stageFloorHeight('cello'));
+    expect(spacer).toBeGreaterThan(stageFloorHeight('cello', window.innerWidth));
   });
 
   it('stays away when the shuffle landed on a background drawn behind the app', () => {
     expect(renderShuffled(<BackgroundFloor />, ['matrix'])).toBeNull();
     cleanup();
     expect(renderShuffled(<BackgroundSpacer />, ['matrix'])).toBeNull();
+  });
+});
+
+// The band is the scene's own height, and the scene is drawn smaller on a narrow
+// window — so the floor has to be re-measured when the window changes, not read
+// once at mount. Left as a mount-time number it masks the wrong band for the
+// rest of the session, which on a phone rotated to landscape is most of it.
+describe('the band following the window', () => {
+  it('shrinks the floor when the window narrows', () => {
+    window.innerWidth = 1440;
+    const floor = renderStage(<BackgroundFloor />, { backgroundEffect: 'cello' })!;
+    const wide = parseInt(floor.style.height);
+
+    resizeTo(360);
+    expect(parseInt(floor.style.height)).toBeLessThan(wide);
+    expect(parseInt(floor.style.height)).toBe(stageFloorHeight('cello', 360));
+  });
+
+  it('shrinks the scroll room with it, so the two cannot disagree', () => {
+    window.innerWidth = 1440;
+    const spacer = renderStage(<BackgroundSpacer />, { backgroundEffect: 'cello' })!;
+    const wide = parseInt(spacer.style.height);
+
+    resizeTo(360);
+    expect(parseInt(spacer.style.height)).toBeLessThan(wide);
+  });
+});
+
+describe('what the stage costs the window', () => {
+  it('listens for a resize once, however many pieces of the stage are mounted', () => {
+    const addListener = vi.spyOn(window, 'addEventListener');
+    renderWithTheme(
+      <>
+        <BackgroundFloor />
+        <BackgroundSpacer />
+      </>,
+      { backgroundEffect: 'cello' },
+    );
+
+    const resizes = addListener.mock.calls.filter(([event]) => event === 'resize');
+    expect(resizes).toHaveLength(1);
+    addListener.mockRestore();
+  });
+});
+
+// The scene's ground is measured from the footer as it is actually laid out
+// (`footerHeight()`), while the mask over it used the configured number. They
+// agree only while the footer is exactly the height the constant says: at a
+// larger text size or a browser zoom the scenery rises above its own mask and is
+// drawn over the user's list, with the ground painting into the nav bar.
+describe('lining up with the footer as it is really laid out', () => {
+  function footerOfHeight(height: number) {
+    const footer = document.createElement('div');
+    footer.className = 'mantine-AppShell-footer';
+    footer.getBoundingClientRect = () => ({ height }) as DOMRect;
+    document.body.appendChild(footer);
+    return footer;
+  }
+
+  it('anchors the floor to the footer that is there, not to the constant', () => {
+    const footer = footerOfHeight(FOOTER_HEIGHT + 30);
+    const floor = renderStage(<BackgroundFloor />, { backgroundEffect: 'cello' })!;
+
+    expect(floor.style.bottom).toBe(`${FOOTER_HEIGHT + 30}px`);
+    footer.remove();
+  });
+
+  it('clips the scene off that same footer', () => {
+    const footer = footerOfHeight(FOOTER_HEIGHT + 30);
+    const { container } = renderWithTheme(
+      <SceneLayer>
+        <div />
+      </SceneLayer>,
+      { backgroundEffect: 'cello' },
+    );
+
+    const layer = container.querySelector<HTMLElement>('[data-scene-layer]')!;
+    expect(layer.style.clipPath).toBe(`inset(0 0 ${FOOTER_HEIGHT + 30}px 0)`);
+    footer.remove();
+  });
+
+  it('falls back to the configured height when there is no footer to measure', () => {
+    // The sign-in screen has no AppShell at all.
+    const floor = renderStage(<BackgroundFloor />, { backgroundEffect: 'cello' })!;
+    expect(floor.style.bottom).toBe(`${FOOTER_HEIGHT}px`);
   });
 });

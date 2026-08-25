@@ -1,10 +1,24 @@
 import type { ReactElement } from 'react';
 import { vi } from 'vitest';
-import { render } from '@testing-library/react';
+import { act, render } from '@testing-library/react';
 import { MantineProvider } from '@mantine/core';
 import { ThemeProvider, STORAGE_KEY } from './theme/ThemeContext';
 import { RANDOM_BACKGROUND } from './theme/registry';
 import { excludedFor } from './theme/random';
+
+/**
+ * Resize the window and let anything watching for it hear about it.
+ *
+ * jsdom fires no resize of its own, so the event has to be sent by hand — and
+ * inside `act`, since what listens for it is React state.
+ */
+export function resizeTo(width: number, height = window.innerHeight) {
+  act(() => {
+    window.innerWidth = width;
+    window.innerHeight = height;
+    window.dispatchEvent(new Event('resize'));
+  });
+}
 
 /**
  * Stored settings that shuffle between exactly these backgrounds.

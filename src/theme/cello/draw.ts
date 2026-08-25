@@ -6,6 +6,8 @@
  * being testable, which is the whole reason the two are separate files.
  */
 import {
+  atTheWheel,
+  birdAtRest,
   CHIMNEY_CAP,
   CHIMNEY_HEIGHT,
   DRIFT_LIFE,
@@ -17,7 +19,27 @@ import {
   OVEN_WIDTH,
   PIZZAIOLO_HEIGHT,
   RING_LIFE,
-  TOSS_FRAMES,
+  bananaLean,
+  bananaLeaves,
+  BANANA_TRUNKS,
+  carryingPizza,
+  leafSway,
+  girlOnFoot,
+  lounging,
+  LOUNGER_BACK_HEIGHT,
+  LOUNGER_LENGTH,
+  squirrelBehind,
+  squirrelFacing,
+  squirrelX,
+  squirrelY,
+  PEEL_BLADE_ALONG,
+  PEEL_BLADE_DEPTH,
+  PEEL_CARRY_ABOVE,
+  PEEL_CARRY_ALONG,
+  PEEL_GRIP,
+  PEEL_PIVOT,
+  peelAngle,
+  peelSwing,
   CAR_ROOF_HEIGHT,
   CAR_WIDTH,
   SCHOOL_DOOR_HEIGHT,
@@ -32,11 +54,10 @@ import {
   TREE_CROWN_RADIUS,
   TREE_HEIGHT,
   doorOpen,
-  girlOut,
   schoolLit,
   treeSway,
 } from './scene';
-import type { Pizza, Scene } from './scene';
+import type { Car, LeafShape, Pizza, Scene } from './scene';
 
 /**
  * Dark mode is not the same scene dimmed — the ground and stone drop right back
@@ -72,6 +93,11 @@ const LIGHT = {
   heart: '#e14f74',
   // Trunks and the school door, which were two names for one brown.
   wood: '#7a563a',
+  squirrel: '#b06a3b',
+  squirrelBelly: '#e8c9a8',
+  stem: '#8fae5e',
+  stemShade: '#6f8f49',
+  stemDry: '#b9ad6a',
   foliage: '#6f9b52',
   foliageDark: '#527a3c',
   /** The school's walls and the car's body, which are the same light beige. */
@@ -110,6 +136,11 @@ const DARK = {
   beak: '#e2921b',
   ink: '#15120f',
   heart: '#e0567a',
+  squirrel: '#8a5330',
+  stem: '#5f7a41',
+  stemShade: '#4a6134',
+  stemDry: '#7d7448',
+  squirrelBelly: '#c8a887',
   wood: '#4a3626',
   foliage: '#3f5c33',
   foliageDark: '#2f4626',
@@ -126,6 +157,8 @@ const DARK = {
 /** Where the pepperoni sits, as a fraction of the radius. */
 /** How big she is at the window, against her full height on the terrace. */
 const SHADOW_SCALE = 0.36;
+/** Her at the wheel: smaller again, since a door window is not a school window. */
+const DRIVER_SCALE = 0.26;
 
 const TOPPINGS = [
   [0.35, 0.1],
@@ -187,6 +220,273 @@ function drawGround(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette) {
 }
 
 /**
+ * Two of them, living in the park trees and in nothing else. Small enough that
+ * they read as movement first and as squirrels second, which at this size is the
+ * best a squirrel can hope for.
+ */
+function drawSquirrels(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette, behind: boolean) {
+  for (const squirrel of scene.squirrels) {
+    if (squirrelBehind(squirrel) !== behind) continue;
+    const x = squirrelX(scene, squirrel);
+    const y = squirrelY(scene, squirrel);
+    const facing = squirrelFacing(scene, squirrel);
+
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(facing, 1);
+
+    // Tail: the half of him that carries at this size, curled up over his back.
+    ctx.strokeStyle = p.squirrel;
+    ctx.lineWidth = 3.2;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(-2, 0);
+    ctx.quadraticCurveTo(-7, -2, -6, -7);
+    ctx.stroke();
+
+    ctx.fillStyle = p.squirrel;
+    ctx.beginPath();
+    ctx.ellipse(0, -2, 3.4, 2.6, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(3, -4, 2.1, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Ear and belly, which is all the detail there is room for.
+    ctx.beginPath();
+    ctx.moveTo(2.4, -5.6);
+    ctx.lineTo(3.2, -7.4);
+    ctx.lineTo(4.1, -5.7);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.fillStyle = p.squirrelBelly;
+    ctx.beginPath();
+    ctx.ellipse(1, -1.4, 1.8, 1.3, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+  }
+  ctx.lineCap = 'butt';
+}
+
+/**
+ * The points a leaf is drawn from, worked out once and kept.
+ *
+ * The shape of a leaf never changes — `bananaLeaves` hashes it out of the
+ * leaf's own indices — and only its nodding does, which is a `rotate` around the
+ * crown. Sampling the ribbon every frame meant nineteen leaves × thirteen points
+ * of trigonometry and four arrays each, forty times a second, to arrive at the
+ * same numbers as the frame before.
+ */
+interface LeafPath {
+  /** The blade outline, as flat x, y pairs. */
+  blade: number[];
+  /** Where the stalk ends and the blade starts. */
+  from: { x: number; y: number };
+  /** The midrib, down the middle of the blade. */
+  midrib: number[];
+}
+
+const leafPaths = new Map<string, LeafPath>();
+
+/** Where the stalk ends and the blade begins, along the leaf's spine. */
+const BLADE_FROM = 0.3;
+const BLADE_SAMPLES = 12;
+
+function leafPath(plant: number, index: number, leaf: LeafShape): LeafPath {
+  const key = `${plant}:${index}`;
+  const known = leafPaths.get(key);
+  if (known) return known;
+
+  const { control, tip, half } = leaf;
+  // The spine, with the leaf's own origin at the crown.
+  const at = (t: number) => ({
+    x: 2 * (1 - t) * t * control.x + t * t * tip.x,
+    y: 2 * (1 - t) * t * control.y + t * t * tip.y,
+  });
+  const slope = (t: number) => ({
+    x: 2 * (1 - t) * control.x + 2 * t * (tip.x - control.x),
+    y: 2 * (1 - t) * control.y + 2 * t * (tip.y - control.y),
+  });
+  const width = (t: number) =>
+    half * Math.sin(Math.PI * ((t - BLADE_FROM) / (1 - BLADE_FROM))) ** 0.55;
+
+  const near: number[] = [];
+  const far: number[] = [];
+  const midrib: number[] = [];
+  for (let i = 0; i <= BLADE_SAMPLES; i++) {
+    const t = BLADE_FROM + ((1 - BLADE_FROM) * i) / BLADE_SAMPLES;
+    const point = at(t);
+    const along = slope(t);
+    const length = Math.hypot(along.x, along.y) || 1;
+    const acrossX = -along.y / length;
+    const acrossY = along.x / length;
+    const w = width(t);
+    near.push(point.x + acrossX * w, point.y + acrossY * w);
+    far.unshift(point.x - acrossX * w, point.y - acrossY * w);
+    midrib.push(point.x, point.y);
+  }
+  // `far` was built tip-first, so the outline closes without reversing anything.
+  const path: LeafPath = { blade: [...near, ...far], from: at(BLADE_FROM), midrib };
+  leafPaths.set(key, path);
+  return path;
+}
+
+/** A leaf, at the crown's origin: stalk, blade, midrib. */
+function drawLeaf(ctx: CanvasRenderingContext2D, path: LeafPath, p: Palette, dark: boolean) {
+  ctx.strokeStyle = p.stem;
+  ctx.lineWidth = 2;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.lineTo(path.from.x, path.from.y);
+  ctx.stroke();
+
+  ctx.fillStyle = dark ? p.foliageDark : p.foliage;
+  ctx.beginPath();
+  ctx.moveTo(path.blade[0], path.blade[1]);
+  for (let i = 2; i < path.blade.length; i += 2) ctx.lineTo(path.blade[i], path.blade[i + 1]);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.strokeStyle = p.stem;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(path.midrib[0], path.midrib[1]);
+  for (let i = 2; i < path.midrib.length; i += 2) ctx.lineTo(path.midrib[i], path.midrib[i + 1]);
+  ctx.stroke();
+}
+
+/** One plant: a fat green pseudostem, and its leaves nodding out of the top. */
+function drawBananaPlant(
+  ctx: CanvasRenderingContext2D,
+  scene: Scene,
+  p: Palette,
+  plant: number,
+  x: number,
+) {
+  const base = scene.ground;
+  const lean = bananaLean(scene, plant);
+  const trunk = BANANA_TRUNKS[plant % BANANA_TRUNKS.length];
+  const top = base - trunk;
+  const crownX = x + lean;
+
+  // A banana's stem is a fat green pseudostem, not a woody trunk: wide at the
+  // foot, barely tapering, with a papery dried sheath low down, and every leaf
+  // stalk leaving from the very top of it.
+  const footHalf = 4.6;
+  const topHalf = 3.3;
+  ctx.fillStyle = p.stem;
+  ctx.beginPath();
+  ctx.moveTo(x - footHalf, base);
+  ctx.quadraticCurveTo(x - footHalf + lean * 0.4, base - trunk * 0.55, crownX - topHalf, top);
+  ctx.lineTo(crownX + topHalf, top);
+  ctx.quadraticCurveTo(x + footHalf + lean * 0.4, base - trunk * 0.55, x + footHalf, base);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle = p.stemShade;
+  ctx.beginPath();
+  ctx.moveTo(x + footHalf * 0.35, base);
+  ctx.quadraticCurveTo(x + footHalf * 0.4 + lean * 0.4, base - trunk * 0.55, crownX + 1.4, top);
+  ctx.lineTo(crownX + topHalf, top);
+  ctx.quadraticCurveTo(x + footHalf + lean * 0.4, base - trunk * 0.55, x + footHalf, base);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle = p.stemDry;
+  ctx.beginPath();
+  ctx.moveTo(x - footHalf + 1, base);
+  ctx.quadraticCurveTo(x - 1, base - trunk * 0.3, x + 2.5, base - trunk * 0.42);
+  ctx.lineTo(x + 3.5, base);
+  ctx.closePath();
+  ctx.fill();
+
+  // Leaves: up out of the crown, arching over, the outer ones hanging below it —
+  // which is the whole difference between a banana and a palm.
+  bananaLeaves(plant).forEach((leaf, index) => {
+    ctx.save();
+    ctx.translate(crownX, top + 1);
+    ctx.rotate(leafSway(scene, plant, index));
+    drawLeaf(ctx, leafPath(plant, index, leaf), p, leaf.dark);
+    ctx.restore();
+  });
+  ctx.lineCap = 'butt';
+}
+
+/**
+ * The home end: two banana trees and a lounger under them, and her on it when
+ * she is having an afternoon.
+ *
+ * Shorter than the park's trees on purpose — the band the app reserves is
+ * measured from the bird in a park tree, and anything taller here would be drawn
+ * over the user's own list without anything saying so.
+ */
+function drawHomeCorner(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette) {
+  const base = scene.ground;
+
+  for (const [plant, x] of scene.layout.bananaXs.entries()) {
+    drawBananaPlant(ctx, scene, p, plant, x);
+  }
+
+  // The lounger: a raked back, a flat seat, and two legs.
+  const x = scene.layout.loungerX;
+  const half = LOUNGER_LENGTH / 2;
+  const seat = base - LOUNGER_BACK_HEIGHT * 0.42;
+
+  ctx.strokeStyle = p.chrome;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(x - half, base);
+  ctx.lineTo(x - half + 4, seat);
+  ctx.moveTo(x + half - 6, base);
+  ctx.lineTo(x + half - 8, seat);
+  ctx.stroke();
+
+  ctx.fillStyle = p.dress;
+  ctx.beginPath();
+  ctx.moveTo(x - half, seat + 2);
+  ctx.lineTo(x + half - 6, seat + 2);
+  ctx.lineTo(x + half - 8, seat - 3);
+  ctx.lineTo(x - half - 2, seat - 3);
+  ctx.closePath();
+  ctx.fill();
+
+  // The raked back, at the head end.
+  ctx.beginPath();
+  ctx.moveTo(x - half - 2, seat - 3);
+  ctx.lineTo(x - half - 8, base - LOUNGER_BACK_HEIGHT);
+  ctx.lineTo(x - half - 2, base - LOUNGER_BACK_HEIGHT + 2);
+  ctx.lineTo(x - half + 4, seat - 3);
+  ctx.closePath();
+  ctx.fill();
+
+  if (!lounging(scene)) return;
+
+  // Her on it: stretched out along the seat, head at the raked end.
+  ctx.fillStyle = p.skin;
+  ctx.beginPath();
+  ctx.ellipse(x + 2, seat - 6, half - 8, 4, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = p.dress;
+  ctx.beginPath();
+  ctx.ellipse(x + 2, seat - 6, half * 0.5, 4.4, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = p.skin;
+  ctx.beginPath();
+  ctx.arc(x - half + 2, seat - 10, 5, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = p.hair;
+  ctx.beginPath();
+  ctx.arc(x - half, seat - 11, 5, Math.PI * 0.6, Math.PI * 1.9);
+  ctx.fill();
+}
+
+/**
  * The park: a few round-crowned trees leaning in the wind.
  *
  * The lean comes from `treeSway` in `scene.ts`, so how far a tree may lean is
@@ -196,6 +496,7 @@ function drawGround(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette) {
  * file's existing habit (see `drawGround`'s paving and `drawOven`'s courses): a
  * stroke per tree is draw calls forty times a second to no visible effect.
  */
+
 function drawPark(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette) {
   const base = scene.ground;
   const crownY = base - TREE_HEIGHT + TREE_CROWN_RADIUS;
@@ -353,33 +654,41 @@ function drawSchool(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette) {
  * and straight where it is straight: running the whole outline through a
  * smoother is what produced the egg.
  */
-function drawCar(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette, x: number) {
+function drawCar(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette, car: Car) {
   const base = scene.ground;
+  // Drawn nose-left in its own coordinates, and mirrored to drive the other way
+  // — the same way the girl and the bird are turned round.
+  ctx.save();
+  ctx.translate(car.x, 0);
+  if (car.dir === 1) ctx.scale(-1, 1);
   const half = CAR_WIDTH / 2;
-  const px = (f: number) => x - half + f * CAR_WIDTH;
+  const px = (f: number) => -half + f * CAR_WIDTH;
   const py = (f: number) => base - f * CAR_ROOF_HEIGHT;
 
   // A touch under the elevation's 0.111: at this size the measured figure
   // read as too big for the body.
   const wheelR = CAR_WIDTH * 0.1;
   const wheelY = base - wheelR;
-  const wheels = [px(0.188), px(0.857)];
+  const wheels = [px(0.2), px(0.845)];
 
+  // The body, off the elevation: a long flat bonnet to a steeply raked
+  // windscreen, a roof arcing over the middle, and a tailgate that falls almost
+  // straight. The bonnet breaking at a fifth of the length was what made the
+  // nose read as stubby — on a 500 it runs to nearly a third.
   ctx.fillStyle = p.beige;
   ctx.beginPath();
-  ctx.moveTo(px(0.03), py(0.14));
-  ctx.quadraticCurveTo(px(0.0), py(0.3), px(0.027), py(0.457));
-  ctx.quadraticCurveTo(px(0.05), py(0.53), px(0.1), py(0.555));
-  ctx.lineTo(px(0.2), py(0.59));
-  // Windscreen: one straight rake, and a long one
-  ctx.lineTo(px(0.384), py(0.913));
-  ctx.quadraticCurveTo(px(0.43), py(0.965), px(0.509), py(0.97));
-  // Roof: a single gentle arc over the middle of the car
-  ctx.quadraticCurveTo(px(0.63), py(0.968), px(0.723), py(0.935));
-  // and a round tail, not a hatch
-  ctx.quadraticCurveTo(px(0.82), py(0.875), px(0.866), py(0.739));
-  ctx.quadraticCurveTo(px(0.945), py(0.62), px(0.955), py(0.5));
-  ctx.quadraticCurveTo(px(1.0), py(0.32), px(0.975), py(0.16));
+  ctx.moveTo(px(0.03), py(0.11));
+  // Nose: round, and taller than the bumper it sits on.
+  ctx.quadraticCurveTo(px(0.005), py(0.3), px(0.045), py(0.52));
+  // Bonnet, rising gently the length of it.
+  ctx.quadraticCurveTo(px(0.16), py(0.58), px(0.3), py(0.61));
+  // Windscreen, raked hard.
+  ctx.quadraticCurveTo(px(0.35), py(0.78), px(0.42), py(0.985));
+  // Roof, one shallow arc over the middle.
+  ctx.quadraticCurveTo(px(0.56), py(1.02), px(0.71), py(0.93));
+  // Tailgate: steep, with the rounded shoulder a 500 has.
+  ctx.quadraticCurveTo(px(0.88), py(0.84), px(0.95), py(0.55));
+  ctx.quadraticCurveTo(px(0.985), py(0.36), px(0.97), py(0.14));
   ctx.closePath();
   ctx.fill();
 
@@ -393,60 +702,84 @@ function drawCar(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette, x: num
   }
   ctx.stroke();
 
-  // Glass: a long door window, then a small quarter light behind the pillar
+  // Glass: a long door window and a small quarter light behind the pillar, both
+  // sitting on one belt line the length of the car.
+  /** The door glass, which she is also seen through. One shape, not two. */
+  const doorWindow = () => {
+    ctx.moveTo(px(0.335), py(0.645));
+    ctx.lineTo(px(0.445), py(0.94));
+    ctx.lineTo(px(0.6), py(0.955));
+    ctx.lineTo(px(0.6), py(0.645));
+    ctx.closePath();
+  };
+
   ctx.fillStyle = p.glass;
   ctx.beginPath();
-  ctx.moveTo(px(0.26), py(0.6));
-  ctx.lineTo(px(0.4), py(0.875));
-  ctx.lineTo(px(0.565), py(0.885));
-  ctx.lineTo(px(0.565), py(0.6));
-  ctx.closePath();
-  ctx.moveTo(px(0.605), py(0.885));
-  ctx.lineTo(px(0.715), py(0.862));
-  ctx.quadraticCurveTo(px(0.785), py(0.76), px(0.745), py(0.6));
-  ctx.lineTo(px(0.605), py(0.6));
+  doorWindow();
+  ctx.moveTo(px(0.635), py(0.645));
+  ctx.lineTo(px(0.635), py(0.95));
+  ctx.quadraticCurveTo(px(0.72), py(0.93), px(0.75), py(0.645));
   ctx.closePath();
   ctx.fill();
 
   ctx.fillStyle = p.chrome;
   // Door handle, high on the door the way a 500's is, and the rubbing strip
-  ctx.fillRect(px(0.47), py(0.586) - 1, 6, 1.5);
-  ctx.fillRect(px(0.1), base - 10, CAR_WIDTH * 0.8, 1.3);
+  // along the belt line.
+  ctx.fillRect(px(0.5), py(0.62) - 1, 5.5, 1.5);
+  ctx.fillRect(px(0.08), base - 9, CAR_WIDTH * 0.84, 1.2);
+
+  // Her at the wheel, seen through the door window, and only while it is
+  // actually going somewhere: a head in a parked car is a person sitting in a
+  // car park.
+  if (atTheWheel(scene)) {
+    ctx.save();
+    // Clipped to the door glass, so she is a person in a car rather than a
+    // person drawn over one — the same outline that glass is drawn from, since a
+    // second copy of it had already drifted from the first.
+    ctx.beginPath();
+    doorWindow();
+    ctx.clip();
+    // Her, at the size the window allows, sat down: the same body the school
+    // window takes its shadow from, so there is one of her in this file.
+    ctx.translate(px(0.44), py(0.6) + GIRL_HEIGHT * DRIVER_SCALE * 0.42);
+    ctx.scale(-DRIVER_SCALE, DRIVER_SCALE);
+    girlBody(ctx, p, 0);
+    ctx.restore();
+  }
 
   // Wheels: a thin black sidewall around a wide alloy. One pass per colour over
   // both of them — and no spokes: at a wheel radius of eight pixels they were
   // 2px lines nobody could resolve, checked at 1:1 on screen.
+  /** Both wheels in one pass, at whatever radius this layer of them wants. */
+  const discs = (radius: number) => {
+    ctx.beginPath();
+    for (const wx of wheels) {
+      ctx.moveTo(wx + radius, wheelY);
+      ctx.arc(wx, wheelY, radius, 0, Math.PI * 2);
+    }
+  };
+
   ctx.fillStyle = p.ink;
-  ctx.beginPath();
-  for (const wx of wheels) {
-    ctx.moveTo(wx + wheelR, wheelY);
-    ctx.arc(wx, wheelY, wheelR, 0, Math.PI * 2);
-  }
+  discs(wheelR);
   ctx.fill();
 
   ctx.fillStyle = p.chrome;
-  ctx.beginPath();
-  for (const wx of wheels) {
-    ctx.moveTo(wx + wheelR * 0.72, wheelY);
-    ctx.arc(wx, wheelY, wheelR * 0.72, 0, Math.PI * 2);
-  }
+  discs(wheelR * 0.72);
   // The headlamp shares this pass: large, round, high in the wing.
   ctx.moveTo(px(0.085) + 2.6, py(0.56));
   ctx.arc(px(0.085), py(0.56), 2.6, 0, Math.PI * 2);
   ctx.fill();
 
   ctx.fillStyle = p.beigeShade;
-  ctx.beginPath();
-  for (const wx of wheels) {
-    ctx.moveTo(wx + wheelR * 0.24, wheelY);
-    ctx.arc(wx, wheelY, wheelR * 0.24, 0, Math.PI * 2);
-  }
+  discs(wheelR * 0.24);
   ctx.fill();
 
   ctx.fillStyle = p.glass;
   ctx.beginPath();
   ctx.arc(px(0.085), py(0.56), 1.5, 0, Math.PI * 2);
   ctx.fill();
+
+  ctx.restore();
 }
 
 /**
@@ -541,11 +874,15 @@ function drawOven(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette) {
 
 function drawSmoke(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette) {
   ctx.fillStyle = p.smoke;
-  for (const puff of [...scene.oven.smoke, ...scene.schoolSmoke]) {
-    ctx.globalAlpha = Math.min(1, puff.life / puff.maxLife);
-    ctx.beginPath();
-    ctx.arc(puff.x, puff.y, puff.radius, 0, Math.PI * 2);
-    ctx.fill();
+  // Two columns, two loops: joining them with a spread built a fresh array of
+  // every puff in the scene on every frame of the loop.
+  for (const column of [scene.oven.smoke, scene.schoolSmoke]) {
+    for (const puff of column) {
+      ctx.globalAlpha = Math.min(1, puff.life / puff.maxLife);
+      ctx.beginPath();
+      ctx.arc(puff.x, puff.y, puff.radius, 0, Math.PI * 2);
+      ctx.fill();
+    }
   }
   ctx.globalAlpha = 1;
 }
@@ -623,26 +960,46 @@ function drawPizzaiolo(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette) 
   ctx.ellipse(0, -h + 7, 10, 7, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  // The peel: level while he waits, swung up and over as he tosses.
-  const tossing = scene.oven.tossing;
-  const swing = tossing > 0 ? 1 - tossing / TOSS_FRAMES : 0;
-  // At rest it reaches up into the mouth of the dome; the toss swings it over.
-  const angle = -0.28 - swing * 1.1;
+  // The peel: level while he waits, swung up and over as he tosses. Both the
+  // swing and the angle come from the scene, because the throw is computed from
+  // the same numbers — a second copy here is what let the pizza leave from
+  // somewhere the paddle had never been.
+  const angle = peelAngle(peelSwing(scene));
+  // He is still carrying it right up to the moment he lets go, and the scene is
+  // asked rather than told: the throw turns on the same answer.
+  const carrying = carryingPizza(scene);
+
+  // Arms, holding the peel a little way along the handle so they swing with it.
+  const hand = {
+    x: PEEL_PIVOT.x + Math.cos(angle) * PEEL_GRIP,
+    y: PEEL_PIVOT.y + Math.sin(angle) * PEEL_GRIP,
+  };
+  ctx.strokeStyle = p.skin;
+  ctx.lineWidth = 4;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(-7, -48);
+  ctx.lineTo(hand.x, hand.y);
+  ctx.moveTo(7, -48);
+  ctx.lineTo(hand.x + Math.cos(angle) * 9, hand.y + Math.sin(angle) * 9);
+  ctx.stroke();
+  ctx.lineCap = 'butt';
+
   ctx.save();
-  ctx.translate(6, -44);
+  ctx.translate(PEEL_PIVOT.x, PEEL_PIVOT.y);
   ctx.rotate(angle);
   ctx.strokeStyle = p.crust;
   ctx.lineWidth = 3;
   ctx.beginPath();
   ctx.moveTo(0, 0);
-  ctx.lineTo(52, 0);
+  ctx.lineTo(PEEL_BLADE_ALONG, 0);
   ctx.stroke();
   ctx.fillStyle = p.stone;
-  ctx.fillRect(52, -9, 18, 18);
+  ctx.fillRect(PEEL_BLADE_ALONG, -PEEL_BLADE_DEPTH / 2, PEEL_BLADE_DEPTH, PEEL_BLADE_DEPTH);
   // The pizza rides the paddle right up to the moment it leaves.
-  if (tossing > 0) {
+  if (carrying) {
     ctx.save();
-    ctx.translate(61, -12);
+    ctx.translate(PEEL_CARRY_ALONG, PEEL_CARRY_ABOVE);
     ctx.rotate(-angle);
     drawPizzaFace(ctx, 12, p);
     ctx.restore();
@@ -723,8 +1080,8 @@ function drawGirl(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette) {
 function drawBird(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette) {
   const { bird } = scene;
   const full = bird.phase === 'full';
-  const eating = bird.phase === 'eating';
-  const grounded = full || eating;
+  // Wings folded whenever he is sitting on something, in the air or not.
+  const settled = birdAtRest(scene);
   const size = full ? FULL_SCALE : 1;
 
   ctx.save();
@@ -752,11 +1109,11 @@ function drawBird(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette) {
   ctx.ellipse(1, 3, 8, 6, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  // Wing — folded while he is on the ground, beating while he is not
+  // Wing — folded while he is sitting, beating while he is not
   ctx.fillStyle = p.birdDark;
   ctx.save();
   ctx.translate(-1, -2);
-  ctx.rotate(grounded ? 0.15 : Math.sin(bird.flap) * 0.85);
+  ctx.rotate(settled ? 0.15 : Math.sin(bird.flap) * 0.85);
   ctx.beginPath();
   ctx.ellipse(0, 0, 9, 4.5, 0, 0, Math.PI * 2);
   ctx.fill();
@@ -793,7 +1150,7 @@ function drawBird(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette) {
   }
 
   // Feet, only when there is something to stand on
-  if (grounded) {
+  if (settled) {
     ctx.strokeStyle = p.beak;
     ctx.lineWidth = 1.6;
     ctx.beginPath();
@@ -814,25 +1171,42 @@ function drawHearts(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette) {
     // how big it is and how far through its life it has faded.
     const life = heart.kind === 'ring' ? RING_LIFE : DRIFT_LIFE;
     ctx.globalAlpha = Math.min(1, heart.life / (life * 0.5));
-    heartPath(ctx, heart.x, heart.y, heart.kind === 'ring' ? 5 : 4);
+    // A kiss is a deliberate thing somebody did, so it is drawn bigger than the
+    // ones he lets go of by himself.
+    const size = heart.kind === 'ring' ? 5 : heart.kind === 'kiss' ? 7 : 4;
+    heartPath(ctx, heart.x, heart.y, size);
     ctx.fill();
   }
   ctx.globalAlpha = 1;
 }
 
-export function drawScene(ctx: CanvasRenderingContext2D, scene: Scene, isDark: boolean) {
+export function drawScene(
+  ctx: CanvasRenderingContext2D,
+  scene: Scene,
+  isDark: boolean,
+  scale: number,
+) {
   const p: Palette = isDark ? DARK : LIGHT;
+  // Everything below is drawn in the scene's own units; this is the one place
+  // the window's size enters. A narrow window gets a wider stage with smaller
+  // scenery on it, rather than the same scenery crammed against itself.
+  ctx.save();
+  ctx.scale(scale, scale);
   drawGround(ctx, scene, p);
   // The left of the scene first, and all of it behind the people: she walks in
   // front of the car and the school rather than round them.
+  drawSquirrels(ctx, scene, p, true);
   drawPark(ctx, scene, p);
+  drawSquirrels(ctx, scene, p, false);
   drawSchool(ctx, scene, p);
-  if (scene.layout.carX !== null) drawCar(ctx, scene, p, scene.layout.carX);
+  if (scene.car) drawCar(ctx, scene, p, scene.car);
+  drawHomeCorner(ctx, scene, p);
   drawOven(ctx, scene, p);
   drawSmoke(ctx, scene, p);
   drawPizzaiolo(ctx, scene, p);
-  if (girlOut(scene)) drawGirl(ctx, scene, p);
+  if (girlOnFoot(scene)) drawGirl(ctx, scene, p);
   drawBird(ctx, scene, p);
   if (scene.pizza) drawPizza(ctx, scene.pizza, p);
   drawHearts(ctx, scene, p);
+  ctx.restore();
 }
