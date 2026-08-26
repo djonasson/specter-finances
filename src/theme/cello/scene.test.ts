@@ -29,6 +29,10 @@ import {
   schoolChimney,
   schoolRoofY,
   CAR_WIDTH,
+  inPark,
+  treeCount,
+  treeTop,
+  treeX,
   CAR_ROOF_HEIGHT,
   perchX,
   perchY,
@@ -44,7 +48,14 @@ import {
   SQUIRREL_REACH,
   homeward,
   BANANA_HEIGHT,
+  BANANA_GAP,
+  BANANA_STEM_TOP,
+  KISS_APART,
+  CAR_OUTLINE,
+  CROSS_ARC,
+  CROSS_FRAMES,
   BANANA_TRUNKS,
+  PERCH_TREE_TOP,
   bananaLean,
   bananaLeaves,
   girlOut,
@@ -70,7 +81,7 @@ import {
   sceneScale,
   PEEL_RELEASE_SWING,
 } from './scene';
-import type { Scene } from './scene';
+import type { Scene, Squirrel } from './scene';
 import { stageFloorHeight } from '../registry';
 
 // The scene is a toy, but it is the whole reason this file exists: the squirrel
@@ -97,6 +108,16 @@ function seeded(seed: number) {
     x = (x + Math.imul(x ^ (x >>> 7), 61 | x)) ^ x;
     return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
   };
+}
+
+/** The two squirrels of whichever colony is kissing, if either is. */
+function kissingPair(s: Scene): [Squirrel, Squirrel] | null {
+  for (let at = 0; at + 1 < s.squirrels.length; at += 2) {
+    if (s.squirrels[at].phase === 'kissing' && s.squirrels[at + 1].phase === 'kissing') {
+      return [s.squirrels[at], s.squirrels[at + 1]];
+    }
+  }
+  return null;
 }
 
 /** Deterministic and unremarkable: never rolls a random transition. */
@@ -622,6 +643,53 @@ describe('the left of the scene', () => {
   it('parks the car clear of the school wall rather than inside it', () => {
     const { schoolX, carSchoolX } = scene().layout;
     expect(carSchoolX! - CAR_WIDTH / 2).toBeGreaterThan(schoolX + SCHOOL_WIDTH / 2);
+  });
+
+  // Measured off the same traced side-on drawing `CAR_OUTLINE` comes from:
+  // 733px long by 310px to the roof, its aerial excluded because an aerial is
+  // not the car. 70 by 27 came out at 2.50 — long and low, which reads as a
+  // different car, and is what tracing rather than eyeballing settled.
+  it('keeps the length-to-roof proportion the real car has', () => {
+    expect(CAR_WIDTH / CAR_ROOF_HEIGHT).toBeCloseTo(733 / 310, 1);
+  });
+
+  // The band the app reserves over the user's own list is measured from this.
+  // Written out as the park tree's own height it was right only because the
+  // bananas happen to be shorter — raise `BANANA_TRUNK` and squirrels climb
+  // over the expense list with nothing failing.
+  it('reserves height for the tallest thing a squirrel can climb, not the park', () => {
+    const s = scene();
+    const tallest = Math.max(...Array.from({ length: treeCount(s) }, (_, at) => treeTop(s, at)));
+    expect(SQUIRREL_REACH).toBeGreaterThanOrEqual(tallest);
+  });
+
+  // The two accessors and the list are one statement of the same geometry, so
+  // reading a tree one at a time cannot drift from reading them all at once.
+  it('reads one tree the same way it reads the whole park', () => {
+    const s = scene();
+    // Against the counts the layout is built from, not against the sum of the
+    // two arrays `treeCount` itself adds up.
+    expect(treeCount(s)).toBe(TREE_COUNT + BANANA_TRUNKS.length);
+    for (let at = 0; at < treeCount(s); at++) {
+      const own = inPark(s, at) ? s.layout.treeXs : s.layout.bananaXs;
+      const within = inPark(s, at) ? at : at - s.layout.treeXs.length;
+      // Its own trunk plus its own wind — and the wind has to be the *stand's*.
+      // A park tree sways up to `SWAY_REACH`; a banana leans at most 0.6 of it,
+      // so a `treeX` that wrongly called `treeSway` on the banana branch would
+      // sit inside a bound written as `SWAY_REACH` and pass.
+      const drift = Math.abs(treeX(s, at) - own[within]);
+      expect(drift).toBeLessThanOrEqual(inPark(s, at) ? SWAY_REACH : SWAY_REACH * 0.6);
+      expect(treeTop(s, at)).toBe(inPark(s, at) ? PERCH_TREE_TOP : BANANA_TRUNKS[within]);
+    }
+  });
+
+  it('starts each pair of squirrels in its own stand of trees', () => {
+    const s = scene();
+    const [a, b, c, d] = s.squirrels;
+    for (const squirrel of [a, b]) expect(inPark(s, squirrel.tree)).toBe(true);
+    for (const squirrel of [c, d]) expect(inPark(s, squirrel.tree)).toBe(false);
+    // Nobody is created already mid-jump: the two must be seeded together.
+    for (const squirrel of s.squirrels) expect(squirrel.towards).toBe(squirrel.tree);
   });
 
   it('plants every tree the park says it has', () => {
@@ -1380,12 +1448,12 @@ describe('the drive between the ends of the scene', () => {
   it('turns the squirrels to face the way they are going, and each other to kiss', () => {
     const s = quietScene(seeded(4));
     const rng = seeded(4);
-    runUntil(s, (x) => x.squirrels.every((q) => q.phase === 'kissing'), 30000, rng);
+    runUntil(s, (x) => kissingPair(x) !== null, 30000, rng);
 
     // Facing in, towards one another, rather than out over the park.
-    const [one, two] = s.squirrels;
+    const [one, two] = kissingPair(s)!;
     const middle = (squirrelX(s, one) + squirrelX(s, two)) / 2;
-    for (const squirrel of s.squirrels) {
+    for (const squirrel of [one, two]) {
       const towardsTheOther = middle > squirrelX(s, squirrel) ? 1 : -1;
       expect(squirrelFacing(s, squirrel)).toBe(towardsTheOther);
     }
@@ -1854,17 +1922,388 @@ describe('how her day divides', () => {
   });
 });
 
-// Two squirrels living in the park. They are scenery with a life of their own —
-// nothing else in the scene knows about them, and they know about nothing else —
-// but scenery that moves still has to stay inside the room the app reserved.
+// Four squirrels in two colonies, a pair to each stand. They are scenery with a
+// life of their own — nothing else in the scene knows about them, and they know
+// about nothing else — but scenery that moves still has to stay inside the room
+// the app reserved.
+describe('where the bird sits on the car', () => {
+  // Derived from the traced roof, not chosen. Seven was measured against the
+  // hand-drawn car, whose apex sat at 0.57 of the length; on the traced roof
+  // that is its leading edge, with the bird's body out over the windscreen.
+  it('sits the bird on the flat of the roof the car is actually drawn with', () => {
+    const s = scene();
+    const roof = CAR_OUTLINE.filter(([, fy]) => fy === 1).map(([fx]) => fx);
+    const from = (Math.min(...roof) - 0.5) * CAR_WIDTH;
+    const to = (Math.max(...roof) - 0.5) * CAR_WIDTH;
+    expect(s.car).not.toBeNull();
+    s.car!.dir = -1;
+    // The seat is only his perch while she is getting in or driving.
+    s.girl.phase = 'boarding';
+
+    const along = perchX(s) - s.car!.x;
+
+    expect(along).toBeGreaterThan(from);
+    expect(along).toBeLessThan(to);
+    expect(along).toBeCloseTo((from + to) / 2, 5);
+  });
+});
+
 describe('the squirrels in the park', () => {
-  it('puts two of them in the park, each in a tree the park actually has', () => {
+  // Exactly four, not "at least". Three separate conventions — which stand each
+  // is seeded into, how the pair is spread within it, and which two are checked
+  // together for a kiss — agree only at two colonies of two; at six the middle
+  // pair straddles the stands.
+  it('makes exactly two pairs, one to each stand', () => {
     const s = quietScene();
-    expect(s.squirrels).toHaveLength(2);
+    expect(s.squirrels).toHaveLength(4);
+    expect(s.squirrels.filter((squirrel) => inPark(s, squirrel.tree))).toHaveLength(2);
+  });
+
+  it('puts them in trees the scene actually has, park and banana alike', () => {
+    const s = quietScene();
+    expect(s.squirrels.length).toBeGreaterThanOrEqual(4);
     for (const squirrel of s.squirrels) {
       expect(squirrel.tree).toBeGreaterThanOrEqual(0);
-      expect(squirrel.tree).toBeLessThan(s.layout.treeXs.length);
+      expect(squirrel.tree).toBeLessThan(treeCount(s));
     }
+  });
+
+  it('lives in the banana trees as well as the park', () => {
+    // Two colonies: the park at one end of the scene and the bananas at the
+    // other, each with a pair.
+    const s = quietScene();
+    // Off `inPark`, not off `carHomeX`: that is null on every phone-width stage
+    // and `x > null` is `x > 0`, which calls every tree a banana.
+    const bananas = Array.from({ length: treeCount(s) }, (_, at) => at).filter(
+      (at) => !inPark(s, at),
+    );
+
+    expect(bananas.length).toBe(s.layout.bananaXs.length);
+    expect(s.squirrels.some((squirrel) => bananas.includes(squirrel.tree))).toBe(true);
+    expect(s.squirrels.some((squirrel) => !bananas.includes(squirrel.tree))).toBe(true);
+  });
+
+  // Not "the gap is under the reach", which was the predicate `otherTrees`
+  // filtered on and therefore could not fail. What is wanted is that a squirrel
+  // never leaves the stand it was born in — and that has to be asked at the
+  // widths where the two stands are close, because the scene squeezes as the
+  // window narrows. Below ~385px the nearest park tree and the nearest banana
+  // came within one jump of each other, and the colonies mixed within seconds.
+  it.each([320, 360, 375, 414, 768, 1440])(
+    'keeps each colony in its own stand at %ipx',
+    (width) => {
+      const rng = seeded(21);
+      const s = createScene({ width: width / sceneScale(width), height: 300, ground: 250 }, rng);
+      const born = s.squirrels.map((squirrel) => inPark(s, squirrel.tree));
+
+      // Counted rather than asserted per frame. Six widths by thirty thousand
+      // frames by four squirrels is 1.4 million `expect` calls, which cost more
+      // than every `step` behind them put together — over half this file's
+      // runtime, paid on every change the project's own rules require a run for.
+      let strayed = 0;
+      let crossings = 0;
+      const crossing = s.squirrels.map(() => false);
+      for (let i = 0; i < 30000; i++) {
+        step(s, rng);
+        s.squirrels.forEach((squirrel, at) => {
+          if (inPark(s, squirrel.tree) !== born[at]) strayed++;
+          if (inPark(s, squirrel.towards) !== born[at]) strayed++;
+          if (squirrel.phase === 'crossing' && !crossing[at]) crossings++;
+          crossing[at] = squirrel.phase === 'crossing';
+        });
+      }
+
+      expect(strayed).toBe(0);
+      // And they did jump, at this width. "Nobody left their stand" is also
+      // true of squirrels that never went anywhere — `otherTrees` returning an
+      // empty list at some width would satisfy the count above in silence,
+      // which is the trap its own comment warns about.
+      expect(crossings).toBeGreaterThan(0);
+    },
+  );
+
+  // The frame the flight ends on. Carrying the departure height across and
+  // clamping it here looked like it preserved the height, and does between two
+  // trees of the same size — but the bananas are 62 and 46, so the clamp
+  // swallowed the difference in a single frame: a 16-unit drop against a climb
+  // of half a unit, and against the ~2 units a frame the hop itself moves.
+  //
+  // Measured against the flight rather than against zero: a hop arcs, so its
+  // last airborne frame is legitimately above the landing point. What must not
+  // happen is the landing being a bigger move than the flying was.
+  it('lands no harder than it flew, even onto a shorter tree', () => {
+    const rng = seeded(7);
+    const s = quietScene(rng);
+    const flying = new Map<number, { last: number; worst: number }>();
+    let arrivals = 0;
+    let shortened = 0;
+
+    for (let i = 0; i < 40000; i++) {
+      step(s, rng);
+      s.squirrels.forEach((squirrel, at) => {
+        const y = squirrelY(s, squirrel);
+        const seen = flying.get(at);
+        if (squirrel.phase === 'crossing') {
+          if (treeTop(s, squirrel.towards) < treeTop(s, squirrel.tree)) shortened++;
+          flying.set(at, {
+            last: y,
+            worst: seen ? Math.max(seen.worst, Math.abs(y - seen.last)) : 0,
+          });
+          return;
+        }
+        if (!seen) return;
+        arrivals++;
+        // Half again the worst frame of the flight: the arc is steepest at the
+        // very end, so the landing frame is legitimately the largest of them.
+        expect(Math.abs(y - seen.last)).toBeLessThanOrEqual(seen.worst * 1.5 + 0.5);
+        flying.delete(at);
+      });
+    }
+
+    expect(arrivals).toBeGreaterThan(0);
+    // And the case that used to break it actually happened.
+    expect(shortened).toBeGreaterThan(0);
+  });
+
+  // Every colony gets to kiss, not just the first pair. The loop that runs them
+  // two at a time is the whole of that, and a single call for squirrels 0 and 1
+  // leaves the bananas unable to ever settle it.
+  it('lets the banana pair kiss, not only the park pair', () => {
+    const wind = seeded(4);
+    const s = quietScene(wind);
+    const kissingInBananas = (x: Scene) =>
+      x.squirrels.some((squirrel) => squirrel.phase === 'kissing' && !inPark(x, squirrel.tree));
+
+    runUntil(s, kissingInBananas, 60000, wind);
+
+    expect(kissingInBananas(s)).toBe(true);
+  });
+
+  // The other half of the landing, and the one the fix for the first half
+  // introduced. `up` is not only a height — the spiral is `side + up * turns` —
+  // so landing lower on a shorter tree spun the squirrel round the trunk: 26
+  // units sideways in a frame between the two bananas, half the time popping it
+  // from in front of the stem to behind. Measured over every squirrel, because
+  // a park crossing lands at the height it left and shows none of it.
+  it('lands beside the stem it flew to, not round the far side of it', () => {
+    const rng = seeded(7);
+    const s = quietScene(rng);
+    const flying = new Map<number, { last: number; worst: number }>();
+    let shortened = 0;
+
+    for (let i = 0; i < 40000; i++) {
+      step(s, rng);
+      s.squirrels.forEach((squirrel, at) => {
+        const x = squirrelX(s, squirrel);
+        const seen = flying.get(at);
+        if (squirrel.phase === 'crossing') {
+          if (treeTop(s, squirrel.towards) < treeTop(s, squirrel.tree)) shortened++;
+          flying.set(at, {
+            last: x,
+            worst: seen ? Math.max(seen.worst, Math.abs(x - seen.last)) : 0,
+          });
+          return;
+        }
+        if (!seen) return;
+        // Against the flight's own worst frame plus half a unit. Measured over
+        // 345 landings on three seeds the landing exceeds the flight by 0.26
+        // when the phase is carried across and 1.33 when it is not, so the
+        // margin is where those separate rather than where they look tidy.
+        expect(Math.abs(x - seen.last)).toBeLessThanOrEqual(seen.worst + 0.5);
+        flying.delete(at);
+      });
+    }
+
+    expect(shortened).toBeGreaterThan(0);
+  });
+
+  // A hop is normalised by its own stand's spacing, and the bananas stand
+  // exactly that far apart — so a jump between neighbours arcs by the base arc
+  // and no more. Measured against the park's 44 it would read as half again as
+  // far as it is and arc higher than the plants are tall. Taken off the flight's
+  // own two ends, so nothing here has to restate how the height is carried.
+  it('arcs a hop between neighbouring plants by the arc, not by the park', () => {
+    const rng = seeded(7);
+    const s = quietScene(rng);
+    const flights = new Map<number, { start: number; mid: number }>();
+    let measured = 0;
+    let peak = 0;
+
+    for (let i = 0; i < 40000; i++) {
+      const before = s.squirrels.map((squirrel) => squirrel.phase === 'crossing');
+      step(s, rng);
+      s.squirrels.forEach((squirrel, at) => {
+        const height = s.ground - squirrelY(s, squirrel);
+        if (squirrel.phase === 'crossing') {
+          if (inPark(s, squirrel.tree)) return;
+          const seen = flights.get(at);
+          if (!seen) flights.set(at, { start: height, mid: height });
+          else if (squirrel.timer === Math.round(CROSS_FRAMES / 2)) seen.mid = height;
+          return;
+        }
+        const seen = flights.get(at);
+        if (!seen || !before[at]) return;
+        measured++;
+        peak = Math.max(peak, seen.mid - (seen.start + height) / 2);
+        flights.delete(at);
+      });
+    }
+
+    // The base arc, plus only what the plants' own lean adds to the gap: the
+    // hop is scaled by gap over spacing, and both plants sway up to
+    // `SWAY_REACH * 0.6`. Normalised by the park's 44 instead of the bananas'
+    // own 54 it would land above this by a clear margin.
+    const swayed = 1 + (2 * SWAY_REACH * 0.6) / BANANA_GAP;
+    expect(measured).toBeGreaterThan(0);
+    expect(peak).toBeGreaterThanOrEqual(CROSS_ARC);
+    expect(peak).toBeLessThanOrEqual(CROSS_ARC * swayed);
+  });
+
+  // Letting go of each other is not a jump. Restoring the side they were born
+  // on here moved the spiral by 17.4 units in one frame — twice the worst jerk
+  // anywhere else in the scene, and in half of all releases the squirrel popped
+  // from in front of the trunk to behind it.
+  it('climbs on from where the kiss left it, rather than snapping back', () => {
+    const rng = seeded(7);
+    const s = quietScene(rng);
+    let was = s.squirrels.map((squirrel) => ({
+      phase: squirrel.phase,
+      x: squirrelX(s, squirrel),
+      behind: squirrelBehind(squirrel),
+    }));
+    let releases = 0;
+    let worst = 0;
+    let flips = 0;
+
+    for (let i = 0; i < 60000; i++) {
+      step(s, rng);
+      was = s.squirrels.map((squirrel, at) => {
+        const x = squirrelX(s, squirrel);
+        const behind = squirrelBehind(squirrel);
+        if (was[at].phase === 'kissing' && squirrel.phase !== 'kissing') {
+          releases++;
+          worst = Math.max(worst, Math.abs(x - was[at].x));
+          if (behind !== was[at].behind) flips++;
+        }
+        return { phase: squirrel.phase, x, behind };
+      });
+    }
+
+    expect(releases).toBeGreaterThan(0);
+    expect(flips).toBe(0);
+    // A climb moves half a unit a frame, and the pair stop touching, so the
+    // release is not nothing — but it is the width of the kiss, not the width
+    // of the crown.
+    expect(worst).toBeLessThanOrEqual(KISS_APART * 2 + 1);
+  });
+
+  // Every other squirrel-offset test drives `s.squirrels[0]`, which is a park
+  // one, so the banana branch of `treeRadius` had nothing exercising it at all.
+  // A stem is a fifth the width of a park crown: swung at the park's radius the
+  // squirrel hung in open air beside the plant, and over the half of the turn
+  // that goes behind it the stem was too narrow to hide it — the blinking the
+  // two-pass draw exists to stop, in the stand it was added for.
+  it('circles a banana at the width of its stem, not of a park crown', () => {
+    const s = quietScene();
+    const banana = Array.from({ length: treeCount(s) }, (_, at) => at).find(
+      (at) => !inPark(s, at),
+    )!;
+
+    let widest = 0;
+    for (let turn = 0; turn < 64; turn++) {
+      const squirrel = {
+        ...s.squirrels[0],
+        tree: banana,
+        up: 1,
+        phase: 'sitting' as const,
+        side: (turn / 64) * Math.PI * 2,
+      };
+      widest = Math.max(widest, Math.abs(squirrelX(s, squirrel) - treeX(s, banana)));
+    }
+
+    expect(widest).toBeCloseTo(BANANA_STEM_TOP, 1);
+    expect(widest).toBeLessThan(TREE_CROWN_RADIUS / 2);
+  });
+
+  // Spaced by how many there are. Read off a second hand-written list, one
+  // entry short made `loungerX + undefined` a NaN that propagates into `up`,
+  // where no clamp recovers it and the squirrel is never drawn again.
+  it('spaces the plants evenly however many of them there are', () => {
+    const { bananaXs } = quietScene().layout;
+    expect(bananaXs).toHaveLength(BANANA_TRUNKS.length);
+    for (const x of bananaXs) expect(Number.isFinite(x)).toBe(true);
+    for (let at = 1; at < bananaXs.length; at++) {
+      expect(bananaXs[at] - bananaXs[at - 1]).toBeCloseTo(BANANA_GAP, 5);
+    }
+  });
+
+  // The clamp inside `arrivalUp`, which is the only thing holding `up` in range
+  // when the tree it lands on is shorter than the height it left at. Without it
+  // a hop from the taller banana to the shorter writes 62/46 = 1.35, the
+  // squirrel is drawn above the plant it is sitting in, and the next frame's
+  // climb snaps it back — both jerks this branch removed, reintroduced at once.
+  // Checked on the frame *after* the landing as well as the landing itself.
+  it('never lands further up a tree than the tree goes', () => {
+    const rng = seeded(7);
+    const s = quietScene(rng);
+    let landings = 0;
+
+    for (let i = 0; i < 40000; i++) {
+      const crossing = s.squirrels.map((squirrel) => squirrel.phase === 'crossing');
+      step(s, rng);
+      s.squirrels.forEach((squirrel, at) => {
+        if (!crossing[at] || squirrel.phase === 'crossing') return;
+        landings++;
+        expect(squirrel.up).toBeGreaterThanOrEqual(0);
+        expect(squirrel.up).toBeLessThanOrEqual(1);
+      });
+    }
+
+    expect(landings).toBeGreaterThan(0);
+  });
+
+  // Asserted on `createScene`'s own output, before a frame runs: `climbing`
+  // clamps `up` into range on the very first step, so every other test in this
+  // file would see a squirrel seeded above its own tree as perfectly normal.
+  it('seeds every squirrel inside the tree it was put in', () => {
+    for (const squirrel of quietScene().squirrels) {
+      expect(squirrel.up).toBeGreaterThanOrEqual(0);
+      expect(squirrel.up).toBeLessThanOrEqual(1);
+    }
+  });
+
+  // Four distinct phases, not two. `SQUIRREL_SIDE` is pi, so an offset taken off
+  // the global index gave squirrel 2 a side of 2pi — which `sin` and `cos`
+  // cannot tell from squirrel 0's zero, and the colonies climbed in lockstep.
+  it('starts all four on different sides of their trunks', () => {
+    const round = (value: number) => {
+      const turn = Math.PI * 2;
+      return Math.round((((value % turn) + turn) % turn) * 1000) / 1000;
+    };
+    const sides = quietScene().squirrels.map((squirrel) => round(squirrel.side));
+    expect(new Set(sides).size).toBe(sides.length);
+  });
+
+  it('goes back to its own side of the tree once the kiss is over', () => {
+    const wind = seeded(4);
+    const s = quietScene(wind);
+    const kissing = (x: Scene) => x.squirrels.some((q) => q.phase === 'kissing');
+
+    // Both colonies, so the question can be asked of all four at once.
+    runUntil(s, (x) => x.squirrels.every((q) => q.phase !== 'climbing'), 120000, wind);
+    for (let i = 0; i < 4; i++) {
+      runUntil(s, kissing, 60000, wind);
+      runUntil(s, (x) => !kissing(x), 2000, wind);
+    }
+
+    // No two of the four holding the same phase. The kiss faces a pair at each
+    // other with two fixed angles, so untilted it handed both colonies the same
+    // pair of them and they climbed down in step ever after.
+    const turn = Math.PI * 2;
+    const sides = s.squirrels.map(
+      (squirrel) => Math.round((((squirrel.side % turn) + turn) % turn) * 1000) / 1000,
+    );
+    expect(new Set(sides).size).toBe(sides.length);
   });
 
   it('keeps them between the foot of a trunk and the top of a crown', () => {
@@ -1950,10 +2389,23 @@ describe('the squirrels in the park', () => {
     for (let i = 0; i < 20000; i++) {
       step(s, eager);
       for (const squirrel of s.squirrels) {
-        expect(squirrel.tree).toBeLessThan(s.layout.treeXs.length);
+        expect(squirrel.tree).toBeLessThan(treeCount(s));
         expect(squirrel.tree).toBeGreaterThanOrEqual(0);
       }
     }
+  });
+
+  it("climbs a banana tree to its own height, not to a park tree's", () => {
+    // The bananas are shorter: measured against a park tree a squirrel would
+    // climb straight out of the crown it is supposed to be in.
+    const s = quietScene();
+    const banana = Array.from({ length: treeCount(s) }, (_, at) => at).find(
+      (at) => !inPark(s, at),
+    )!;
+    const squirrel = { ...s.squirrels[0], tree: banana, up: 1, phase: 'sitting' as const };
+
+    expect(s.ground - squirrelY(s, squirrel)).toBeCloseTo(treeTop(s, banana), 0);
+    expect(treeTop(s, banana)).toBeLessThan(treeTop(s, 0));
   });
 
   it('does not have both of them doing the same thing forever', () => {
@@ -2208,14 +2660,14 @@ describe('the squirrels getting about, and getting together', () => {
     expect(farJump).toBe(true);
   });
 
-  it('climbs every tree the park has, given long enough', () => {
+  it('climbs every tree in the scene, given long enough', () => {
     const s = quietScene(wind);
     const visited = new Set<number>();
     for (let i = 0; i < 40000; i++) {
       step(s, wind);
       for (const squirrel of s.squirrels) visited.add(squirrel.tree);
     }
-    expect(visited.size).toBe(s.layout.treeXs.length);
+    expect(visited.size).toBe(treeCount(s));
   });
 
   it('goes to the tree the other one is in, rather than only ever by chance', () => {
@@ -2225,39 +2677,44 @@ describe('the squirrels getting about, and getting together', () => {
 
   it('meets at the top of the tree to kiss, not halfway up the trunk', () => {
     const s = quietScene(wind);
-    runUntil(s, (x) => x.squirrels.every((q) => q.phase === 'kissing'), 30000, wind);
+    runUntil(s, (x) => kissingPair(x) !== null, 30000, wind);
 
-    expect(s.squirrels[0].tree).toBe(s.squirrels[1].tree);
-    for (const squirrel of s.squirrels) expect(squirrel.up).toBe(1);
+    const [one, two] = kissingPair(s)!;
+    expect(one.tree).toBe(two.tree);
+    for (const squirrel of [one, two]) expect(squirrel.up).toBe(1);
   });
 
   it('sits them side by side, not one inside the other', () => {
     const s = quietScene(wind);
-    runUntil(s, (x) => x.squirrels.every((q) => q.phase === 'kissing'), 30000, wind);
+    runUntil(s, (x) => kissingPair(x) !== null, 30000, wind);
 
-    const apart = Math.abs(squirrelX(s, s.squirrels[0]) - squirrelX(s, s.squirrels[1]));
+    const [one, two] = kissingPair(s)!;
+    const apart = Math.abs(squirrelX(s, one) - squirrelX(s, two));
     expect(apart).toBeGreaterThan(5);
   });
 
   it('puts hearts over them while they are at it', () => {
     const s = quietScene(wind);
-    runUntil(s, (x) => x.squirrels.every((q) => q.phase === 'kissing'), 30000, wind);
+    runUntil(s, (x) => kissingPair(x) !== null, 30000, wind);
+    const [kisser] = kissingPair(s)!;
     s.hearts.length = 0;
 
     // Over *them*: the bird sends hearts of his own from the other side of the
     // scene, and the first one along is as likely to be his.
     const overThem = (x: Scene) =>
-      x.hearts.some((heart) => Math.abs(heart.x - squirrelX(x, x.squirrels[0])) < 20);
+      x.hearts.some((heart) => Math.abs(heart.x - squirrelX(x, kisser)) < 20);
     runUntil(s, overThem, 200, wind);
 
-    const heart = s.hearts.find((h) => Math.abs(h.x - squirrelX(s, s.squirrels[0])) < 20)!;
+    const heart = s.hearts.find((h) => Math.abs(h.x - squirrelX(s, kisser)) < 20)!;
     expect(heart.y).toBeLessThan(s.ground - TREE_HEIGHT / 2);
   });
 
   it('goes back to climbing when they are done', () => {
+    // One colony's pair, not all four: the park and the bananas keep their own
+    // company, and waiting for both pairs at once waits for a coincidence.
     const s = quietScene(wind);
-    runUntil(s, (x) => x.squirrels.every((q) => q.phase === 'kissing'), 30000, wind);
-    runUntil(s, (x) => x.squirrels.every((q) => q.phase !== 'kissing'), 400, wind);
+    runUntil(s, (x) => kissingPair(x) !== null, 30000, wind);
+    runUntil(s, (x) => kissingPair(x) === null, 400, wind);
   });
 
   it('never lets the pair of them fill the sky with hearts', () => {

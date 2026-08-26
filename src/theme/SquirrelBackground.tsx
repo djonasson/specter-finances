@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useComputedColorScheme } from '@mantine/core';
+import { canvasPixelRatio, fitCanvas, watchPixelRatio } from './chrome';
 
 interface Acorn {
   x: number;
@@ -744,6 +745,12 @@ export function SquirrelBackground() {
     const canvas = canvasRef.current!;
     const ctx = canvas.getContext('2d')!;
     let animationId: number;
+    // The window's size in CSS pixels. Everything in this scene is positioned
+    // against it — a click is compared to the squirrel's own x — while the
+    // canvas *buffer* behind it is denser, so the two cannot be the same number.
+    let width = 0;
+    let height = 0;
+    let ratio = 0;
     let acorns: Acorn[] = [];
     const iceBlocks: IceBlock[] = [];
     const iceShards: IceShard[] = [];
@@ -817,7 +824,7 @@ export function SquirrelBackground() {
 
     function spawnAcorn(big = false): Acorn {
       return {
-        x: Math.random() * canvas.width,
+        x: Math.random() * width,
         y: -20,
         speed: big ? 0.3 + Math.random() * 0.5 : 0.5 + Math.random() * 1,
         wobble: Math.random() * Math.PI * 2,
@@ -840,14 +847,28 @@ export function SquirrelBackground() {
     }
 
     function resize() {
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
-      squirrel.x = canvas.width / 2;
-      squirrel.y = canvas.height - getFooterHeight() - 30;
+      // Nothing to do if nothing changed. Refitting reallocates and zeroes a
+      // buffer four times the old size, teleports the squirrel to the middle of
+      // the screen and restarts every falling acorn — and a mobile URL-bar
+      // collapse fires `resize` dozens of times a scroll. The other two
+      // backgrounds have carried this guard since the buffer grew.
+      if (
+        window.innerWidth === width &&
+        window.innerHeight === height &&
+        ratio === canvasPixelRatio()
+      )
+        return;
+      // The buffer goes in the screen's own pixels and the context is scaled to
+      // match, so everything below still works in CSS pixels. Sized in CSS
+      // pixels the whole scene was drawn at a fraction of the screen's
+      // resolution and stretched back up by the display.
+      ({ width, height, ratio } = fitCanvas(canvas, ctx));
+      squirrel.x = width / 2;
+      squirrel.y = height - getFooterHeight() - 30;
       acorns = Array.from({ length: 12 }, spawnAcorn);
       // Spread initial acorns across the screen
       for (const a of acorns) {
-        a.y = Math.random() * canvas.height;
+        a.y = Math.random() * height;
       }
     }
 
@@ -857,7 +878,7 @@ export function SquirrelBackground() {
       if (time - lastTime < 25) return; // ~40fps
       lastTime = time;
 
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.clearRect(0, 0, width, height);
 
       // Update & draw acorns
       for (let i = 0; i < acorns.length; i++) {
@@ -921,9 +942,9 @@ export function SquirrelBackground() {
         const targetX =
           Math.random() < 0.5
             ? squirrel.x + (Math.random() - 0.5) * 60
-            : 80 + Math.random() * (canvas.width - 160);
+            : 80 + Math.random() * (width - 160);
         iceBlocks.push({
-          x: Math.max(40, Math.min(canvas.width - 40, targetX)),
+          x: Math.max(40, Math.min(width - 40, targetX)),
           y: -40,
           width: w,
           height: w * (0.6 + Math.random() * 0.6),
@@ -941,7 +962,7 @@ export function SquirrelBackground() {
       if (megaIceTimer <= 0) {
         const melt = 150; // melts fast since it shatters on impact anyway
         iceBlocks.push({
-          x: 80 + Math.random() * (canvas.width - 160),
+          x: 80 + Math.random() * (width - 160),
           y: -80,
           width: 60 + Math.random() * 30,
           height: 50 + Math.random() * 25,
@@ -1051,7 +1072,7 @@ export function SquirrelBackground() {
       if (icicleSpawnTimer <= 0 && icicles.length < 15) {
         const headerBottom = getHeaderHeight();
         icicles.push({
-          x: 40 + Math.random() * (canvas.width - 80),
+          x: 40 + Math.random() * (width - 80),
           y: headerBottom,
           length: 0,
           maxLength: 20 + Math.random() * 40,
@@ -1188,31 +1209,31 @@ export function SquirrelBackground() {
       }
 
       // Keep squirrel on screen
-      squirrel.x = Math.max(25, Math.min(canvas.width - 25, squirrel.x));
+      squirrel.x = Math.max(25, Math.min(width - 25, squirrel.x));
 
       // Snow, squirrel, speech bubbles
       const fgGroundY = squirrel.y + 25;
       ctx.fillStyle = isDark ? 'rgba(200,220,240,0.15)' : 'rgba(240,248,255,0.6)';
       ctx.beginPath();
-      ctx.moveTo(0, canvas.height);
+      ctx.moveTo(0, height);
       ctx.lineTo(0, fgGroundY + 4);
-      for (let sx = 0; sx <= canvas.width; sx += 20) {
+      for (let sx = 0; sx <= width; sx += 20) {
         const bump = Math.sin(sx * 0.05 + 1.5) * 3 + Math.sin(sx * 0.12) * 2;
         ctx.lineTo(sx, fgGroundY + bump);
       }
-      ctx.lineTo(canvas.width, canvas.height);
+      ctx.lineTo(width, height);
       ctx.closePath();
       ctx.fill();
 
       ctx.fillStyle = isDark ? 'rgba(220,235,250,0.1)' : 'rgba(255,255,255,0.5)';
       ctx.beginPath();
-      ctx.moveTo(0, canvas.height);
+      ctx.moveTo(0, height);
       ctx.lineTo(0, fgGroundY + 8);
-      for (let sx = 0; sx <= canvas.width; sx += 15) {
+      for (let sx = 0; sx <= width; sx += 15) {
         const bump = Math.sin(sx * 0.08 + 3) * 4 + Math.sin(sx * 0.03 + 1) * 3;
         ctx.lineTo(sx, fgGroundY + 6 + bump);
       }
-      ctx.lineTo(canvas.width, canvas.height);
+      ctx.lineTo(width, height);
       ctx.closePath();
       ctx.fill();
 
@@ -1284,11 +1305,13 @@ export function SquirrelBackground() {
     animationId = requestAnimationFrame(draw);
     window.addEventListener('resize', resize);
     document.addEventListener('click', handleClick);
+    const stopWatchingRatio = watchPixelRatio(resize);
 
     return () => {
       cancelAnimationFrame(animationId);
       window.removeEventListener('resize', resize);
       document.removeEventListener('click', handleClick);
+      stopWatchingRatio();
     };
   }, [isDark]);
 

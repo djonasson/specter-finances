@@ -39,14 +39,25 @@ import { CelloBackground } from './CelloBackground';
 
 // Only what the frame loop itself touches: everything else goes through
 // drawScene, which is mocked.
-const context2d = { clearRect: vi.fn() } as unknown as CanvasRenderingContext2D;
+const context2d = {
+  clearRect: vi.fn(),
+  setTransform: vi.fn(),
+} as unknown as CanvasRenderingContext2D;
 
 beforeEach(() => {
   vi.mocked(createScene).mockClear();
   vi.mocked(resizeScene).mockClear();
   vi.mocked(clickScene).mockClear();
   vi.mocked(drawScene).mockClear();
-  HTMLCanvasElement.prototype.getContext = vi.fn(() => context2d) as never;
+  // The context is shared across the file and nothing else clears it, so an
+  // assertion on `setTransform` would otherwise be satisfied by a call an
+  // earlier test in the same describe had already recorded.
+  vi.mocked(context2d.setTransform).mockClear();
+  vi.mocked(context2d.clearRect).mockClear();
+  // Spied rather than assigned: a raw assignment to the prototype is not
+  // something `restoreAllMocks` can put back, and neither is a `spyOn` left
+  // unrestored — both outlive the file and the next one sees them.
+  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(context2d as never);
   vi.stubGlobal(
     'requestAnimationFrame',
     vi.fn(() => 1),
@@ -57,6 +68,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
   localStorage.clear();
 });
 
@@ -93,6 +105,199 @@ describe('keeping the scene alive', () => {
     resizeTo(400, 700);
     expect(resizeScene).toHaveBeenCalledTimes(1);
     expect(createScene).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("drawing at the screen's own resolution", () => {
+  /** The frame loop runs off requestAnimationFrame, which the setup stubs out. */
+  function drawOneFrame() {
+    const frame = vi.mocked(requestAnimationFrame).mock.calls[0][0];
+    act(() => frame(1000));
+  }
+
+  it('sizes the canvas buffer in device pixels, not CSS ones', () => {
+    vi.stubGlobal('devicePixelRatio', 2);
+    renderWithTheme(<CelloBackground />);
+
+    const canvas = document.querySelector('canvas')!;
+    expect(canvas.width).toBe(window.innerWidth * 2);
+    expect(canvas.height).toBe(window.innerHeight * 2);
+  });
+
+  // The buffer is the whole viewport, cleared and repainted forty times a
+  // second: its cost grows with the square of the ratio, and a phone at 3 is
+  // the device least able to pay it. Two is where the sharpness stops being
+  // worth the paint.
+  it('stops following the device beyond twice, however dense the screen', () => {
+    vi.stubGlobal('devicePixelRatio', 3);
+    renderWithTheme(<CelloBackground />);
+
+    expect(document.querySelector('canvas')!.width).toBe(window.innerWidth * 2);
+  });
+
+  // Without this the element lays out at its *attribute* size, so a buffer in
+  // device pixels makes the canvas itself wider than the window.
+  it('keeps the canvas the size of the window on screen', () => {
+    vi.stubGlobal('devicePixelRatio', 3);
+    renderWithTheme(<CelloBackground />);
+
+    const canvas = document.querySelector('canvas')!;
+    expect(canvas.style.width).toBe(`${window.innerWidth}px`);
+    expect(canvas.style.height).toBe(`${window.innerHeight}px`);
+  });
+
+  // Two scales, applied in two places and deliberately not multiplied together
+  // here: the screen's ratio goes on the context once, and the scene's own
+  // scale goes on top of it every frame.
+  it("puts the screen's ratio on the context and leaves the scene its own scale", () => {
+    vi.stubGlobal('devicePixelRatio', 2);
+    // Set here rather than inherited: an earlier test in this file assigns
+    // `window.innerWidth` directly and jsdom never puts it back, so a scene
+    // scale of 1 would let a regression that dropped the scale entirely still
+    // satisfy this.
+    window.innerWidth = 400;
+    renderWithTheme(<CelloBackground />);
+    drawOneFrame();
+
+    expect(context2d.setTransform).toHaveBeenCalledWith(2, 0, 0, 2, 0, 0);
+    expect(sceneScale(400)).not.toBe(1);
+    expect(vi.mocked(drawScene).mock.calls[0][3]).toBeCloseTo(sceneScale(400));
+  });
+
+  // Dragging a window between monitors changes nothing about the scene's own
+  // measurements, so the early-out would otherwise keep the old screen's buffer.
+  it('re-sizes the buffer when only the pixel ratio changes', () => {
+    vi.stubGlobal('devicePixelRatio', 1);
+    renderWithTheme(<CelloBackground />);
+    const canvas = document.querySelector('canvas')!;
+    expect(canvas.width).toBe(window.innerWidth);
+
+    vi.stubGlobal('devicePixelRatio', 2);
+    resizeTo(window.innerWidth, window.innerHeight);
+
+    expect(canvas.width).toBe(window.innerWidth * 2);
+  });
+});
+
+describe('watching for a change of screen', () => {
+  /**
+   * Captures the resolution queries and their listeners.
+   *
+   * Only those: Mantine asks the same API about the colour scheme, so the last
+   * query made is not necessarily this component's.
+   */
+  function watchQueries() {
+    const queries: { query: string; on: Array<() => void>; off: Array<() => void> }[] = [];
+    vi.stubGlobal('matchMedia', (query: string) => {
+      const entry = { query, on: [] as Array<() => void>, off: [] as Array<() => void> };
+      if (query.includes('resolution')) queries.push(entry);
+      return {
+        matches: true,
+        media: query,
+        addEventListener: (_: string, fn: () => void) => entry.on.push(fn),
+        removeEventListener: (_: string, fn: () => void) => entry.off.push(fn),
+      };
+    });
+    return queries;
+  }
+
+  // A change of monitor need not change `innerWidth` at all, and `resize` is not
+  // specified to fire for it — so the window alone is not enough to notice.
+  it('arms a query on the ratio it is drawing at', () => {
+    vi.stubGlobal('devicePixelRatio', 2);
+    const queries = watchQueries();
+
+    renderWithTheme(<CelloBackground />);
+
+    expect(queries.at(-1)!.query).toBe('(resolution: 2dppx)');
+    expect(queries.at(-1)!.on).toHaveLength(1);
+  });
+
+  it('refits the buffer and re-arms at the new ratio when the screen changes', () => {
+    vi.stubGlobal('devicePixelRatio', 1);
+    const queries = watchQueries();
+    renderWithTheme(<CelloBackground />);
+    const canvas = document.querySelector('canvas')!;
+    expect(canvas.width).toBe(window.innerWidth);
+
+    vi.stubGlobal('devicePixelRatio', 2);
+    act(() => queries.at(-1)!.on[0]());
+
+    expect(canvas.width).toBe(window.innerWidth * 2);
+    // Re-armed: the old query can never fire again, so without this one change
+    // of monitor is all it would ever notice.
+    expect(queries.at(-1)!.query).toBe('(resolution: 2dppx)');
+  });
+
+  // Re-arming drops the reference to the old query, so without this the old one
+  // stays subscribed: listeners double per change of screen, `resize` runs once
+  // per accumulated query, and each stale listener holds the whole effect
+  // closure — scene, canvas and context — alive for the life of the document.
+  it('lets the old query go when it arms the new one', () => {
+    vi.stubGlobal('devicePixelRatio', 1);
+    const queries = watchQueries();
+    renderWithTheme(<CelloBackground />);
+    const first = queries.at(-1)!;
+
+    vi.stubGlobal('devicePixelRatio', 2);
+    act(() => first.on[0]());
+
+    expect(first.off).toHaveLength(1);
+    expect(queries.at(-1)).not.toBe(first);
+  });
+
+  it('lets the query go when it goes away', () => {
+    const queries = watchQueries();
+    const { unmount } = renderWithTheme(<CelloBackground />);
+
+    unmount();
+
+    expect(queries.at(-1)!.off).toHaveLength(1);
+  });
+
+  // Safari 13 hands back a real MediaQueryList with only `addListener`, and the
+  // throw lands inside the effect — before the frame loop, before the cleanup
+  // closure — so React unmounts the whole app over a background.
+  it('carries on where the screen cannot be watched at all', () => {
+    // A real MediaQueryList, of the vintage that only has `addListener` — for
+    // the resolution query alone, since the rest of the app needs a working one.
+    const real = window.matchMedia;
+    vi.stubGlobal('matchMedia', (query: string) =>
+      query.includes('resolution')
+        ? { matches: true, media: query, addListener: () => {} }
+        : real(query),
+    );
+
+    expect(() => renderWithTheme(<CelloBackground />)).not.toThrow();
+    expect(requestAnimationFrame).toHaveBeenCalled();
+  });
+});
+
+describe('two decisions, not one', () => {
+  // `resizeScene` is not a no-op on unchanged input: it puts the girl back at
+  // the nearer end of her walk. A change of monitor must not move her.
+  it('refits the buffer for a new ratio without moving the scene', () => {
+    vi.stubGlobal('devicePixelRatio', 1);
+    renderWithTheme(<CelloBackground />);
+    vi.mocked(resizeScene).mockClear();
+
+    vi.stubGlobal('devicePixelRatio', 2);
+    resizeTo(window.innerWidth, window.innerHeight);
+
+    expect(document.querySelector('canvas')!.width).toBe(window.innerWidth * 2);
+    expect(resizeScene).not.toHaveBeenCalled();
+  });
+
+  // And the other way: an identical window must not reallocate the buffer,
+  // which mobile browsers ask for dozens of times as the URL bar collapses.
+  it('leaves the buffer alone when nothing about the window changed', () => {
+    renderWithTheme(<CelloBackground />);
+    const canvas = document.querySelector('canvas')!;
+    canvas.width = 1;
+
+    resizeTo(window.innerWidth, window.innerHeight);
+
+    expect(canvas.width).toBe(1);
   });
 });
 

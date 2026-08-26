@@ -56,14 +56,20 @@ list.
   grows. Worth doing behind a fake, not yet done.
 - `InstallButton.tsx` — hangs off the `beforeinstallprompt` event.
 - `ThemeToggle.tsx` — a control over `ThemeContext`, which is itself covered.
-- `theme/*Background.tsx` and `theme/cello/draw.ts` — canvas drawing, which has
-  no assertable output. **A scene's behaviour does not belong in there**: Cello
-  keeps its state machine in `theme/cello/scene.ts`, pure and taking its
-  randomness as a parameter, and its wiring in `CelloBackground.tsx` — both
-  covered, the latter behind a stubbed `getContext` and a mocked `draw`. The
-  squirrel predates that split and holds every entity in a `useEffect` closure
-  where nothing can be asserted; copy Cello's shape for the next scene, not the
-  squirrel's.
+- `theme/*Background.tsx` (what they _draw_) and `theme/cello/draw.ts` — canvas
+  drawing, which has no assertable output. What each background does with the
+  page **is** covered: `SquirrelBackground.test.tsx` and
+  `MatrixBackground.test.tsx` record the drawing calls through a stubbed
+  `getContext` and pin the coordinate space — the buffer in the screen's pixels,
+  everything drawn on it in the window's — plus the frame loop and its teardown.
+  What is still uncovered is the shape of the figures themselves.
+  **A scene's behaviour does not belong in a draw file**: Cello keeps its state
+  machine in `theme/cello/scene.ts`, pure and taking its randomness as a
+  parameter, and its wiring in `CelloBackground.tsx` — both covered, the latter
+  behind a stubbed `getContext` and a mocked `draw`. The squirrel predates that
+  split and holds every acorn, icicle and mood in a `useEffect` closure, so its
+  tests can only ask what it drew and never what it decided; copy Cello's shape
+  for the next scene, not the squirrel's.
 - `ExpenseFields.tsx`, `useTransfers.ts`, `useGifts.ts` — no logic of their own;
   exercised through `ExpenseForm`/`RecurringForm` and `useMovements` tests, plus
   a wiring test proving each wrapper drives its own tab.
@@ -267,6 +273,58 @@ The `floor` belongs to the scene, and Cello's is **derived, not chosen**: `SCENE
 
 Cello's left is a park, a school and a light beige Fiat 500 — which she drives, see below — mirroring the oven on the right. One thing there moves on its own: she lets herself into the school now and then, the window lights while she is inside, and the bird — having no shoulder to sit on — waits in the nearest tree. That last part is **a substituted target, not a new phase**: `perchX`/`perchY` return her shoulder or the treetop, and `perched`, `escorting` and even a dive for a passing pizza go on working without knowing she is gone. Two things follow from `perched` holding him _at_ his perch by setting his position every frame, and both were jerks worth naming: he must fly the last of the way down (`landing`) rather than entering `perched` from a hover and covering the whole hover height in one frame, and when the perch itself becomes a different perch — she goes in, she comes out — he notices for himself: `bird.perchedOn` remembers which perch he took, and `perched` puts him back in the air when it no longer matches `currentPerch`. **Identity, not distance, and not the caller's memory**: keying it on the two girl transitions that cause it today would leave the next cause to reintroduce the jump, while a geometry check would make `perched` doubt its own invariant and break every deliberate placement. The lit window and the swinging door are **derived from her phase** rather than stored, so a lit window with nobody in it is not a state the scene can reach, and `treeSway` is pure so the wind is something a test can hold. The chimney stands on the right-hand slope with its foot **cut to the pitch** — drawn square it had one corner buried in the roof and the other hanging over air — and smokes only while she is in there, through the same puff machinery the oven uses. Her silhouette at the window is gated on the same `schoolLit`, so the light, the smoke and the shadow cannot disagree about whether anybody is home. Sizes live in `scene.ts` beside `SCENE_REACH`, which counts the chimney rather than the ridge (it stands part way down a slope, so it is the taller) and is otherwise derived from one list of **perch heights** (`PERCH_HEIGHT`) plus how far above one he gets — the same list `perchY` places him with, so a perch added there cannot be forgotten here. He sits _in_ the crown rather than on top of it, which is both what a bird does and the difference between reserving 198px of the user's list and 171px: the band is measured from wherever he settles highest, so where he sits in a tree, not the park itself, is what costs screen. It grew 158px → 171px.
 
+**Canvas backgrounds are sized in device pixels, and that is separate from the
+scene's own scale.** `fitCanvas` in `theme/chrome.ts` is the single place it
+happens: it puts the backing store at the viewport's size times the ratio,
+sets the element's _CSS_ size explicitly, scales the context by the ratio, and
+hands back the size in CSS pixels — after which a background works in CSS pixels and knows
+nothing about any of it. Sized in CSS pixels alone the scene was drawn at a
+fraction of the screen's resolution and stretched back up by the display: soft
+on a laptop at 1.25, and on a phone at 3 every edge in the scene was upscaled
+threefold. All three steps are load-bearing. The CSS size has to be set
+explicitly, because a canvas with no width or height in its style lays out at
+its _attribute_ size, which in device pixels is wider than the window it covers
+— and it is measured from `documentElement.clientWidth`, not `innerWidth`, since
+a classic scrollbar counts towards the latter but not towards the containing
+block of a `position: fixed` box: sized from it, `left`/`right`/`width` are all
+constrained, CSS drops `right`, and the last strip of the scene is drawn off the
+side of the screen.
+All three compare the window _and_ the ratio before refitting, because
+reallocating the buffer zeroes it and mobile browsers ask dozens of times as the
+URL bar collapses — and Cello reads the window before measuring the footer,
+since `footerHeight` forces a reflow to answer a question that is usually "no". And the ratio is **capped at `MAX_PIXEL_RATIO`**: the buffer is the whole
+viewport, repainted for as long as the app is open, so its cost grows with the
+square of the ratio while most of those pixels never hold anything — a scene
+only reaches its floor up the screen. Two takes the sharpness that matters at a
+fraction of the paint.
+
+It lives in `chrome.ts` rather than in a scene because every canvas background
+needs it and a scene that forgot would simply be blurry — nothing would fail.
+All three canvas backgrounds call it. The squirrel took the most moving: it read
+`canvas.width` as a **scene coordinate** in sixteen places, and its own click
+handler compares the squirrel's `x` against a click's `clientX`, so a buffer in
+device pixels would have put the squirrel at twice his own position and made him
+unrescuable. Its width and height are now closure variables in CSS pixels, which
+is what the whole file already assumed they were.
+
+A ratio change is **not** a resize event: moving a window between monitors can
+leave `innerWidth` and `innerHeight` untouched, and `resize` is not specified to
+fire. `watchPixelRatio`, beside `fitCanvas` and used by all three, watches
+`matchMedia('(resolution: Ndppx)')` and re-arms at the new ratio. Left in one
+scene, the other two kept the launch screen's buffer for the life of the tab —
+which for an installed PWA is days. Three guards, all load-bearing: on the
+_listener_ rather than on `matchMedia`, since Safari 13 returns a real
+`MediaQueryList` carrying only `addListener` and the throw lands inside the
+effect before its cleanup closure exists, unmounting the whole app to a blank
+screen over a background; on `matches`, because a query born false can never
+_change_ to false and would be silently dead for the session, which fractional
+display scaling (ratios like 1.100000023841858) reaches; and re-arming on every
+change, or one move between monitors would be all it ever noticed. Its `resize` also keeps the buffer and the _scene_ as two
+decisions, because `resizeScene` is not a no-op on unchanged input — it puts the
+girl back at the nearer end of her walk — so folding the ratio into one
+early-out teleported her mid-stride for a change of monitor. Clicks are still
+divided by `sceneScale` alone: `clientX` is in CSS pixels.
+
 **The scene is drawn to scale, and works in its own units.** `sceneScale(width)`
 runs from 1 at `SCENE_FULL_WIDTH` down to `SCENE_MIN_SCALE` at a phone's width,
 and `CelloBackground` hands the scene a stage of `width / scale` — so at 360px
@@ -275,6 +333,20 @@ the layout has ~500 units to place a school, a car and a walk in, and nothing in
 and clicks are divided by the same number on the way in. The alternative —
 laying the scene out differently on a phone — means every measurement in the
 file growing a narrow-window case.
+
+**The car's outline is traced, and lives in `scene.ts`.** `CAR_OUTLINE` is the
+ink contour of a side-on drawing of the real car, nose-left, wheel wells
+included — cut as a separate arc over the body they read as hoops standing clear
+of the tyres, which is what three rounds of hand-placed control points kept
+producing. It sits in `scene.ts` rather than in `draw.ts` because **a perch
+depends on it**: `ROOF_BACK` is derived from the flat of that roof, and seven —
+measured against the hand-drawn car whose apex was at 0.57 of the length — left
+the bird on the leading edge of the traced roof with his body over the
+windscreen. The same rule as `bananaLean`. Deliberately _not_ restored: the
+`beigeShade` arch stroke that used to ring each wheel. The traced wells are
+downward tabs at the contact patch rather than cutouts, so each tyre does sit on
+unbroken bodywork — checked on screen at 26x, where it reads as a wheel in a
+well, and the stroke is what made them read as hoops in the first place.
 
 **The Fiat is the middle of the scene, not scenery.** She walks the two ends —
 the park and the school at one, home and the oven at the other — and drives the
@@ -368,18 +440,79 @@ drawn — she is a few pixels across on a screen a thousand wide. `clickScene` k
 `document` listener with the canvas at `pointer-events: none`, so none of this
 costs the app a tap.
 
-**Two squirrels live in the park, and in nothing else.** They climb a **spiral**
-round a trunk rather than a straight line up one side — a squirrel on a vertical
-line reads as a lift — which means they pass behind the tree, which is why
-`drawScene` takes two passes at them: `squirrelBehind` splits them either side
-of the park. They sit in a crown a while, and jump to **any** tree in the park in
-an arc scaled to the distance, often aimed at wherever the other one is
-(`MEET_CHANCE`). Finding themselves together at the top of one, they sometimes
-kiss, with hearts over them — decided in `runSquirrelPair` after the per-squirrel
-loop, because it takes two and a loop that sees one at a time cannot settle it. `up` runs 0 at the foot to 1 at the top of the crown, so
-`SQUIRREL_REACH` is the tree the bird already perches in and the reserved band
-cannot grow because of them. Nothing else in the scene reads them and they read
-nothing else.
+**Four squirrels live in two colonies — a pair in the park and a pair in the
+banana trees — and in nothing else.** They climb a **spiral** round a trunk
+rather than a straight line up one side — a squirrel on a vertical line reads as
+a lift — which means they pass behind the tree, which is why each colony is
+drawn in **two passes around its own stand**: `squirrelBehind` says which side
+of the trunk, and `inPark` says which trees. Both matter. Split only by side and
+run once around the park, a banana squirrel was painted before its own plant on
+both passes, and the half of the spiral that should have gone behind the stem
+read as a squirrel blinking out instead. They sit in a crown a while, and jump
+to **any other tree in their own stand**, in an arc scaled to the distance and
+normalised by _that stand's_ spacing, often aimed at wherever another one is
+(`MEET_CHANCE`). The stand is the whole rule. It used to be a distance —
+`CROSS_REACH`, 150 units — which looks like it separates the colonies and does
+at a desktop width, but the scene squeezes as the window narrows and below
+~385px the nearest park tree and the nearest banana came within one jump of each
+other. Squirrels emigrated within seconds, a pair ended up split across the two
+stands — and since kissing needs both in one tree and pairs are fixed at
+creation, neither pair could kiss again — while the jump itself flew through the
+schoolhouse. `inPark` cannot be squeezed. The distance is **gone** rather than
+kept alongside: within a stand the widest gap is 88 units of park or 54 of
+banana, so it could never once have excluded anything, and a predicate that
+cannot fire is a trap — widen the park past it and a squirrel would simply stop
+crossing, with nothing to notice.
+
+Crossing, a squirrel is drawn moving to the **height it will land at** rather
+than holding the height it left and dropping the difference on arrival: the
+bananas are 62 and 46, so carrying the height across and clamping it on the last
+frame swallowed 16 units at once, against the two a frame the hop itself moves.
+The arrival lands exactly where the flight was drawn heading. **And `up` is not
+only a height** — the spiral is `side + up * SPIRAL_TURNS` turns — so rescaling
+it on landing also spun the squirrel round the trunk, which is the same jerk
+moved from the height into the width. The difference goes into `side`, where the
+phase lives, so it lands on the side it flew in on. A kiss **borrows nothing it has to give
+back**: it faces a pair at each other with two fixed angles, and the second
+colony's are tilted a sixth of a turn (`KISS_TILT`) so that the four do not come
+out of it holding two values between them — `sin` and `cos` cannot tell 90
+degrees from 90 degrees, and both colonies climbing down in step is the "one
+squirrel with a shadow" the seeding spread exists to prevent. Restoring a stored
+side on release instead moved the spiral 17.4 units in a single frame, twice the
+worst jerk anywhere else in the scene, and popped the squirrel from in front of
+the trunk to behind it in half of all releases.
+
+**How wide a circle it goes round is the tree's, not always the park's**
+(`treeRadius`), and for a banana it is **the stem's own half-width at the top**
+(`BANANA_STEM_TOP`, which `draw.ts` draws it at) rather than a number picked
+beside it. A park tree has a crown to orbit inside; a banana has a pseudostem a
+few units across, so a squirrel swung at the park's radius hung in open air
+beside it — and `squirrelBehind` then hid it behind a stem a fifth as
+wide for half of every turn, which is the blinking the two-pass draw exists to
+stop, in the stand it was added for. Finding
+themselves together at the top of one, they sometimes kiss, with hearts over
+them — decided in `runSquirrelPair` after the per-squirrel loop, because it takes
+two and a loop that sees one at a time cannot settle it. `up` runs 0 at the foot
+to 1 at the top of the crown, so a squirrel's height is its tree's: it cannot
+climb out of the band the app reserved by climbing higher than the tree it is
+in. The plants' positions are **spaced by how many there are** rather than read
+off a second hand-written list, because one entry short makes `loungerX +
+undefined` a NaN, and a NaN `up` is one no clamp recovers from — the squirrel
+stops being drawn for the rest of the session with nothing thrown anywhere.
+`BANANA_GAP` is that spacing, and `crossArc` measures a hop against it. `SQUIRREL_REACH` is taken from **the tallest tree any
+of them can climb**, not from the park's — measured off the park alone it was correct only because the
+bananas happen to be shorter, and raising `BANANA_TRUNK` would have sent them
+climbing over the user's own list with nothing failing. It stays below
+`SCENE_REACH`, so the reserved band still cannot grow because of them, and a
+test pins that rather than a comment. Where a tree stands and
+how tall it is are read one at a time (`treeX`/`treeTop`), not by building the
+whole list: every squirrel asks several times a frame, and rebuilding it there
+threw away a hundred-odd objects a frame for as long as the app was open.
+Nothing else in the scene reads them, and they read nothing else — _except_ the
+one `rng` stream `step` draws from for the girl, the oven and the bird as well.
+Adding a squirrel changes how many numbers are drawn per frame and so re-rolls
+every seeded run, which is why the day-split figures below are ranges measured
+over several seeds rather than fixed numbers.
 
 **The home end has a lounger under two banana trees**, and she lies on it now
 and then (`lounging`, caught on the way past like the school's door). She still

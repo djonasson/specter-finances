@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useComputedColorScheme } from '@mantine/core';
-import { footerHeight } from '../chrome';
+import { canvasPixelRatio, fitCanvas, footerHeight, watchPixelRatio } from '../chrome';
 import {
   createScene,
   resizeScene,
@@ -60,24 +60,55 @@ export function CelloBackground() {
     }
 
     let size = currentSize();
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
+    // `fitCanvas` puts the buffer in the screen's own pixels and scales the
+    // context to match, so everything below still works in CSS pixels — and the
+    // scene, in its own units on top of that.
+    let { width: cssWidth, height: cssHeight, ratio } = fitCanvas(canvas, ctx);
+    let lastWindowWidth = window.innerWidth;
+    let lastWindowHeight = window.innerHeight;
     const scene = createScene(size, Math.random);
 
+    /**
+     * Two separate decisions, deliberately not one.
+     *
+     * The buffer is re-sized whenever the window or the ratio changes, but the
+     * *scene* is only moved when its own measurements do. `resizeScene` is not
+     * a no-op on unchanged input — it puts the girl back at the nearer end of
+     * her walk, re-parks the car and re-clamps the bird — so folding the ratio
+     * into one early-out teleported her mid-stride for a change of monitor that
+     * altered nothing about the scene she stands in.
+     */
     function resize() {
+      // The free reads first. `currentSize` measures the footer, which forces a
+      // reflow, and a mobile URL-bar collapse asks dozens of times a scroll for
+      // an answer that has not changed.
+      const nextRatio = canvasPixelRatio();
+      if (
+        window.innerWidth === lastWindowWidth &&
+        window.innerHeight === lastWindowHeight &&
+        nextRatio === ratio
+      ) {
+        return;
+      }
+      lastWindowWidth = window.innerWidth;
+      lastWindowHeight = window.innerHeight;
+
       const next = currentSize();
       // Mobile browsers fire `resize` repeatedly as the URL bar collapses, often
       // with the same numbers. Reassigning the canvas size reallocates and
       // clears its backing store, so doing nothing is much cheaper than doing it
       // again with the values it already has.
-      if (next.width === size.width && next.height === size.height && next.ground === size.ground) {
-        return;
-      }
+      const sameWindow =
+        next.width === size.width && next.height === size.height && next.ground === size.ground;
+      if (sameWindow && nextRatio === ratio) return;
+
+      ({ width: cssWidth, height: cssHeight, ratio } = fitCanvas(canvas, ctx));
+      if (sameWindow) return;
       size = next;
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
       resizeScene(scene, next);
     }
+
+    const stopWatchingRatio = watchPixelRatio(resize);
 
     function draw(time: number) {
       animationId = requestAnimationFrame(draw);
@@ -85,7 +116,9 @@ export function CelloBackground() {
       lastTime = time;
 
       step(scene, Math.random);
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      // In CSS pixels, like everything else drawn here: the context carries the
+      // screen's ratio already.
+      ctx.clearRect(0, 0, cssWidth, cssHeight);
       drawScene(ctx, scene, isDarkRef.current, size.scale);
     }
 
@@ -104,6 +137,7 @@ export function CelloBackground() {
       cancelAnimationFrame(animationId);
       window.removeEventListener('resize', resize);
       document.removeEventListener('click', handleClick);
+      stopWatchingRatio();
     };
   }, []);
 
