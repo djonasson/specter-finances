@@ -2,7 +2,7 @@ import { useSyncExternalStore } from 'react';
 import type { ReactNode } from 'react';
 import { useThemeSettings } from './ThemeContext';
 import { drawsOverTheApp, stageFloorHeight } from './registry';
-import { footerHeight, FOOTER_HEIGHT, BEHIND_Z, FLOOR_Z, SCENE_Z } from './chrome';
+import { footerHeight, viewportSize, FOOTER_HEIGHT, BEHIND_Z, FLOOR_Z, SCENE_Z } from './chrome';
 
 /**
  * The two pieces of layout a background that draws over the app needs from the
@@ -19,20 +19,26 @@ import { footerHeight, FOOTER_HEIGHT, BEHIND_Z, FLOOR_Z, SCENE_Z } from './chrom
  * zero — so they read it the same way rather than each asking the registry.
  */
 function useStageFloor(): number {
-  return stageFloorHeight(useThemeSettings().resolvedBackground, useWindowWidth());
+  return stageFloorHeight(useThemeSettings().resolvedBackground, useStageWidth());
 }
 
 /**
- * The window's width, kept current.
+ * The viewport's width, kept current.
  *
  * A scene may draw itself smaller on a narrow window and ask for a smaller band
  * with it, so the band is not a number to read once at mount: a phone turned to
  * landscape would go on masking the portrait band for the rest of the session.
+ *
+ * The **viewport's**, not the window's, because the scene standing in the band
+ * is laid out in the same measure. Read from `innerWidth` the band is reserved
+ * for a window a scrollbar wider than the one the scenery was arranged for, and
+ * "the band covers the scenery" stops being true by construction and becomes
+ * true only where `clientWidth <= innerWidth` — which is platform coincidence.
  */
-function useWindowWidth(): number {
+function useStageWidth(): number {
   return useSyncExternalStore(
     subscribeToResize,
-    () => window.innerWidth,
+    () => viewportSize().width,
     () => 0,
   );
 }

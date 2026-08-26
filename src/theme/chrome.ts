@@ -59,6 +59,32 @@ export function canvasPixelRatio(): number {
 }
 
 /**
+ * How big the viewport is, as CSS lays it out.
+ *
+ * Not `innerWidth`: a classic scrollbar counts towards that but not towards the
+ * containing block of a `position: fixed` box, so a canvas sized from it has
+ * `left`, `right` and `width` all constrained, CSS drops `right`, and the last
+ * strip of the background is drawn off the side of the screen.
+ *
+ * One definition, because a background that fits to one measure and decides
+ * whether to re-fit by another never re-fits — or never stops. That is not
+ * hypothetical: the guards were comparing `innerWidth` against what `fitCanvas`
+ * had measured, so on any desktop with a scrollbar they never once fired.
+ */
+export function viewportSize(): { width: number; height: number } {
+  const box = document.documentElement;
+  // Falling back on a falsy reading, not only on a missing one: `clientWidth` is
+  // 0 in jsdom and wherever the document is not laid out, and a canvas sized to
+  // zero draws nothing and — since the guards then agree it has not changed —
+  // never recovers. `documentElement` itself is not nullable, so there is
+  // nothing here to optional-chain.
+  return {
+    width: box.clientWidth || window.innerWidth,
+    height: box.clientHeight || window.innerHeight,
+  };
+}
+
+/**
  * Point a full-window canvas at the screen's own pixels, and hand back the size
  * to draw in.
  *
@@ -88,27 +114,6 @@ export function fitCanvas(
   // runs again on every resize.
   ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
   return { width, height, ratio };
-}
-
-/**
- * How big the viewport is, as CSS lays it out.
- *
- * Not `innerWidth`: a classic scrollbar counts towards that but not towards the
- * containing block of a `position: fixed` box, so a canvas sized from it has
- * `left`, `right` and `width` all constrained, CSS drops `right`, and the last
- * strip of the background is drawn off the side of the screen.
- *
- * One definition, because a background that fits to one measure and decides
- * whether to re-fit by another never re-fits — or never stops. That is not
- * hypothetical: the guards were comparing `innerWidth` against what `fitCanvas`
- * had measured, so on any desktop with a scrollbar they never once fired.
- */
-export function viewportSize(): { width: number; height: number } {
-  const box = document.documentElement;
-  return {
-    width: box?.clientWidth || window.innerWidth,
-    height: box?.clientHeight || window.innerHeight,
-  };
 }
 
 /**

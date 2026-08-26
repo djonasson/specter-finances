@@ -296,7 +296,14 @@ never stops: comparing `innerWidth` against what `fitCanvas` had measured, the
 guards never once fired on a desktop with a scrollbar, so every one of the
 dozens of resize events a URL-bar collapse sends reallocated the buffer. Cello
 lays the _scene_ out in it too, or the scenery is arranged for a stage a
-scrollbar wider than the one it is drawn on.
+scrollbar wider than the one it is drawn on — and so does `BackgroundStage`,
+which reserves the band that scenery stands in: measured from two different
+widths, "the band covers the scenery" stops holding by construction and holds
+only where `clientWidth <= innerWidth`, which is a platform's habit rather than
+a guarantee. The fallback to `innerWidth` is load-bearing rather than
+defensive — `clientWidth` is 0 wherever the document is not laid out, and a
+canvas sized to zero draws nothing and then agrees with every guard that nothing
+has changed.
 All three compare the window _and_ the ratio before refitting, because
 reallocating the buffer zeroes it and mobile browsers ask dozens of times as the
 URL bar collapses — and Cello reads the window before measuring the footer,

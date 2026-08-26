@@ -223,7 +223,10 @@ describe('not refitting for nothing', () => {
     vi.stubGlobal('innerWidth', 1024);
     vi.stubGlobal('innerHeight', 768);
     vi.spyOn(document.documentElement, 'clientWidth', 'get').mockReturnValue(1009);
-    vi.spyOn(document.documentElement, 'clientHeight', 'get').mockReturnValue(768);
+    // A viewport height of its own, not `innerHeight` again: the guard has two
+    // terms, and on iOS it is the height one that differs for the whole of a URL
+    // bar collapse — the case the guard exists for.
+    vi.spyOn(document.documentElement, 'clientHeight', 'get').mockReturnValue(700);
     renderWithTheme(<SquirrelBackground />);
     const canvas = document.querySelector('canvas')!;
     canvas.width = 1;
