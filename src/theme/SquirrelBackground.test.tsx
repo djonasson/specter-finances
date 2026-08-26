@@ -106,6 +106,25 @@ function runFrames(count: number) {
   }
 }
 
+/**
+ * A `matchMedia` whose resolution listeners are visible.
+ *
+ * Only those: Mantine asks the same API about the colour scheme, so the first
+ * listener registered is not necessarily this component's.
+ */
+function onlyResolutionListeners(): Array<() => void> {
+  const listeners: Array<() => void> = [];
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: true,
+    media: query,
+    addEventListener: (_: string, fn: () => void) => {
+      if (query.includes('resolution')) listeners.push(fn);
+    },
+    removeEventListener: () => {},
+  }));
+  return listeners;
+}
+
 /** Everything the scene translated to, which is where it put its figures. */
 function translations() {
   return ctx.calls.filter((call) => call.name === 'translate').map((call) => call.args as number[]);
@@ -236,18 +255,27 @@ describe('not refitting for nothing', () => {
     expect(canvas.width).toBe(1);
   });
 
+  // A denser screen wants a bigger buffer and nothing else. Reset the scene for
+  // it and a drag between monitors teleports the squirrel to the middle of the
+  // screen mid-chase and restarts every falling acorn — the split Cello keeps.
+  it('gives a denser screen a bigger buffer without restarting the scene', () => {
+    const listeners = onlyResolutionListeners();
+    vi.stubGlobal('devicePixelRatio', 1);
+    renderWithTheme(<SquirrelBackground />);
+    runFrames(20);
+    const drawn = vi.spyOn(Math, 'random');
+
+    vi.stubGlobal('devicePixelRatio', 2);
+    act(() => listeners[0]());
+
+    expect(document.querySelector('canvas')!.width).toBe(window.innerWidth * 2);
+    // Respawning twelve acorns and re-placing the squirrel costs dozens of
+    // draws; a refit costs none.
+    expect(drawn).not.toHaveBeenCalled();
+  });
+
   it('refits when the ratio changes without the window changing', () => {
-    // Only the resolution query: Mantine asks the same API about the colour
-    // scheme, so the first listener registered is not necessarily this one's.
-    const listeners: Array<() => void> = [];
-    vi.stubGlobal('matchMedia', (query: string) => ({
-      matches: true,
-      media: query,
-      addEventListener: (_: string, fn: () => void) => {
-        if (query.includes('resolution')) listeners.push(fn);
-      },
-      removeEventListener: () => {},
-    }));
+    const listeners = onlyResolutionListeners();
     vi.stubGlobal('devicePixelRatio', 1);
     renderWithTheme(<SquirrelBackground />);
     const canvas = document.querySelector('canvas')!;

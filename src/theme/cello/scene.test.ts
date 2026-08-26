@@ -51,6 +51,9 @@ import {
   BANANA_GAP,
   BANANA_STEM_TOP,
   KISS_APART,
+  ROOF_RUN,
+  TRUNK_RADIUS,
+  WHEEL_RUN,
   CAR_OUTLINE,
   CROSS_ARC,
   CROSS_FRAMES,
@@ -1927,6 +1930,14 @@ describe('how her day divides', () => {
 // about nothing else — but scenery that moves still has to stay inside the room
 // the app reserved.
 describe('where the bird sits on the car', () => {
+  // What the import-time `throw` used to buy, without taking the app down: a
+  // mis-traced outline is a red suite on the commit that writes it rather than
+  // a white screen for every user, background or no background.
+  it('reads exactly one flat roof and two contact patches off the outline', () => {
+    expect(ROOF_RUN).toHaveLength(2);
+    expect(WHEEL_RUN).toHaveLength(2);
+  });
+
   // Derived from the traced roof, not chosen. Seven was measured against the
   // hand-drawn car, whose apex sat at 0.57 of the length; on the traced roof
   // that is its leading edge, with the bird's body out over the windscreen.
@@ -2159,6 +2170,30 @@ describe('the squirrels in the park', () => {
     expect(peak).toBeLessThanOrEqual(CROSS_ARC * swayed);
   });
 
+  // Both of them in front of the trunk. The kiss sits them either side of it,
+  // where `cos` is zero; turned far enough round, `cos` goes negative for one
+  // and it spends the whole kiss drawn in the behind-the-stem pass — which for
+  // a banana is 3.3 units wide and hides it entirely. That is the occlusion the
+  // two-pass draw and the narrowed banana orbit both exist to prevent.
+  it('keeps both of a kissing pair in front of the tree they are in', () => {
+    const wind = seeded(4);
+    const s = quietScene(wind);
+    const kissing = (x: Scene) => x.squirrels.some((q) => q.phase === 'kissing');
+    let seen = 0;
+
+    for (let round = 0; round < 8; round++) {
+      runUntil(s, kissing, 60000, wind);
+      for (const squirrel of s.squirrels) {
+        if (squirrel.phase !== 'kissing') continue;
+        seen++;
+        expect(squirrelBehind(squirrel)).toBe(false);
+      }
+      runUntil(s, (x) => !kissing(x), 2000, wind);
+    }
+
+    expect(seen).toBeGreaterThan(0);
+  });
+
   // Letting go of each other is not a jump. Restoring the side they were born
   // on here moved the spiral by 17.4 units in one frame — twice the worst jerk
   // anywhere else in the scene, and in half of all releases the squirrel popped
@@ -2191,10 +2226,15 @@ describe('the squirrels in the park', () => {
 
     expect(releases).toBeGreaterThan(0);
     expect(flips).toBe(0);
-    // A climb moves half a unit a frame, and the pair stop touching, so the
-    // release is not nothing — but it is the width of the kiss, not the width
-    // of the crown.
-    expect(worst).toBeLessThanOrEqual(KISS_APART * 2 + 1);
+    // Measured against the radius the release actually crosses, not a number
+    // chosen to fit what was left. Letting go swaps `KISS_APART` for the crown's
+    // own radius in one frame, so the pop is the difference between them — 9
+    // units in a park tree, which is a fifth of the crown against the half a
+    // unit a climb moves. Naming it is the point: the release was 17.4 before
+    // `homeSide` went, and this bound says how much of it is still there rather
+    // than implying none of it is.
+    const crown = TRUNK_RADIUS + (TREE_CROWN_RADIUS / 2 - TRUNK_RADIUS);
+    expect(worst).toBeLessThanOrEqual(crown - KISS_APART + 0.5);
   });
 
   // Every other squirrel-offset test drives `s.squirrels[0]`, which is a park

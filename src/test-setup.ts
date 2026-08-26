@@ -25,6 +25,23 @@ if (typeof window !== 'undefined') {
     Element.prototype.scrollIntoView = () => {};
   }
 
+  // jsdom lays nothing out, so `documentElement.clientWidth` is 0 — and
+  // `viewportSize` falls back to `innerWidth` on exactly that. Left alone, every
+  // test in the suite would run down the fallback, which is the one branch that
+  // cannot tell the document's measure from the window's apart, while a browser
+  // always takes the other. Following the window here puts the whole suite on
+  // the path production takes; a test wanting the two to differ — a scrollbar —
+  // spies the getter itself, which wins over this.
+  for (const [name, of] of [
+    ['clientWidth', 'innerWidth'],
+    ['clientHeight', 'innerHeight'],
+  ] as const) {
+    Object.defineProperty(document.documentElement, name, {
+      configurable: true,
+      get: () => window[of],
+    });
+  }
+
   // Mantine's ScrollArea/Table.ScrollContainer observe their container.
   if (!globalThis.ResizeObserver) {
     globalThis.ResizeObserver = class {

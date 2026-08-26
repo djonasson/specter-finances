@@ -167,6 +167,29 @@ describe('not refitting for nothing', () => {
 describe('noticing a change of screen', () => {
   // A change of monitor is not a resize event, so watching the window alone
   // leaves the launch screen's buffer in place for the life of the tab.
+  // The rain is not re-seeded for a change of monitor: doing so restarts it
+  // visibly, which is the same split Cello keeps between buffer and scene.
+  it('gives a denser screen a bigger buffer without restarting the rain', () => {
+    const listeners: Array<() => void> = [];
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: true,
+      media: query,
+      addEventListener: (_: string, fn: () => void) => {
+        if (query.includes('resolution')) listeners.push(fn);
+      },
+      removeEventListener: () => {},
+    }));
+    vi.stubGlobal('devicePixelRatio', 1);
+    render(<MatrixBackground speed={5} />);
+    const drawn = vi.spyOn(Math, 'random');
+
+    vi.stubGlobal('devicePixelRatio', 2);
+    act(() => listeners[0]());
+
+    expect(document.querySelector('canvas')!.width).toBe(window.innerWidth * 2);
+    expect(drawn).not.toHaveBeenCalled();
+  });
+
   it('refits when the ratio changes without the window changing', () => {
     const listeners: Array<() => void> = [];
     vi.stubGlobal('matchMedia', (query: string) => ({

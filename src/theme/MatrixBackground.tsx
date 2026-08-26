@@ -30,8 +30,12 @@ export function MatrixBackground({ speed }: { speed: number }) {
       // the same guard for the same reason.
       // Against the viewport `fitCanvas` measures, not against `innerWidth`.
       const seen = viewportSize();
-      if (seen.width === width && seen.height === height && ratio === pixelRatio()) return;
+      const sameViewport = seen.width === width && seen.height === height;
+      if (sameViewport && ratio === pixelRatio()) return;
       ({ width, height, ratio } = fitCanvas(canvas, ctx));
+      // A denser screen wants a bigger buffer, not a fresh downpour: re-seeding
+      // the drops for it restarts the rain visibly on a drag between monitors.
+      if (sameViewport) return;
       columns = Math.floor(width / fontSize);
       const maxRow = Math.floor(height / fontSize);
       drops = Array.from({ length: columns }, () => Math.floor(Math.random() * maxRow));

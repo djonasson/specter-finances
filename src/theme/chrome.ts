@@ -59,7 +59,20 @@ export function canvasPixelRatio(): number {
 }
 
 /**
- * How big the viewport is, as CSS lays it out.
+ * How big the viewport is: its width as CSS lays it out, its height as the
+ * window reports it.
+ *
+ * The two axes are asked differently on purpose, and it is not tidiness that
+ * decides it. A classic scrollbar takes **width** from the containing block of
+ * a `position: fixed` box while still counting towards `innerWidth`, so a
+ * canvas sized from the window has its last strip drawn off the side of the
+ * screen — which is what `clientWidth` is here for. The height has no such
+ * problem and a worse one of its own: `clientHeight` is the layout viewport,
+ * pinned to the small viewport on a phone, so it does **not** move when the URL
+ * bar collapses. The footer is measured with `getBoundingClientRect`, which
+ * does. Taking the height from it detached the scene's ground from the
+ * navigation bar it stands on — permanently, since a height that cannot change
+ * also tells every resize guard that nothing has.
  *
  * Not `innerWidth`: a classic scrollbar counts towards that but not towards the
  * containing block of a `position: fixed` box, so a canvas sized from it has
@@ -72,15 +85,14 @@ export function canvasPixelRatio(): number {
  * had measured, so on any desktop with a scrollbar they never once fired.
  */
 export function viewportSize(): { width: number; height: number } {
-  const box = document.documentElement;
   // Falling back on a falsy reading, not only on a missing one: `clientWidth` is
   // 0 in jsdom and wherever the document is not laid out, and a canvas sized to
   // zero draws nothing and — since the guards then agree it has not changed —
   // never recovers. `documentElement` itself is not nullable, so there is
   // nothing here to optional-chain.
   return {
-    width: box.clientWidth || window.innerWidth,
-    height: box.clientHeight || window.innerHeight,
+    width: document.documentElement.clientWidth || window.innerWidth,
+    height: window.innerHeight,
   };
 }
 
@@ -133,6 +145,7 @@ export function fitCanvas(
  */
 export function watchPixelRatio(onChange: () => void): () => void {
   let query: MediaQueryList | null = null;
+  let watchingRatio = false;
 
   const fired = () => {
     onChange();
@@ -146,17 +159,29 @@ export function watchPixelRatio(onChange: () => void): () => void {
     // `addEventListener`, and the throw would land in an effect body before its
     // cleanup closure exists — React unmounts the whole app over a background.
     const next = window.matchMedia?.(`(resolution: ${window.devicePixelRatio || 1}dppx)`);
-    // And on `matches`: a query born false can never transition to false, so it
-    // would never fire and the watch would be silently dead for the session.
-    // Fractional display scaling reports ratios like 1.100000023841858, whose
-    // serialised dppx need not compare equal to itself.
-    query = typeof next?.addEventListener === 'function' && next.matches ? next : null;
+    query = typeof next?.addEventListener === 'function' ? next : null;
     query?.addEventListener('change', fired);
+    // Attached whatever it reports, but remembering whether it can be trusted.
+    // A query born false can never *change* to false, so it would never fire —
+    // fractional display scaling reports ratios like 1.100000023841858, whose
+    // serialised dppx need not compare equal to itself. Refusing to attach at
+    // all would be a one-way door: `arm` is reachable only from `fired`, so one
+    // bad reading would end the watch for the life of the tab.
+    watchingRatio = query !== null && query.matches;
   }
 
   arm();
+  // The fallback, for when it cannot: a resize is the only other moment the
+  // ratio is worth re-reading, and re-arming there gives a query that was born
+  // false a chance to be replaced by one that is not.
+  const onResize = () => {
+    if (!watchingRatio) arm();
+  };
+  window.addEventListener('resize', onResize);
+
   return () => {
     query?.removeEventListener('change', fired);
+    window.removeEventListener('resize', onResize);
     query = null;
   };
 }

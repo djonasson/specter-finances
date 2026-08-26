@@ -11,6 +11,10 @@ import { excludedFor } from './theme/random';
  *
  * jsdom fires no resize of its own, so the event has to be sent by hand — and
  * inside `act`, since what listens for it is React state.
+ *
+ * The document follows the window here — see `test-setup.ts` — so a resize
+ * moves what `viewportSize` actually reads rather than only the fallback it
+ * reaches for when the document reports nothing.
  */
 export function resizeTo(width: number, height = window.innerHeight) {
   act(() => {

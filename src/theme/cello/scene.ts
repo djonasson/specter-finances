@@ -107,8 +107,17 @@ const KISS_FRAMES = 150;
 const KISS_HEART_INTERVAL = 22;
 /** How far apart they sit while they are at it. */
 export const KISS_APART = 4.5;
-/** How far the second colony's kiss is turned round the trunk from the first's. */
-const KISS_TILT = Math.PI / 6;
+/**
+ * How far each pair's kiss is turned round the trunk from the last pair's.
+ *
+ * Small, and deliberately so. The kiss sits them either side of the trunk at
+ * `±π/2`, where `cos` is zero and `squirrelBehind` puts them both in front; turn
+ * that far enough and `cos` goes negative for one of them and it spends the
+ * whole kiss drawn behind its own stem — which for a banana is 3.3 units wide
+ * and hides it completely. A twelfth of a turn separates the pairs while
+ * leaving both of them in front.
+ */
+const KISS_TILT = Math.PI / 12;
 /**
  * How far round the tree a full climb carries it, and how wide that circle is at
  * the foot of the trunk and up in the crown.
@@ -118,7 +127,7 @@ const KISS_TILT = Math.PI / 6;
  * makes two passes at them.
  */
 const SPIRAL_TURNS = 1.7;
-const TRUNK_RADIUS = 4.5;
+export const TRUNK_RADIUS = 4.5;
 /**
  * Where the pseudostem is at its widest and its narrowest, at the foot and at
  * the crown.
@@ -461,15 +470,20 @@ const MIN_DRIVE = 120;
  * Where along the car the flat of the roof runs, off the traced outline itself:
  * the points whose height is the full `CAR_ROOF_HEIGHT`.
  */
-const ROOF_RUN = CAR_OUTLINE.filter(([, fy]) => fy === 1).map(([fx]) => fx);
-if (ROOF_RUN.length !== 2) {
-  // Two points, or the perch is not the middle of anything. An outline re-traced
-  // with 0.999 for the roof leaves this empty, `Math.min` of nothing is
-  // Infinity, and the bird is placed at NaN — which `perched` writes every
-  // frame, so he leaves the scene the moment she first boards and never
-  // returns, with nothing thrown.
-  throw new Error(`CAR_OUTLINE needs exactly two roof points, found ${ROOF_RUN.length}`);
-}
+/**
+ * The two flats the outline is read for: the roof the bird perches on, and the
+ * contact patches the wheels are drawn at.
+ *
+ * Both are exact-equality filters over a hand-entered table, so both can come
+ * back the wrong length if the car is ever re-traced — one wheel and one empty
+ * well, or a bird placed at NaN. `scene.test.ts` asserts their lengths, which
+ * is the same protection an import-time `throw` bought without taking the whole
+ * app down with it: `registry.tsx` imports this module eagerly from the
+ * provider chain, there is no error boundary above it, and a white screen over
+ * a mis-traced roof would leave the expense list unreachable.
+ */
+export const ROOF_RUN = CAR_OUTLINE.filter(([, fy]) => fy === 1).map(([fx]) => fx);
+export const WHEEL_RUN = CAR_OUTLINE.filter(([, fy]) => fy === 0).map(([fx]) => fx);
 /**
  * How far back from the middle of the car his feet go — the middle of that flat.
  *
@@ -970,8 +984,13 @@ function layoutFor(width: number): Layout {
     // one entry short and `loungerX + undefined` is NaN, which propagates into
     // `up` where no clamp recovers it, and the squirrel simply stops being
     // drawn for the rest of the session with nothing thrown anywhere.
-    bananaXs: BANANA_TRUNKS.map(
-      (_, plant) => loungerX + (plant - (BANANA_TRUNKS.length - 1) / 2) * BANANA_GAP,
+    // Spread about the lounger and then held inside her walk. Unbounded, a
+    // third trunk stands `BANANA_GAP` further out — past the end of her walk on
+    // a narrow window and through the pizzaiolo, which is the collision
+    // `PIZZAIOLO_ROOM` keeps the school and the car clear of and nothing was
+    // keeping this stand clear of.
+    bananaXs: BANANA_TRUNKS.map((_, plant) =>
+      clamp(loungerX + (plant - (BANANA_TRUNKS.length - 1) / 2) * BANANA_GAP, homeStart, girlRight),
     ),
     girlLeft: GIRL_MARGIN,
     girlRight,
@@ -1298,8 +1317,18 @@ function runSquirrelPair(scene: Scene, rng: Rng, one: Squirrel, two: Squirrel): 
   // shadow" the seeding spread exists to prevent. A sixth of a turn is enough
   // to separate all four and still leaves them either side of the trunk.
   const climbed = SPIRAL_TURNS * Math.PI * 2;
-  const tilt = inPark(scene, one.tree) ? 0 : KISS_TILT;
-  one.side = Math.PI / 2 + tilt - climbed;
+  // Off which pair is kissing, the way the birth angle is, rather than off
+  // which stand it is in: keyed on `inPark` a third pair — or a second one in
+  // the park — takes a tilt another pair already has, and the two come out of a
+  // kiss in the lockstep this exists to prevent.
+  const tilt = Math.floor(scene.squirrels.indexOf(one) / 2) * KISS_TILT;
+  // Both turned *towards* the front by it, not both rotated the same way round
+  // the trunk. At the top of the climb the angle is exactly `±π/2 + tilt`, and
+  // `cos(π/2 + tilt)` is negative for any tilt at all — so rotating put one of
+  // them in the behind-the-stem pass for the whole kiss, hidden by a banana's
+  // 3.3-unit stem, which is the occlusion the narrowed orbit exists to prevent.
+  // Pulled in, `cos` is `sin(tilt)` for both and both stay in front.
+  one.side = Math.PI / 2 - tilt - climbed;
   two.side = -Math.PI / 2 + tilt - climbed;
   for (const squirrel of [one, two]) {
     squirrel.phase = 'kissing';

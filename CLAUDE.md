@@ -284,11 +284,16 @@ on a laptop at 1.25, and on a phone at 3 every edge in the scene was upscaled
 threefold. All three steps are load-bearing. The CSS size has to be set
 explicitly, because a canvas with no width or height in its style lays out at
 its _attribute_ size, which in device pixels is wider than the window it covers
-— and it is measured by `viewportSize`, not from `innerWidth`, since a classic
-scrollbar counts towards the latter but not towards the containing block of a
-`position: fixed` box: sized from it, `left`/`right`/`width` are all
+— and its **width** is measured by `viewportSize`, not from `innerWidth`, since
+a classic scrollbar counts towards the latter but not towards the containing
+block of a `position: fixed` box: sized from it, `left`/`right`/`width` are all
 constrained, CSS drops `right`, and the last strip of the scene is drawn off the
-side of the screen.
+side of the screen. The **height** stays `innerHeight`, deliberately and not for
+symmetry's sake: `clientHeight` is the layout viewport, pinned on a phone, so it
+does not move when the URL bar collapses — while the footer, measured with
+`getBoundingClientRect`, does. Taking it from there stood the scenery ~90px
+above the navigation bar, and permanently, since a height that cannot change
+also tells every resize guard that nothing has.
 
 **One definition of "the viewport", used by everything.** A background that
 fits to one measure and decides whether to re-fit by another never re-fits — or
@@ -303,11 +308,28 @@ only where `clientWidth <= innerWidth`, which is a platform's habit rather than
 a guarantee. The fallback to `innerWidth` is load-bearing rather than
 defensive — `clientWidth` is 0 wherever the document is not laid out, and a
 canvas sized to zero draws nothing and then agrees with every guard that nothing
-has changed.
-All three compare the window _and_ the ratio before refitting, because
+has changed. `test-setup.ts` therefore has the document follow the window, so
+the suite measures what a browser measures rather than that fallback.
+
+**A width the page can move must be held, not measured on demand.**
+`BackgroundStage` keeps its width in a variable the resize listener writes,
+because `useSyncExternalStore` re-reads the snapshot after every commit: reading
+`clientWidth` there closes a loop the stage drives itself — the spacer adds page
+height, that brings a scrollbar, the scrollbar takes width, the narrower width
+asks for a shorter band — which React answers by re-rendering until it throws
+`Maximum update depth exceeded`, blanking the app. Holding it also takes a
+forced layout flush off every render of the app, since `clientWidth` flushes
+where `innerWidth` did not. And because a scrollbar appearing fires **no**
+`resize` at all, the stage watches `document.documentElement` with a
+`ResizeObserver` as well as the window.
+All three compare the viewport _and_ the ratio before refitting, because
 reallocating the buffer zeroes it and mobile browsers ask dozens of times as the
-URL bar collapses — and Cello reads the window before measuring the footer,
-since `footerHeight` forces a reflow to answer a question that is usually "no". And the ratio is **capped at `MAX_PIXEL_RATIO`**: the buffer is the whole
+URL bar collapses — and all three keep the buffer and the scene as **two**
+decisions, since a change of monitor alters nothing about the stage: folding
+them into one early-out teleports the girl mid-stride, restarts every falling
+acorn and re-seeds the rain. Cello's comparison includes the footer's measured
+height, or a footer that lays out taller than the sign-in screen's fallback
+leaves the ground where it was for the session. And the ratio is **capped at `MAX_PIXEL_RATIO`**: the buffer is the whole
 viewport, repainted for as long as the app is open, so its cost grows with the
 square of the ratio while most of those pixels never hold anything — a scene
 only reaches its floor up the screen. Two takes the sharpness that matters at a
