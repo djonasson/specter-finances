@@ -301,6 +301,38 @@ describe('two decisions, not one', () => {
   });
 });
 
+describe('fitting the scene to the viewport', () => {
+  // `fitCanvas` sizes the canvas to the viewport, so a scene laid out from
+  // `innerWidth` is arranged for a stage a scrollbar wider than the one it is
+  // drawn on — and a guard comparing the two measures never fires at all.
+  it('lays the scene out in the viewport, not in the window', () => {
+    vi.stubGlobal('innerWidth', 1024);
+    vi.stubGlobal('innerHeight', 768);
+    vi.spyOn(document.documentElement, 'clientWidth', 'get').mockReturnValue(1009);
+    vi.spyOn(document.documentElement, 'clientHeight', 'get').mockReturnValue(768);
+
+    renderWithTheme(<CelloBackground />);
+
+    const size = vi.mocked(createScene).mock.calls[0][0];
+    expect(size.width).toBeCloseTo(1009 / sceneScale(1009), 5);
+  });
+
+  it('still leaves the scene alone when there is a scrollbar', () => {
+    vi.stubGlobal('innerWidth', 1024);
+    vi.stubGlobal('innerHeight', 768);
+    vi.spyOn(document.documentElement, 'clientWidth', 'get').mockReturnValue(1009);
+    vi.spyOn(document.documentElement, 'clientHeight', 'get').mockReturnValue(768);
+    renderWithTheme(<CelloBackground />);
+    const canvas = document.querySelector('canvas')!;
+    canvas.width = 1;
+
+    resizeTo(1024, 768);
+
+    expect(canvas.width).toBe(1);
+    expect(resizeScene).not.toHaveBeenCalled();
+  });
+});
+
 describe('letting go', () => {
   it('stops the frame loop and drops its listeners when it goes away', () => {
     const removeWindow = vi.spyOn(window, 'removeEventListener');

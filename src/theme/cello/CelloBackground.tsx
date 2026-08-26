@@ -1,6 +1,12 @@
 import { useEffect, useRef } from 'react';
 import { useComputedColorScheme } from '@mantine/core';
-import { canvasPixelRatio, fitCanvas, footerHeight, watchPixelRatio } from '../chrome';
+import {
+  canvasPixelRatio,
+  fitCanvas,
+  footerHeight,
+  viewportSize,
+  watchPixelRatio,
+} from '../chrome';
 import {
   createScene,
   resizeScene,
@@ -49,11 +55,15 @@ export function CelloBackground() {
      * landing back on the same line of the screen.
      */
     function currentSize() {
-      const scale = sceneScale(window.innerWidth);
-      const ground = window.innerHeight - footerHeight() - GROUND_ABOVE_FOOTER;
+      // The viewport, which is what the canvas covers. Laid out from
+      // `innerWidth` on a desktop with a scrollbar the scene is arranged for a
+      // stage a scrollbar wider than the one it is drawn on.
+      const seen = viewportSize();
+      const scale = sceneScale(seen.width);
+      const ground = seen.height - footerHeight() - GROUND_ABOVE_FOOTER;
       return {
-        width: window.innerWidth / scale,
-        height: window.innerHeight / scale,
+        width: seen.width / scale,
+        height: seen.height / scale,
         ground: ground / scale,
         scale,
       };
@@ -64,8 +74,7 @@ export function CelloBackground() {
     // context to match, so everything below still works in CSS pixels — and the
     // scene, in its own units on top of that.
     let { width: cssWidth, height: cssHeight, ratio } = fitCanvas(canvas, ctx);
-    let lastWindowWidth = window.innerWidth;
-    let lastWindowHeight = window.innerHeight;
+    let { width: lastWidth, height: lastHeight } = viewportSize();
     const scene = createScene(size, Math.random);
 
     /**
@@ -83,15 +92,10 @@ export function CelloBackground() {
       // reflow, and a mobile URL-bar collapse asks dozens of times a scroll for
       // an answer that has not changed.
       const nextRatio = canvasPixelRatio();
-      if (
-        window.innerWidth === lastWindowWidth &&
-        window.innerHeight === lastWindowHeight &&
-        nextRatio === ratio
-      ) {
-        return;
-      }
-      lastWindowWidth = window.innerWidth;
-      lastWindowHeight = window.innerHeight;
+      const seen = viewportSize();
+      if (seen.width === lastWidth && seen.height === lastHeight && nextRatio === ratio) return;
+      lastWidth = seen.width;
+      lastHeight = seen.height;
 
       const next = currentSize();
       // Mobile browsers fire `resize` repeatedly as the URL bar collapses, often

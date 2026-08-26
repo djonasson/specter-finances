@@ -79,13 +79,7 @@ export function fitCanvas(
   ctx: CanvasRenderingContext2D,
 ): { width: number; height: number; ratio: number } {
   const ratio = canvasPixelRatio();
-  // The viewport as CSS lays it out, not as `innerWidth` reports it: a classic
-  // scrollbar counts towards `innerWidth` but not towards the containing block
-  // of a `position: fixed` box. Setting `style.width` from it over-constrains
-  // `left`/`right`/`width`, CSS drops `right`, and the last strip of every
-  // background is drawn off the side of the screen.
-  const width = document.documentElement?.clientWidth || window.innerWidth;
-  const height = document.documentElement?.clientHeight || window.innerHeight;
+  const { width, height } = viewportSize();
   canvas.width = Math.round(width * ratio);
   canvas.height = Math.round(height * ratio);
   canvas.style.width = `${width}px`;
@@ -94,6 +88,27 @@ export function fitCanvas(
   // runs again on every resize.
   ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
   return { width, height, ratio };
+}
+
+/**
+ * How big the viewport is, as CSS lays it out.
+ *
+ * Not `innerWidth`: a classic scrollbar counts towards that but not towards the
+ * containing block of a `position: fixed` box, so a canvas sized from it has
+ * `left`, `right` and `width` all constrained, CSS drops `right`, and the last
+ * strip of the background is drawn off the side of the screen.
+ *
+ * One definition, because a background that fits to one measure and decides
+ * whether to re-fit by another never re-fits — or never stops. That is not
+ * hypothetical: the guards were comparing `innerWidth` against what `fitCanvas`
+ * had measured, so on any desktop with a scrollbar they never once fired.
+ */
+export function viewportSize(): { width: number; height: number } {
+  const box = document.documentElement;
+  return {
+    width: box?.clientWidth || window.innerWidth,
+    height: box?.clientHeight || window.innerHeight,
+  };
 }
 
 /**

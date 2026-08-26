@@ -126,6 +126,25 @@ describe('not refitting for nothing', () => {
     expect(canvas.width).toBe(1);
   });
 
+  // A classic scrollbar makes `innerWidth` and the viewport differ, and the
+  // guard has to compare the same measure the fit used or it never fires — so
+  // every one of the dozens of resize events a URL-bar collapse sends
+  // reallocates the buffer, which is the whole thing the guard is for.
+  it('still leaves the buffer alone when there is a scrollbar', () => {
+    vi.stubGlobal('devicePixelRatio', 1);
+    vi.stubGlobal('innerWidth', 1024);
+    vi.stubGlobal('innerHeight', 768);
+    vi.spyOn(document.documentElement, 'clientWidth', 'get').mockReturnValue(1009);
+    vi.spyOn(document.documentElement, 'clientHeight', 'get').mockReturnValue(768);
+    render(<MatrixBackground speed={5} />);
+    const canvas = document.querySelector('canvas')!;
+    canvas.width = 1;
+
+    resizeTo(1024, 768);
+
+    expect(canvas.width).toBe(1);
+  });
+
   it('does refit when the window really did change', () => {
     // Sized explicitly first. jsdom never restores `innerWidth`, so an earlier
     // test in this file leaves the window at 400x700 — and then this one's own
