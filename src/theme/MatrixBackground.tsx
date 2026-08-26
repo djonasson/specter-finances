@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { canvasPixelRatio as pixelRatio, fitCanvas } from './chrome';
+import { canvasPixelRatio as pixelRatio, fitCanvas, watchPixelRatio } from './chrome';
 
 export function MatrixBackground({ speed }: { speed: number }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -59,10 +59,14 @@ export function MatrixBackground({ speed }: { speed: number }) {
     resize();
     animationId = requestAnimationFrame(draw);
     window.addEventListener('resize', resize);
+    // A change of screen is not a resize event, and without this the guard's
+    // own `ratio` term could never fire.
+    const stopWatchingRatio = watchPixelRatio(resize);
 
     return () => {
       cancelAnimationFrame(animationId);
       window.removeEventListener('resize', resize);
+      stopWatchingRatio();
     };
   }, [speed]);
 

@@ -2,6 +2,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, cleanup, render } from '@testing-library/react';
 import { resizeTo } from '../test-utils';
+import { canvasPixelRatio } from './chrome';
 import { MatrixBackground } from './MatrixBackground';
 
 // Rain, and nothing else: there is no state here worth asserting on beyond
@@ -46,10 +47,12 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-/** What `fitCanvas` will be drawing at, cap included. */
-function ratio() {
-  return Math.min(window.devicePixelRatio || 1, 2);
-}
+/**
+ * What `fitCanvas` will be drawing at, cap included — asked of the helper that
+ * owns it. Re-derived here with the cap written out, raising `MAX_PIXEL_RATIO`
+ * would leave every assertion below comparing against the old one, and passing.
+ */
+const ratio = canvasPixelRatio;
 
 function runFrame(at = 1000) {
   const frame = vi.mocked(requestAnimationFrame).mock.calls.at(-1)![0];
@@ -136,6 +139,29 @@ describe('not refitting for nothing', () => {
     resizeTo(400, 700);
 
     expect(document.querySelector('canvas')!.width).toBe(400 * ratio());
+  });
+});
+
+describe('noticing a change of screen', () => {
+  // A change of monitor is not a resize event, so watching the window alone
+  // leaves the launch screen's buffer in place for the life of the tab.
+  it('refits when the ratio changes without the window changing', () => {
+    const listeners: Array<() => void> = [];
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: true,
+      media: query,
+      addEventListener: (_: string, fn: () => void) => listeners.push(fn),
+      removeEventListener: () => {},
+    }));
+    vi.stubGlobal('devicePixelRatio', 1);
+    render(<MatrixBackground speed={5} />);
+    const canvas = document.querySelector('canvas')!;
+    expect(canvas.width).toBe(window.innerWidth);
+
+    vi.stubGlobal('devicePixelRatio', 2);
+    act(() => listeners[0]());
+
+    expect(canvas.width).toBe(window.innerWidth * 2);
   });
 });
 

@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useComputedColorScheme } from '@mantine/core';
-import { fitCanvas } from './chrome';
+import { canvasPixelRatio, fitCanvas, watchPixelRatio } from './chrome';
 
 interface Acorn {
   x: number;
@@ -750,6 +750,7 @@ export function SquirrelBackground() {
     // canvas *buffer* behind it is denser, so the two cannot be the same number.
     let width = 0;
     let height = 0;
+    let ratio = 0;
     let acorns: Acorn[] = [];
     const iceBlocks: IceBlock[] = [];
     const iceShards: IceShard[] = [];
@@ -846,11 +847,22 @@ export function SquirrelBackground() {
     }
 
     function resize() {
+      // Nothing to do if nothing changed. Refitting reallocates and zeroes a
+      // buffer four times the old size, teleports the squirrel to the middle of
+      // the screen and restarts every falling acorn — and a mobile URL-bar
+      // collapse fires `resize` dozens of times a scroll. The other two
+      // backgrounds have carried this guard since the buffer grew.
+      if (
+        window.innerWidth === width &&
+        window.innerHeight === height &&
+        ratio === canvasPixelRatio()
+      )
+        return;
       // The buffer goes in the screen's own pixels and the context is scaled to
       // match, so everything below still works in CSS pixels. Sized in CSS
       // pixels the whole scene was drawn at a fraction of the screen's
       // resolution and stretched back up by the display.
-      ({ width, height } = fitCanvas(canvas, ctx));
+      ({ width, height, ratio } = fitCanvas(canvas, ctx));
       squirrel.x = width / 2;
       squirrel.y = height - getFooterHeight() - 30;
       acorns = Array.from({ length: 12 }, spawnAcorn);
@@ -1293,11 +1305,13 @@ export function SquirrelBackground() {
     animationId = requestAnimationFrame(draw);
     window.addEventListener('resize', resize);
     document.addEventListener('click', handleClick);
+    const stopWatchingRatio = watchPixelRatio(resize);
 
     return () => {
       cancelAnimationFrame(animationId);
       window.removeEventListener('resize', resize);
       document.removeEventListener('click', handleClick);
+      stopWatchingRatio();
     };
   }, [isDark]);
 

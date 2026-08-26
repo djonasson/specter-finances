@@ -79,8 +79,13 @@ export function fitCanvas(
   ctx: CanvasRenderingContext2D,
 ): { width: number; height: number; ratio: number } {
   const ratio = canvasPixelRatio();
-  const width = window.innerWidth;
-  const height = window.innerHeight;
+  // The viewport as CSS lays it out, not as `innerWidth` reports it: a classic
+  // scrollbar counts towards `innerWidth` but not towards the containing block
+  // of a `position: fixed` box. Setting `style.width` from it over-constrains
+  // `left`/`right`/`width`, CSS drops `right`, and the last strip of every
+  // background is drawn off the side of the screen.
+  const width = document.documentElement?.clientWidth || window.innerWidth;
+  const height = document.documentElement?.clientHeight || window.innerHeight;
   canvas.width = Math.round(width * ratio);
   canvas.height = Math.round(height * ratio);
   canvas.style.width = `${width}px`;
@@ -89,4 +94,49 @@ export function fitCanvas(
   // runs again on every resize.
   ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
   return { width, height, ratio };
+}
+
+/**
+ * Call `onChange` whenever the screen's pixel density changes, and hand back the
+ * teardown.
+ *
+ * A ratio change is **not** a resize event: moving a window between monitors, or
+ * changing the display scale, can leave `innerWidth` and `innerHeight` exactly
+ * where they were, and `resize` is not specified to fire. A background watching
+ * the window alone keeps the launch screen's buffer for as long as the tab
+ * lives — which for an installed PWA is days — and in the 1x-to-2x direction
+ * that is the very softness `fitCanvas` exists to remove.
+ *
+ * It lives here rather than in a scene for the same reason `fitCanvas` does: all
+ * three canvas backgrounds need it, and one that forgot would simply be blurry
+ * on a second monitor, with nothing failing anywhere.
+ */
+export function watchPixelRatio(onChange: () => void): () => void {
+  let query: MediaQueryList | null = null;
+
+  const fired = () => {
+    onChange();
+    arm();
+  };
+
+  function arm() {
+    query?.removeEventListener('change', fired);
+    // Guarded on the listener, not only on `matchMedia`. Safari 13 and iOS 13
+    // return a real MediaQueryList carrying `addListener` and no
+    // `addEventListener`, and the throw would land in an effect body before its
+    // cleanup closure exists — React unmounts the whole app over a background.
+    const next = window.matchMedia?.(`(resolution: ${window.devicePixelRatio || 1}dppx)`);
+    // And on `matches`: a query born false can never transition to false, so it
+    // would never fire and the watch would be silently dead for the session.
+    // Fractional display scaling reports ratios like 1.100000023841858, whose
+    // serialised dppx need not compare equal to itself.
+    query = typeof next?.addEventListener === 'function' && next.matches ? next : null;
+    query?.addEventListener('change', fired);
+  }
+
+  arm();
+  return () => {
+    query?.removeEventListener('change', fired);
+    query = null;
+  };
 }

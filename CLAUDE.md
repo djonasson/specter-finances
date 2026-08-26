@@ -275,18 +275,24 @@ Cello's left is a park, a school and a light beige Fiat 500 — which she drives
 
 **Canvas backgrounds are sized in device pixels, and that is separate from the
 scene's own scale.** `fitCanvas` in `theme/chrome.ts` is the single place it
-happens: it puts the backing store at `innerWidth x devicePixelRatio`, sets the
-element's _CSS_ size explicitly, scales the context by the ratio, and hands back
-the size in CSS pixels — after which a background works in CSS pixels and knows
+happens: it puts the backing store at the viewport's size times the ratio,
+sets the element's _CSS_ size explicitly, scales the context by the ratio, and
+hands back the size in CSS pixels — after which a background works in CSS pixels and knows
 nothing about any of it. Sized in CSS pixels alone the scene was drawn at a
 fraction of the screen's resolution and stretched back up by the display: soft
 on a laptop at 1.25, and on a phone at 3 every edge in the scene was upscaled
 threefold. All three steps are load-bearing. The CSS size has to be set
 explicitly, because a canvas with no width or height in its style lays out at
-its _attribute_ size, which in device pixels is wider than the window it covers.
-`resize` compares the window _and_ the ratio before refitting, because
+its _attribute_ size, which in device pixels is wider than the window it covers
+— and it is measured from `documentElement.clientWidth`, not `innerWidth`, since
+a classic scrollbar counts towards the latter but not towards the containing
+block of a `position: fixed` box: sized from it, `left`/`right`/`width` are all
+constrained, CSS drops `right`, and the last strip of the scene is drawn off the
+side of the screen.
+All three compare the window _and_ the ratio before refitting, because
 reallocating the buffer zeroes it and mobile browsers ask dozens of times as the
-URL bar collapses. And the ratio is **capped at `MAX_PIXEL_RATIO`**: the buffer is the whole
+URL bar collapses — and Cello reads the window before measuring the footer,
+since `footerHeight` forces a reflow to answer a question that is usually "no". And the ratio is **capped at `MAX_PIXEL_RATIO`**: the buffer is the whole
 viewport, repainted for as long as the app is open, so its cost grows with the
 square of the ratio while most of those pixels never hold anything — a scene
 only reaches its floor up the screen. Two takes the sharpness that matters at a
@@ -303,11 +309,17 @@ is what the whole file already assumed they were.
 
 A ratio change is **not** a resize event: moving a window between monitors can
 leave `innerWidth` and `innerHeight` untouched, and `resize` is not specified to
-fire. `CelloBackground` watches `matchMedia('(resolution: Ndppx)')` and re-arms it at
-the new ratio — guarded on the _listener_ rather than on `matchMedia`, since
-Safari 13 returns a real `MediaQueryList` carrying only `addListener`, and the
-throw lands inside the effect before the cleanup closure exists, so React
-unmounts the whole app to a blank screen over a background. Its `resize` also keeps the buffer and the _scene_ as two
+fire. `watchPixelRatio`, beside `fitCanvas` and used by all three, watches
+`matchMedia('(resolution: Ndppx)')` and re-arms at the new ratio. Left in one
+scene, the other two kept the launch screen's buffer for the life of the tab —
+which for an installed PWA is days. Three guards, all load-bearing: on the
+_listener_ rather than on `matchMedia`, since Safari 13 returns a real
+`MediaQueryList` carrying only `addListener` and the throw lands inside the
+effect before its cleanup closure exists, unmounting the whole app to a blank
+screen over a background; on `matches`, because a query born false can never
+_change_ to false and would be silently dead for the session, which fractional
+display scaling (ratios like 1.100000023841858) reaches; and re-arming on every
+change, or one move between monitors would be all it ever noticed. Its `resize` also keeps the buffer and the _scene_ as two
 decisions, because `resizeScene` is not a no-op on unchanged input — it puts the
 girl back at the nearer end of her walk — so folding the ratio into one
 early-out teleported her mid-stride for a change of monitor. Clicks are still
@@ -460,26 +472,34 @@ The arrival lands exactly where the flight was drawn heading. **And `up` is not
 only a height** — the spiral is `side + up * SPIRAL_TURNS` turns — so rescaling
 it on landing also spun the squirrel round the trunk, which is the same jerk
 moved from the height into the width. The difference goes into `side`, where the
-phase lives, so it lands on the side it flew in on. `side` also has a `homeSide`
-to go back to, because a kiss sets both squirrels' sides to face each other and
-does so with the _same two angles_ whichever pair is kissing: left there, one
-kiss each put the two colonies back in lockstep.
+phase lives, so it lands on the side it flew in on. A kiss **borrows nothing it has to give
+back**: it faces a pair at each other with two fixed angles, and the second
+colony's are tilted a sixth of a turn (`KISS_TILT`) so that the four do not come
+out of it holding two values between them — `sin` and `cos` cannot tell 90
+degrees from 90 degrees, and both colonies climbing down in step is the "one
+squirrel with a shadow" the seeding spread exists to prevent. Restoring a stored
+side on release instead moved the spiral 17.4 units in a single frame, twice the
+worst jerk anywhere else in the scene, and popped the squirrel from in front of
+the trunk to behind it in half of all releases.
 
 **How wide a circle it goes round is the tree's, not always the park's**
-(`treeRadius`). A park tree has a crown to orbit inside; a banana has a
-pseudostem a few units across, so a squirrel swung at the park's radius hung in
-open air beside it — and `squirrelBehind` then hid it behind a stem a fifth as
+(`treeRadius`), and for a banana it is **the stem's own half-width at the top**
+(`BANANA_STEM_TOP`, which `draw.ts` draws it at) rather than a number picked
+beside it. A park tree has a crown to orbit inside; a banana has a pseudostem a
+few units across, so a squirrel swung at the park's radius hung in open air
+beside it — and `squirrelBehind` then hid it behind a stem a fifth as
 wide for half of every turn, which is the blinking the two-pass draw exists to
 stop, in the stand it was added for. Finding
 themselves together at the top of one, they sometimes kiss, with hearts over
 them — decided in `runSquirrelPair` after the per-squirrel loop, because it takes
 two and a loop that sees one at a time cannot settle it. `up` runs 0 at the foot
-to 1 at the top of the crown, so a squirrel's height is its tree's, and
-The banana plants' positions are derived from `BANANA_TRUNKS`, one place per
-trunk, so the two lists cannot drift: a third plant added to the layout alone
-gave `treeTop` an undefined height, which became a NaN `up` that no clamp
-recovers from — the squirrel stops being drawn for the rest of the session with
-nothing thrown anywhere. `SQUIRREL_REACH` is taken from **the tallest tree any
+to 1 at the top of the crown, so a squirrel's height is its tree's: it cannot
+climb out of the band the app reserved by climbing higher than the tree it is
+in. The plants' positions are **spaced by how many there are** rather than read
+off a second hand-written list, because one entry short makes `loungerX +
+undefined` a NaN, and a NaN `up` is one no clamp recovers from — the squirrel
+stops being drawn for the rest of the session with nothing thrown anywhere.
+`BANANA_GAP` is that spacing, and `crossArc` measures a hop against it. `SQUIRREL_REACH` is taken from **the tallest tree any
 of them can climb**, not from the park's — measured off the park alone it was correct only because the
 bananas happen to be shorter, and raising `BANANA_TRUNK` would have sent them
 climbing over the user's own list with nothing failing. It stays below

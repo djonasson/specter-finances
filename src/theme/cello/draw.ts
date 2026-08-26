@@ -21,6 +21,8 @@ import {
   RING_LIFE,
   bananaLean,
   bananaLeaves,
+  BANANA_STEM_FOOT,
+  BANANA_STEM_TOP,
   BANANA_TRUNKS,
   carryingPizza,
   leafSway,
@@ -416,8 +418,9 @@ function drawBananaPlant(
   // A banana's stem is a fat green pseudostem, not a woody trunk: wide at the
   // foot, barely tapering, with a papery dried sheath low down, and every leaf
   // stalk leaving from the very top of it.
-  const footHalf = 4.6;
-  const topHalf = 3.3;
+  // In `scene.ts`, because the squirrels' orbit is derived from them.
+  const footHalf = BANANA_STEM_FOOT;
+  const topHalf = BANANA_STEM_TOP;
   ctx.fillStyle = p.stem;
   ctx.beginPath();
   ctx.moveTo(x - footHalf, base);
@@ -728,7 +731,11 @@ function drawSchool(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette) {
 }
 
 /** Where the traced wells put the wheels, and how big they are inside them. */
-const CAR_WHEEL_AT = [0.186, 0.858];
+// Off the outline's own contact patches, rather than transcribed beside it: a
+// re-traced car that moved a well would otherwise leave the tyre drawn beside
+// the notch cut for it, and this file is exempt from the testing rule, so
+// nothing would catch it.
+const CAR_WHEEL_AT = CAR_OUTLINE.filter(([, fy]) => fy === 0).map(([fx]) => fx);
 const CAR_WHEEL_R = 0.085;
 
 function drawCar(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette, car: Car) {

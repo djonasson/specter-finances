@@ -106,7 +106,9 @@ const KISS_CHANCE = 0.04;
 const KISS_FRAMES = 150;
 const KISS_HEART_INTERVAL = 22;
 /** How far apart they sit while they are at it. */
-const KISS_APART = 4.5;
+export const KISS_APART = 4.5;
+/** How far the second colony's kiss is turned round the trunk from the first's. */
+const KISS_TILT = Math.PI / 6;
 /**
  * How far round the tree a full climb carries it, and how wide that circle is at
  * the foot of the trunk and up in the crown.
@@ -117,12 +119,27 @@ const KISS_APART = 4.5;
  */
 const SPIRAL_TURNS = 1.7;
 const TRUNK_RADIUS = 4.5;
+/**
+ * Where the pseudostem is at its widest and its narrowest, at the foot and at
+ * the crown.
+ *
+ * In `scene.ts` rather than in `draw.ts` because the squirrels' orbit is derived
+ * from it — a stem drawn one width and circled at another is a squirrel hanging
+ * in open air beside the plant, which is what a park crown's radius did here.
+ */
+export const BANANA_STEM_FOOT = 4.6;
+export const BANANA_STEM_TOP = 3.3;
 const SPIRAL_CROWN_RADIUS = 13.5;
 /**
- * And round a banana, which has a stem rather than a crown — near enough its own
- * width, so the squirrel is on the plant rather than beside it.
+ * And round a banana, which has a stem rather than a crown.
+ *
+ * Taken from the stem's own half-width at the top, where a squirrel sits between
+ * climbs and where every kiss happens, so its body is against the plant. Picked
+ * by hand at 5.5 it stood clear of a 3.3-wide stem, and over the half of the
+ * turn that goes behind the plant it was only partly hidden by it — the
+ * blinking this radius exists to stop.
  */
-const BANANA_SPIRAL_RADIUS = 5.5;
+const BANANA_SPIRAL_RADIUS = BANANA_STEM_TOP;
 /** Where round the tree each of them starts, so two in one tree are not one. */
 const SQUIRREL_SIDE = Math.PI;
 
@@ -163,8 +180,8 @@ export const BANANA_TRUNK = 62;
  */
 export const BANANA_TRUNKS = [BANANA_TRUNK, Math.round(BANANA_TRUNK * 0.74)];
 export const BANANA_SPREAD = 30;
-/** Where each plant stands relative to the lounger — one per trunk. */
-const BANANA_PLACES = [-BANANA_SPREAD, BANANA_SPREAD * 0.8];
+/** How far apart the plants stand, which is what `crossArc` measures a hop by. */
+export const BANANA_GAP = BANANA_SPREAD * 1.8;
 export const LOUNGER_LENGTH = 44;
 export const LOUNGER_BACK_HEIGHT = 21;
 /** How far into the home end the lounger stands. */
@@ -445,6 +462,14 @@ const MIN_DRIVE = 120;
  * the points whose height is the full `CAR_ROOF_HEIGHT`.
  */
 const ROOF_RUN = CAR_OUTLINE.filter(([, fy]) => fy === 1).map(([fx]) => fx);
+if (ROOF_RUN.length !== 2) {
+  // Two points, or the perch is not the middle of anything. An outline re-traced
+  // with 0.999 for the roof leaves this empty, `Math.min` of nothing is
+  // Infinity, and the bird is placed at NaN — which `perched` writes every
+  // frame, so he leaves the scene the moment she first boards and never
+  // returns, with nothing thrown.
+  throw new Error(`CAR_OUTLINE needs exactly two roof points, found ${ROOF_RUN.length}`);
+}
 /**
  * How far back from the middle of the car his feet go — the middle of that flat.
  *
@@ -664,15 +689,6 @@ export interface Squirrel {
   /** The tree it is crossing to, and which side of the trunk it sits on. */
   towards: number;
   side: number;
-  /**
-   * The side it was born on, to go back to after a kiss.
-   *
-   * A kiss sets `side` to face the other one, and the same two values whichever
-   * pair is kissing — so without somewhere to put the original, one kiss each
-   * left squirrels 0 and 2 holding identical phase, which is the lockstep the
-   * per-colony offset exists to prevent.
-   */
-  homeSide: number;
 }
 
 export type BirdPhase =
@@ -950,11 +966,13 @@ function layoutFor(width: number): Layout {
     carSchoolX: parkable ? schoolSpotX : null,
     carHomeX: parkable ? homeSpotX : null,
     loungerX,
-    // One entry per trunk, so the two lists cannot drift: a third plant added
-    // to the layout alone gave `treeTop` an undefined height, which became a
-    // NaN `up` that no clamp recovers from — the squirrel simply stops being
-    // drawn, for the rest of the session, with nothing thrown anywhere.
-    bananaXs: BANANA_TRUNKS.map((_, plant) => loungerX + BANANA_PLACES[plant]),
+    // Spaced by how many there are, not read off a second hand-written list:
+    // one entry short and `loungerX + undefined` is NaN, which propagates into
+    // `up` where no clamp recovers it, and the squirrel simply stops being
+    // drawn for the rest of the session with nothing thrown anywhere.
+    bananaXs: BANANA_TRUNKS.map(
+      (_, plant) => loungerX + (plant - (BANANA_TRUNKS.length - 1) / 2) * BANANA_GAP,
+    ),
     girlLeft: GIRL_MARGIN,
     girlRight,
   };
@@ -1056,7 +1074,7 @@ function crossArc(scene: Scene, squirrel: Squirrel): number {
   // Against its own stand's spacing. Measured against the park's, a hop between
   // the bananas — which stand further apart than the park's trees — read as
   // further than it is and arced higher than the plants are tall.
-  const spacing = inPark(scene, squirrel.tree) ? TREE_GAP : BANANA_SPREAD * 1.8;
+  const spacing = inPark(scene, squirrel.tree) ? TREE_GAP : BANANA_GAP;
   return CROSS_ARC * Math.min(CROSS_ARC_MAX, Math.max(1, gap / spacing));
 }
 
@@ -1187,7 +1205,6 @@ function runSquirrels(scene: Scene, rng: Rng): void {
         const landed = arrivalUp(scene, squirrel);
         const turn = (squirrel.up - landed) * SPIRAL_TURNS * Math.PI * 2;
         squirrel.side += turn;
-        squirrel.homeSide += turn;
         squirrel.up = landed;
         squirrel.tree = squirrel.towards;
         squirrel.phase = 'climbing';
@@ -1253,14 +1270,15 @@ function runSquirrelPair(scene: Scene, rng: Rng, one: Squirrel, two: Squirrel): 
       });
     }
     if (one.timer > 0) return;
-    // Down the tree again, and back to their own business — on their own side
-    // of it. The kiss writes the same two angles into whichever pair is at it,
-    // so leaving them there had both colonies climbing in step once each had
-    // kissed once.
+    // Down the tree again, and back to their own business — from exactly where
+    // the kiss left them. Putting the side they were born on back here jumped
+    // the spiral in one frame: 17.4 units, twice the worst jerk this scene has
+    // anywhere else, with the squirrel popping from in front of the trunk to
+    // behind it in half of all releases. What the restore was for is now in the
+    // kiss angles themselves, which cost nothing to hold.
     for (const squirrel of [one, two]) {
       squirrel.phase = 'climbing';
       squirrel.dir = -1;
-      squirrel.side = squirrel.homeSide;
     }
     return;
   }
@@ -1273,9 +1291,16 @@ function runSquirrelPair(scene: Scene, rng: Rng, one: Squirrel, two: Squirrel): 
   // Side by side at the top, facing one another. The spiral angle is set rather
   // than left where the climb finished, or they would be kissing whichever way
   // round the trunk they each happened to arrive.
+  //
+  // Tilted by the colony, so the two pairs do not come out of a kiss holding
+  // the same two angles: `sin`/`cos` cannot tell 90 degrees from 90 degrees,
+  // and both colonies climbing down in step is the "one squirrel with a
+  // shadow" the seeding spread exists to prevent. A sixth of a turn is enough
+  // to separate all four and still leaves them either side of the trunk.
   const climbed = SPIRAL_TURNS * Math.PI * 2;
-  one.side = Math.PI / 2 - climbed;
-  two.side = -Math.PI / 2 - climbed;
+  const tilt = inPark(scene, one.tree) ? 0 : KISS_TILT;
+  one.side = Math.PI / 2 + tilt - climbed;
+  two.side = -Math.PI / 2 + tilt - climbed;
   for (const squirrel of [one, two]) {
     squirrel.phase = 'kissing';
     squirrel.timer = KISS_FRAMES;
@@ -1554,7 +1579,6 @@ export function createScene(size: SceneSize, rng: Rng): Scene {
         phase: 'climbing' as SquirrelPhase,
         timer: 0,
         side: born,
-        homeSide: born,
       };
     }),
     schoolSmoke: [],

@@ -204,6 +204,44 @@ describe("drawing at the screen's own resolution", () => {
   });
 });
 
+describe('not refitting for nothing', () => {
+  // Refitting reallocates and zeroes a buffer four times the old size, puts the
+  // squirrel back in the middle of the screen and restarts every falling acorn.
+  // A mobile URL-bar collapse fires `resize` dozens of times a scroll.
+  it('leaves the scene alone when nothing about the window changed', () => {
+    renderWithTheme(<SquirrelBackground />);
+    const canvas = document.querySelector('canvas')!;
+    canvas.width = 1;
+
+    resizeTo(window.innerWidth, window.innerHeight);
+
+    expect(canvas.width).toBe(1);
+  });
+
+  it('refits when the ratio changes without the window changing', () => {
+    // Only the resolution query: Mantine asks the same API about the colour
+    // scheme, so the first listener registered is not necessarily this one's.
+    const listeners: Array<() => void> = [];
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: true,
+      media: query,
+      addEventListener: (_: string, fn: () => void) => {
+        if (query.includes('resolution')) listeners.push(fn);
+      },
+      removeEventListener: () => {},
+    }));
+    vi.stubGlobal('devicePixelRatio', 1);
+    renderWithTheme(<SquirrelBackground />);
+    const canvas = document.querySelector('canvas')!;
+    expect(canvas.width).toBe(window.innerWidth);
+
+    vi.stubGlobal('devicePixelRatio', 2);
+    act(() => listeners[0]());
+
+    expect(canvas.width).toBe(window.innerWidth * 2);
+  });
+});
+
 describe('letting go', () => {
   it('stops the frame loop and drops its listeners when it goes away', () => {
     const removeWindow = vi.spyOn(window, 'removeEventListener');

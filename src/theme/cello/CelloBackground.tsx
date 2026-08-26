@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useComputedColorScheme } from '@mantine/core';
-import { canvasPixelRatio, fitCanvas, footerHeight } from '../chrome';
+import { canvasPixelRatio, fitCanvas, footerHeight, watchPixelRatio } from '../chrome';
 import {
   createScene,
   resizeScene,
@@ -64,6 +64,8 @@ export function CelloBackground() {
     // context to match, so everything below still works in CSS pixels — and the
     // scene, in its own units on top of that.
     let { width: cssWidth, height: cssHeight, ratio } = fitCanvas(canvas, ctx);
+    let lastWindowWidth = window.innerWidth;
+    let lastWindowHeight = window.innerHeight;
     const scene = createScene(size, Math.random);
 
     /**
@@ -77,8 +79,21 @@ export function CelloBackground() {
      * altered nothing about the scene she stands in.
      */
     function resize() {
-      const next = currentSize();
+      // The free reads first. `currentSize` measures the footer, which forces a
+      // reflow, and a mobile URL-bar collapse asks dozens of times a scroll for
+      // an answer that has not changed.
       const nextRatio = canvasPixelRatio();
+      if (
+        window.innerWidth === lastWindowWidth &&
+        window.innerHeight === lastWindowHeight &&
+        nextRatio === ratio
+      ) {
+        return;
+      }
+      lastWindowWidth = window.innerWidth;
+      lastWindowHeight = window.innerHeight;
+
+      const next = currentSize();
       // Mobile browsers fire `resize` repeatedly as the URL bar collapses, often
       // with the same numbers. Reassigning the canvas size reallocates and
       // clears its backing store, so doing nothing is much cheaper than doing it
@@ -93,36 +108,7 @@ export function CelloBackground() {
       resizeScene(scene, next);
     }
 
-    /**
-     * A ratio change is not a resize event.
-     *
-     * Moving a window between monitors, or changing the display scale, can
-     * leave `innerWidth` and `innerHeight` exactly where they were — and
-     * `resize` is not specified to fire for it. Watching the window alone left
-     * the old screen's buffer in place for the rest of the session, which for
-     * an installed PWA left open for days is effectively forever, and in the
-     * 1x-to-2x direction that is the very softness this exists to remove.
-     * `matchMedia` on the current resolution does fire, and is re-armed at the
-     * new one each time it does.
-     */
-    let ratioWatch: MediaQueryList | null = null;
-    function watchPixelRatio() {
-      ratioWatch?.removeEventListener('change', onRatioChange);
-      // Guarded on the listener, not only on `matchMedia`. Safari 13 and iOS 13
-      // return a real MediaQueryList that has `addListener` and no
-      // `addEventListener`, so the optional call still threw — synchronously,
-      // inside the effect, before the frame loop started and before the cleanup
-      // closure existed. React does not catch that: the whole app tree unmounts
-      // to a blank screen over a background nobody asked to be exact.
-      const query = window.matchMedia?.(`(resolution: ${window.devicePixelRatio || 1}dppx)`);
-      ratioWatch = typeof query?.addEventListener === 'function' ? query : null;
-      ratioWatch?.addEventListener('change', onRatioChange);
-    }
-    function onRatioChange() {
-      resize();
-      watchPixelRatio();
-    }
-    watchPixelRatio();
+    const stopWatchingRatio = watchPixelRatio(resize);
 
     function draw(time: number) {
       animationId = requestAnimationFrame(draw);
@@ -151,7 +137,7 @@ export function CelloBackground() {
       cancelAnimationFrame(animationId);
       window.removeEventListener('resize', resize);
       document.removeEventListener('click', handleClick);
-      ratioWatch?.removeEventListener('change', onRatioChange);
+      stopWatchingRatio();
     };
   }, []);
 
