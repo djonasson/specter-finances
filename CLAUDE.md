@@ -437,15 +437,22 @@ of the trunk, and `inPark` says which trees. Both matter. Split only by side and
 run once around the park, a banana squirrel was painted before its own plant on
 both passes, and the half of the spiral that should have gone behind the stem
 read as a squirrel blinking out instead. They sit in a crown a while, and jump
-to **any** tree _in their own stand_ within `CROSS_REACH`, in an arc scaled to
-the distance, often aimed at wherever another one is (`MEET_CHANCE`). The stand
-is checked first and it is the load-bearing half: distance alone looks like it
-separates the colonies and does at a desktop width, but the scene squeezes as
-the window narrows and below ~385px the nearest park tree and the nearest banana
-come within one jump of each other. Squirrels then emigrated within seconds,
-a pair ended up split across the two stands — and since kissing needs both in
-one tree and pairs are fixed at creation, neither pair could kiss again — while
-the jump itself flew through the schoolhouse. `inPark` cannot be squeezed. Crossing, a squirrel is drawn moving to the **height it will land at** rather
+to **any other tree in their own stand**, in an arc scaled to the distance and
+normalised by _that stand's_ spacing, often aimed at wherever another one is
+(`MEET_CHANCE`). The stand is the whole rule. It used to be a distance —
+`CROSS_REACH`, 150 units — which looks like it separates the colonies and does
+at a desktop width, but the scene squeezes as the window narrows and below
+~385px the nearest park tree and the nearest banana came within one jump of each
+other. Squirrels emigrated within seconds, a pair ended up split across the two
+stands — and since kissing needs both in one tree and pairs are fixed at
+creation, neither pair could kiss again — while the jump itself flew through the
+schoolhouse. `inPark` cannot be squeezed. The distance is **gone** rather than
+kept alongside: within a stand the widest gap is 88 units of park or 54 of
+banana, so it could never once have excluded anything, and a predicate that
+cannot fire is a trap — widen the park past it and a squirrel would simply stop
+crossing, with nothing to notice.
+
+Crossing, a squirrel is drawn moving to the **height it will land at** rather
 than holding the height it left and dropping the difference on arrival: the
 bananas are 62 and 46, so carrying the height across and clamping it on the last
 frame swallowed 16 units at once, against the two a frame the hop itself moves.

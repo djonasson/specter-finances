@@ -134,19 +134,34 @@ describe('covering the window', () => {
     expect(acrossTheBottom).toBe(true);
   });
 
-  // Its position is compared against a click's `clientX`, so a squirrel drawn
-  // anywhere but the window's own coordinates is a squirrel nobody can rescue.
-  it('keeps everything it draws inside the window', () => {
-    renderWithTheme(<SquirrelBackground />);
-    runFrames(40);
+  // The whole scene, drawn twice, on screens of different density.
+  //
+  // This is the regression the coordinate change exists to prevent: the scene
+  // works in CSS pixels and its click handler compares the squirrel's own `x`
+  // against a click's `clientX`, so reading the *buffer* as scene coordinates
+  // puts him at twice his position and makes him impossible to rescue. Written
+  // as bounds it could not catch that — things are legitimately thrown off
+  // screen here, so any honest bound has a window of slack in it and a doubled
+  // coordinate sits comfortably inside. Two renders have no slack at all: the
+  // buffer may change, what is drawn on it may not.
+  it('draws the same scene whatever the screen is made of', () => {
+    const drawnAt = (ratio: number) => {
+      vi.stubGlobal('devicePixelRatio', ratio);
+      // The same scene both times: this one spawns from `Math.random`.
+      vi.spyOn(Math, 'random').mockReturnValue(0.5);
+      renderWithTheme(<SquirrelBackground />);
+      runFrames(30);
+      const placed = translations();
+      cleanup();
+      ctx.calls.length = 0;
+      return placed;
+    };
 
-    const placed = translations();
-    expect(placed.length).toBeGreaterThan(0);
-    for (const [x, y] of placed) {
-      expect(x).toBeGreaterThanOrEqual(-window.innerWidth);
-      expect(x).toBeLessThanOrEqual(window.innerWidth * 2);
-      expect(y).toBeLessThanOrEqual(window.innerHeight * 2);
-    }
+    const dense = drawnAt(2);
+    const plain = drawnAt(1);
+
+    expect(plain.length).toBeGreaterThan(0);
+    expect(dense).toEqual(plain);
   });
 
   it('stands the squirrel in the middle of a window that changed size', () => {

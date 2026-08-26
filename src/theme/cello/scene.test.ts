@@ -665,7 +665,9 @@ describe('the left of the scene', () => {
   // reading a tree one at a time cannot drift from reading them all at once.
   it('reads one tree the same way it reads the whole park', () => {
     const s = scene();
-    expect(treeCount(s)).toBe(s.layout.treeXs.length + s.layout.bananaXs.length);
+    // Against the counts the layout is built from, not against the sum of the
+    // two arrays `treeCount` itself adds up.
+    expect(treeCount(s)).toBe(TREE_COUNT + BANANA_TRUNKS.length);
     for (let at = 0; at < treeCount(s); at++) {
       const own = inPark(s, at) ? s.layout.treeXs : s.layout.bananaXs;
       const within = inPark(s, at) ? at : at - s.layout.treeXs.length;
@@ -1922,6 +1924,28 @@ describe('how her day divides', () => {
 // life of their own — nothing else in the scene knows about them, and they know
 // about nothing else — but scenery that moves still has to stay inside the room
 // the app reserved.
+describe('where the bird sits on the car', () => {
+  // Derived from the traced roof, not chosen. Seven was measured against the
+  // hand-drawn car, whose apex sat at 0.57 of the length; on the traced roof
+  // that is its leading edge, with the bird's body out over the windscreen.
+  it('sits the bird on the flat of the roof the car is actually drawn with', () => {
+    const s = scene();
+    const roof = CAR_OUTLINE.filter(([, fy]) => fy === 1).map(([fx]) => fx);
+    const from = (Math.min(...roof) - 0.5) * CAR_WIDTH;
+    const to = (Math.max(...roof) - 0.5) * CAR_WIDTH;
+    expect(s.car).not.toBeNull();
+    s.car!.dir = -1;
+    // The seat is only his perch while she is getting in or driving.
+    s.girl.phase = 'boarding';
+
+    const along = perchX(s) - s.car!.x;
+
+    expect(along).toBeGreaterThan(from);
+    expect(along).toBeLessThan(to);
+    expect(along).toBeCloseTo((from + to) / 2, 5);
+  });
+});
+
 describe('the squirrels in the park', () => {
   // Exactly four, not "at least". Three separate conventions — which stand each
   // is seeded into, how the pair is spread within it, and which two are checked
@@ -1975,14 +1999,24 @@ describe('the squirrels in the park', () => {
       // than every `step` behind them put together — over half this file's
       // runtime, paid on every change the project's own rules require a run for.
       let strayed = 0;
+      let crossings = 0;
+      const crossing = s.squirrels.map(() => false);
       for (let i = 0; i < 30000; i++) {
         step(s, rng);
         s.squirrels.forEach((squirrel, at) => {
           if (inPark(s, squirrel.tree) !== born[at]) strayed++;
           if (inPark(s, squirrel.towards) !== born[at]) strayed++;
+          if (squirrel.phase === 'crossing' && !crossing[at]) crossings++;
+          crossing[at] = squirrel.phase === 'crossing';
         });
       }
+
       expect(strayed).toBe(0);
+      // And they did jump, at this width. "Nobody left their stand" is also
+      // true of squirrels that never went anywhere — `otherTrees` returning an
+      // empty list at some width would satisfy the count above in silence,
+      // which is the trap its own comment warns about.
+      expect(crossings).toBeGreaterThan(0);
     },
   );
 
@@ -2079,26 +2113,6 @@ describe('the squirrels in the park', () => {
     }
 
     expect(shortened).toBeGreaterThan(0);
-  });
-
-  // Derived from the traced roof, not chosen. Seven was measured against the
-  // hand-drawn car, whose apex sat at 0.57 of the length; on the traced roof
-  // that is its leading edge, with the bird's body out over the windscreen.
-  it('sits the bird on the flat of the roof the car is actually drawn with', () => {
-    const s = scene();
-    const roof = CAR_OUTLINE.filter(([, fy]) => fy === 1).map(([fx]) => fx);
-    const from = (Math.min(...roof) - 0.5) * CAR_WIDTH;
-    const to = (Math.max(...roof) - 0.5) * CAR_WIDTH;
-    expect(s.car).not.toBeNull();
-    s.car!.dir = -1;
-    // The seat is only his perch while she is getting in or driving.
-    s.girl.phase = 'boarding';
-
-    const along = perchX(s) - s.car!.x;
-
-    expect(along).toBeGreaterThan(from);
-    expect(along).toBeLessThan(to);
-    expect(along).toBeCloseTo((from + to) / 2, 5);
   });
 
   // A hop is normalised by its own stand's spacing, and the bananas stand
