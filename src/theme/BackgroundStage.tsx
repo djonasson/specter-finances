@@ -36,11 +36,7 @@ function useStageFloor(): number {
  * true only where `clientWidth <= innerWidth` — which is platform coincidence.
  */
 function useStageWidth(): number {
-  return useSyncExternalStore(
-    subscribeToResize,
-    () => viewportSize().width,
-    () => 0,
-  );
+  return useSyncExternalStore(subscribeToResize, readStageWidth, () => 0);
 }
 
 /**
@@ -66,16 +62,59 @@ function useFooterHeight(): number {
  */
 const resizeListeners = new Set<() => void>();
 
+/**
+ * The width, held rather than measured on demand.
+ *
+ * `useSyncExternalStore` re-reads the snapshot after every commit to check for
+ * tearing, and returning a fresh measurement each time closes a loop this
+ * component can drive on its own: `BackgroundSpacer` adds page height, that can
+ * bring a scrollbar into being, the scrollbar takes width from `clientWidth`,
+ * the narrower width asks for a shorter band, the shorter spacer lets the page
+ * fit again and the scrollbar goes. React sees the two readings disagree with
+ * no notification behind them and re-renders synchronously each time — measured
+ * at 162 alternating reads before "Maximum update depth exceeded" blanks the
+ * whole tree, with no error boundary above it.
+ *
+ * Holding the value fixes the tearing check by construction and takes a forced
+ * style-and-layout flush off every render of the app: `clientWidth` flushes
+ * layout where `innerWidth` did not, and this is read on every expenses update.
+ */
+let stageWidth = 0;
+
+function readStageWidth(): number {
+  return stageWidth;
+}
+
 function announceResize(): void {
+  stageWidth = viewportSize().width;
   for (const listener of resizeListeners) listener();
 }
 
+/**
+ * Watching the document as well as the window.
+ *
+ * A scrollbar appearing or disappearing changes what a `position: fixed` box has
+ * to fill and fires **no** `resize` event at all — so a long list arriving on a
+ * route change silently left the band measured for the width before it. The
+ * observer catches that; the window listener catches everything else.
+ */
+let watching: ResizeObserver | null = null;
+
 function subscribeToResize(onChange: () => void): () => void {
-  if (resizeListeners.size === 0) window.addEventListener('resize', announceResize);
+  if (resizeListeners.size === 0) {
+    stageWidth = viewportSize().width;
+    window.addEventListener('resize', announceResize);
+    watching = typeof ResizeObserver === 'function' ? new ResizeObserver(announceResize) : null;
+    watching?.observe(document.documentElement);
+  }
   resizeListeners.add(onChange);
   return () => {
     resizeListeners.delete(onChange);
-    if (resizeListeners.size === 0) window.removeEventListener('resize', announceResize);
+    if (resizeListeners.size === 0) {
+      window.removeEventListener('resize', announceResize);
+      watching?.disconnect();
+      watching = null;
+    }
   };
 }
 

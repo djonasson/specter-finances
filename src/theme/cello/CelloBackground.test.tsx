@@ -391,8 +391,13 @@ describe('the stage the window gives it', () => {
     const stage = stageOf(0);
     expect(sceneScale(360)).not.toBe(sceneScale(420));
     expect(stage.width).toBeCloseTo(360 / sceneScale(360));
-    expect(stage.height).toBeCloseTo(700 / sceneScale(360));
-    expect(stage.ground * sceneScale(360)).toBeCloseTo(700 - footerHeight() - GROUND_ABOVE_FOOTER);
+    // The height from the window, not from the layout viewport: the footer this
+    // ground is measured against moves with the URL bar and `clientHeight` does
+    // not, so taking it from there stands the scenery above the navigation bar
+    // with bare floor beneath it — and leaves every guard agreeing nothing
+    // changed, so it never comes back down.
+    expect(stage.height).toBeCloseTo(760 / sceneScale(360));
+    expect(stage.ground * sceneScale(360)).toBeCloseTo(760 - footerHeight() - GROUND_ABOVE_FOOTER);
   });
 
   it('paints at the scale that viewport asks for, and reads clicks by it', () => {

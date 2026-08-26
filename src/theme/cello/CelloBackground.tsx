@@ -74,7 +74,6 @@ export function CelloBackground() {
     // context to match, so everything below still works in CSS pixels — and the
     // scene, in its own units on top of that.
     let { width: cssWidth, height: cssHeight, ratio } = fitCanvas(canvas, ctx);
-    let { width: lastWidth, height: lastHeight } = viewportSize();
     const scene = createScene(size, Math.random);
 
     /**
@@ -88,26 +87,24 @@ export function CelloBackground() {
      * altered nothing about the scene she stands in.
      */
     function resize() {
-      // The free reads first. `currentSize` measures the footer, which forces a
-      // reflow, and a mobile URL-bar collapse asks dozens of times a scroll for
-      // an answer that has not changed.
       const nextRatio = canvasPixelRatio();
-      const seen = viewportSize();
-      if (seen.width === lastWidth && seen.height === lastHeight && nextRatio === ratio) return;
-      lastWidth = seen.width;
-      lastHeight = seen.height;
-
       const next = currentSize();
-      // Mobile browsers fire `resize` repeatedly as the URL bar collapses, often
-      // with the same numbers. Reassigning the canvas size reallocates and
-      // clears its backing store, so doing nothing is much cheaper than doing it
-      // again with the values it already has.
-      const sameWindow =
+      // Every term the scene is built from, the footer's measured height
+      // included: reading the viewport alone and returning early left
+      // `footerHeight` unmeasured, so a footer that laid out at a different
+      // height than the fallback the sign-in screen gave it kept the scene's
+      // ground where it was for the session — while the band drawn to hide it
+      // moved. Both of these reads force layout, so there is no cheap one to
+      // put first.
+      const sameStage =
         next.width === size.width && next.height === size.height && next.ground === size.ground;
-      if (sameWindow && nextRatio === ratio) return;
+      if (sameStage && nextRatio === ratio) return;
 
       ({ width: cssWidth, height: cssHeight, ratio } = fitCanvas(canvas, ctx));
-      if (sameWindow) return;
+      // The buffer and the scene are two decisions: a change of monitor alters
+      // nothing about the stage she stands on, and `resizeScene` puts her back
+      // at the nearer end of her walk.
+      if (sameStage) return;
       size = next;
       resizeScene(scene, next);
     }

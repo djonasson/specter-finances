@@ -1,6 +1,13 @@
 import { useEffect, useRef } from 'react';
 import { useComputedColorScheme } from '@mantine/core';
-import { canvasPixelRatio, fitCanvas, viewportSize, watchPixelRatio } from './chrome';
+import {
+  canvasPixelRatio,
+  fitCanvas,
+  footerHeight,
+  headerHeight,
+  viewportSize,
+  watchPixelRatio,
+} from './chrome';
 
 interface Acorn {
   x: number;
@@ -836,15 +843,15 @@ export function SquirrelBackground() {
       };
     }
 
-    function getFooterHeight() {
-      const footer = document.querySelector('.mantine-AppShell-footer');
-      return footer ? footer.getBoundingClientRect().height : 60;
-    }
+    // The shared reading, which also falls back when the footer is mounted but
+    // not yet laid out and reports zero — taken at face value that stands the
+    // squirrel 30px off the bottom of the screen, behind the navigation bar,
+    // where the guard below then keeps him.
+    const getFooterHeight = footerHeight;
 
-    function getHeaderHeight() {
-      const header = document.querySelector('.mantine-AppShell-header');
-      return header ? header.getBoundingClientRect().height : 56;
-    }
+    // Shared, like the footer's: its own copy carried a bare 56 and no guard
+    // for a header that is mounted but not yet laid out and reports zero.
+    const getHeaderHeight = headerHeight;
 
     function resize() {
       // Nothing to do if nothing changed. Refitting reallocates and zeroes a
@@ -854,12 +861,18 @@ export function SquirrelBackground() {
       // backgrounds have carried this guard since the buffer grew.
       // Against the viewport `fitCanvas` measures, not against `innerWidth`.
       const seen = viewportSize();
-      if (seen.width === width && seen.height === height && ratio === canvasPixelRatio()) return;
+      const sameViewport = seen.width === width && seen.height === height;
+      if (sameViewport && ratio === canvasPixelRatio()) return;
       // The buffer goes in the screen's own pixels and the context is scaled to
       // match, so everything below still works in CSS pixels. Sized in CSS
       // pixels the whole scene was drawn at a fraction of the screen's
       // resolution and stretched back up by the display.
       ({ width, height, ratio } = fitCanvas(canvas, ctx));
+      // A denser screen needs a bigger buffer and nothing else. Reset the scene
+      // for it and a drag between monitors teleports the squirrel to the middle
+      // of the screen mid-chase and restarts every falling acorn — the same
+      // split Cello keeps, for the same reason.
+      if (sameViewport) return;
       squirrel.x = width / 2;
       squirrel.y = height - getFooterHeight() - 30;
       acorns = Array.from({ length: 12 }, spawnAcorn);

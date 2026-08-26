@@ -44,6 +44,7 @@ import {
   peelAngle,
   peelSwing,
   CAR_OUTLINE,
+  WHEEL_RUN,
   CAR_ROOF_HEIGHT,
   CAR_WIDTH,
   SCHOOL_DOOR_HEIGHT,
@@ -731,11 +732,11 @@ function drawSchool(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette) {
 }
 
 /** Where the traced wells put the wheels, and how big they are inside them. */
-// Off the outline's own contact patches, rather than transcribed beside it: a
-// re-traced car that moved a well would otherwise leave the tyre drawn beside
-// the notch cut for it, and this file is exempt from the testing rule, so
-// nothing would catch it.
-const CAR_WHEEL_AT = CAR_OUTLINE.filter(([, fy]) => fy === 0).map(([fx]) => fx);
+// Off the outline's own contact patches, derived in `scene.ts` where a test can
+// hold it to two: a re-traced car that moved a well would otherwise leave the
+// tyre drawn beside the notch cut for it, and this file is exempt from the
+// testing rule, so nothing here would catch it.
+const CAR_WHEEL_AT = WHEEL_RUN;
 const CAR_WHEEL_R = 0.085;
 
 function drawCar(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette, car: Car) {

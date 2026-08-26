@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, afterEach, vi } from 'vitest';
+import { act } from '@testing-library/react';
 import {
   canvasPixelRatio,
   fitCanvas,
@@ -7,6 +8,8 @@ import {
   watchPixelRatio,
   FOOTER_HEIGHT,
   footerHeight,
+  HEADER_HEIGHT,
+  headerHeight,
   MAX_PIXEL_RATIO,
 } from './chrome';
 
@@ -43,6 +46,32 @@ describe('finding the footer', () => {
   it('falls back when the footer is there but has not been laid out yet', () => {
     mountFooter(0);
     expect(footerHeight()).toBe(FOOTER_HEIGHT);
+  });
+});
+
+describe('finding the header', () => {
+  function mountHeader(height: number) {
+    const header = document.createElement('div');
+    header.className = 'mantine-AppShell-header';
+    header.getBoundingClientRect = () => ({ height }) as DOMRect;
+    document.body.append(header);
+  }
+
+  it('measures the header the layout actually rendered', () => {
+    mountHeader(72);
+    expect(headerHeight()).toBe(72);
+  });
+
+  it('falls back to the configured height when there is no header at all', () => {
+    expect(headerHeight()).toBe(HEADER_HEIGHT);
+  });
+
+  // Same reason as the footer's: jsdom reports zero, and so does a real browser
+  // before first layout. Taken at face value, an icicle grows from the very top
+  // of the window instead of from under the header.
+  it('falls back when the header is there but has not been laid out yet', () => {
+    mountHeader(0);
+    expect(headerHeight()).toBe(HEADER_HEIGHT);
   });
 });
 
@@ -115,7 +144,21 @@ describe('watching for a change of screen', () => {
     return made;
   }
 
+  /**
+   * Every watcher started here, torn down afterwards.
+   *
+   * They listen on the shared `window`, so one left running re-arms against the
+   * next test's `matchMedia` stub and counts itself into its queries.
+   */
+  const started: Array<() => void> = [];
+  const watch = (onChange: () => void = () => {}) => {
+    const stop = watchPixelRatio(onChange);
+    started.push(stop);
+    return stop;
+  };
+
   afterEach(() => {
+    for (const stop of started.splice(0)) stop();
     vi.unstubAllGlobals();
   });
 
@@ -123,7 +166,7 @@ describe('watching for a change of screen', () => {
     vi.stubGlobal('devicePixelRatio', 2);
     const made = queries();
 
-    watchPixelRatio(() => {});
+    watch();
 
     expect(made).toHaveLength(1);
     expect(made[0].query).toBe('(resolution: 2dppx)');
@@ -136,7 +179,7 @@ describe('watching for a change of screen', () => {
     vi.stubGlobal('devicePixelRatio', 1);
     const made = queries();
     const heard = vi.fn();
-    watchPixelRatio(heard);
+    watch(heard);
 
     vi.stubGlobal('devicePixelRatio', 3);
     made[0].on[0]();
@@ -150,21 +193,39 @@ describe('watching for a change of screen', () => {
   it('lets go of the query it is holding', () => {
     const made = queries();
 
-    watchPixelRatio(() => {})();
+    watch()();
 
     expect(made[0].off).toHaveLength(1);
   });
 
   // A MediaQueryList only fires on a change of match state, so one born false
-  // can never fire at all — the watch would be dead with no way to notice.
-  // Fractional display scaling reports ratios that need not serialise back to
-  // something equal to themselves.
-  it('does not hold a query that does not match to begin with', () => {
+  // can never fire at all — fractional display scaling reports ratios that need
+  // not serialise back to something equal to themselves. Refusing to attach
+  // would be a one-way door, since re-arming only happens from the listener, so
+  // it attaches anyway and falls back to re-arming on a plain resize.
+  it('keeps trying when the query does not match to begin with', () => {
     const made = queries(false);
 
+    watch();
+
+    // Attached anyway: a query that reports false at this instant may still be
+    // the right one a moment later, and refusing to listen is a one-way door —
+    // re-arming happens only from the listener.
+    expect(made[0].on).toHaveLength(1);
+
+    // And re-armed on a resize, which is the only other moment the ratio is
+    // worth re-reading when the query itself cannot be trusted to say so.
+    act(() => window.dispatchEvent(new Event('resize')));
+    expect(made.length).toBeGreaterThan(1);
+  });
+
+  it('does not re-arm on a resize while the query is one it can trust', () => {
+    const made = queries(true);
     watchPixelRatio(() => {});
 
-    expect(made[0].on).toHaveLength(0);
+    act(() => window.dispatchEvent(new Event('resize')));
+
+    expect(made).toHaveLength(1);
   });
 
   // Safari 13 hands back a real MediaQueryList carrying only `addListener`. The
@@ -173,13 +234,13 @@ describe('watching for a change of screen', () => {
   it('carries on where the screen cannot be watched at all', () => {
     vi.stubGlobal('matchMedia', () => ({ matches: true, media: '', addListener: () => {} }));
 
-    expect(() => watchPixelRatio(() => {})()).not.toThrow();
+    expect(() => watch()()).not.toThrow();
   });
 
   it('carries on where there is no matchMedia at all', () => {
     vi.stubGlobal('matchMedia', undefined);
 
-    expect(() => watchPixelRatio(() => {})()).not.toThrow();
+    expect(() => watch()()).not.toThrow();
   });
 });
 
