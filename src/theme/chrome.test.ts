@@ -8,6 +8,8 @@ import {
   watchPixelRatio,
   FOOTER_HEIGHT,
   footerHeight,
+  HEADER_HEIGHT,
+  headerHeight,
   MAX_PIXEL_RATIO,
 } from './chrome';
 
@@ -44,6 +46,32 @@ describe('finding the footer', () => {
   it('falls back when the footer is there but has not been laid out yet', () => {
     mountFooter(0);
     expect(footerHeight()).toBe(FOOTER_HEIGHT);
+  });
+});
+
+describe('finding the header', () => {
+  function mountHeader(height: number) {
+    const header = document.createElement('div');
+    header.className = 'mantine-AppShell-header';
+    header.getBoundingClientRect = () => ({ height }) as DOMRect;
+    document.body.append(header);
+  }
+
+  it('measures the header the layout actually rendered', () => {
+    mountHeader(72);
+    expect(headerHeight()).toBe(72);
+  });
+
+  it('falls back to the configured height when there is no header at all', () => {
+    expect(headerHeight()).toBe(HEADER_HEIGHT);
+  });
+
+  // Same reason as the footer's: jsdom reports zero, and so does a real browser
+  // before first layout. Taken at face value, an icicle grows from the very top
+  // of the window instead of from under the header.
+  it('falls back when the header is there but has not been laid out yet', () => {
+    mountHeader(0);
+    expect(headerHeight()).toBe(HEADER_HEIGHT);
   });
 });
 

@@ -1,6 +1,13 @@
 import { useEffect, useRef } from 'react';
 import { useComputedColorScheme } from '@mantine/core';
-import { canvasPixelRatio, fitCanvas, footerHeight, viewportSize, watchPixelRatio } from './chrome';
+import {
+  canvasPixelRatio,
+  fitCanvas,
+  footerHeight,
+  headerHeight,
+  viewportSize,
+  watchPixelRatio,
+} from './chrome';
 
 interface Acorn {
   x: number;
@@ -842,10 +849,9 @@ export function SquirrelBackground() {
     // where the guard below then keeps him.
     const getFooterHeight = footerHeight;
 
-    function getHeaderHeight() {
-      const header = document.querySelector('.mantine-AppShell-header');
-      return header ? header.getBoundingClientRect().height : 56;
-    }
+    // Shared, like the footer's: its own copy carried a bare 56 and no guard
+    // for a header that is mounted but not yet laid out and reports zero.
+    const getHeaderHeight = headerHeight;
 
     function resize() {
       // Nothing to do if nothing changed. Refitting reallocates and zeroes a

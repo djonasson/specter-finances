@@ -295,6 +295,17 @@ does not move when the URL bar collapses — while the footer, measured with
 above the navigation bar, and permanently, since a height that cannot change
 also tells every resize guard that nothing has.
 
+**Asking how big the window is goes through `theme/chrome.ts`, and lint
+enforces it.** `viewportSize`, `canvasPixelRatio`, `footerHeight` and
+`headerHeight` are the only places these are read, and `no-restricted-globals`
+/ `no-restricted-properties` make going round them a build error everywhere
+else. Not a style preference: three bugs in a row came from moving one of these
+readings and not finding every other reader — a canvas fitted to the viewport
+whose guard still compared the window, so it never fired; a band measured
+differently from the scenery standing in it; and a height taken from the layout
+viewport, which does not move when a phone's URL bar does. Each was a grep
+somebody had to remember to run, and each shipped.
+
 **One definition of "the viewport", used by everything.** A background that
 fits to one measure and decides whether to re-fit by another never re-fits — or
 never stops: comparing `innerWidth` against what `fitCanvas` had measured, the

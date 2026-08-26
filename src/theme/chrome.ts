@@ -7,6 +7,8 @@
 
 /** Matches the AppShell footer height set in `App.tsx`. */
 export const FOOTER_HEIGHT = 60;
+/** And its header, which the squirrel's icicles hang from. */
+export const HEADER_HEIGHT = 56;
 
 /**
  * Where each layer of the background system sits, as one ladder.
@@ -36,9 +38,25 @@ export const SCENE_Z = FLOOR_Z + 1;
  * bottom of the window, behind the navigation bar.
  */
 export function footerHeight(): number {
-  const footer = document.querySelector('.mantine-AppShell-footer');
-  if (!footer) return FOOTER_HEIGHT;
-  return footer.getBoundingClientRect().height || FOOTER_HEIGHT;
+  return chromeHeight('.mantine-AppShell-footer', FOOTER_HEIGHT);
+}
+
+/**
+ * The header's, on the same terms — a background hangs things from its bottom
+ * edge.
+ *
+ * It lived in `SquirrelBackground` with a fallback of its own and without the
+ * zero guard, which is the whole reason this one is shared: the two readings
+ * are the same question and there is no version of it that should differ.
+ */
+export function headerHeight(): number {
+  return chromeHeight('.mantine-AppShell-header', HEADER_HEIGHT);
+}
+
+function chromeHeight(selector: string, fallback: number): number {
+  const element = document.querySelector(selector);
+  if (!element) return fallback;
+  return element.getBoundingClientRect().height || fallback;
 }
 
 /**
