@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { canvasPixelRatio as pixelRatio, fitCanvas, watchPixelRatio } from './chrome';
+import { canvasPixelRatio as pixelRatio, fitCanvas, viewportSize, watchPixelRatio } from './chrome';
 
 export function MatrixBackground({ speed }: { speed: number }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -28,8 +28,9 @@ export function MatrixBackground({ speed }: { speed: number }) {
       // buffer — four times the bytes now it is in device pixels — then
       // re-randomises every drop, so the rain visibly restarts. Cello carries
       // the same guard for the same reason.
-      if (window.innerWidth === width && window.innerHeight === height && ratio === pixelRatio())
-        return;
+      // Against the viewport `fitCanvas` measures, not against `innerWidth`.
+      const seen = viewportSize();
+      if (seen.width === width && seen.height === height && ratio === pixelRatio()) return;
       ({ width, height, ratio } = fitCanvas(canvas, ctx));
       columns = Math.floor(width / fontSize);
       const maxRow = Math.floor(height / fontSize);

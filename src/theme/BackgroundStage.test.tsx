@@ -134,6 +134,24 @@ describe('the band following the window', () => {
   });
 });
 
+describe('measuring the same viewport the scene is drawn in', () => {
+  // The band and the scenery standing in it have to be worked out from one
+  // width. `CelloBackground` lays the scene out in `viewportSize()`, so a stage
+  // reading `innerWidth` reserves a band for a window a scrollbar wider than
+  // the one the scene was arranged for — the invariant that the band covers the
+  // scenery stops holding by construction and holds only by platform
+  // coincidence. `viewportSize` exists so there is one answer.
+  it('takes its width from the viewport, not from the window', () => {
+    vi.stubGlobal('innerWidth', 1024);
+    vi.spyOn(document.documentElement, 'clientWidth', 'get').mockReturnValue(600);
+
+    const floor = renderStage(<BackgroundFloor />, { backgroundEffect: 'cello' });
+
+    expect(stageFloorHeight('cello', 600)).not.toBe(stageFloorHeight('cello', 1024));
+    expect(parseInt(floor!.style.height)).toBe(stageFloorHeight('cello', 600));
+  });
+});
+
 describe('what the stage costs the window', () => {
   it('listens for a resize once, however many pieces of the stage are mounted', () => {
     const addListener = vi.spyOn(window, 'addEventListener');

@@ -3,6 +3,7 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 import {
   canvasPixelRatio,
   fitCanvas,
+  viewportSize,
   watchPixelRatio,
   FOOTER_HEIGHT,
   footerHeight,
@@ -183,6 +184,19 @@ describe('watching for a change of screen', () => {
 });
 
 describe('fitting to the viewport rather than to the window', () => {
+  // Load-bearing and, until this test, named by nothing: 28 tests depend on it
+  // implicitly, because jsdom reports 0 for both. A canvas sized to zero draws
+  // nothing, and the guards then agree nothing has changed, so it never
+  // recovers — the rain simply never starts.
+  it('falls back to the window where the document reports no size at all', () => {
+    vi.stubGlobal('innerWidth', 1024);
+    vi.stubGlobal('innerHeight', 768);
+    vi.spyOn(document.documentElement, 'clientWidth', 'get').mockReturnValue(0);
+    vi.spyOn(document.documentElement, 'clientHeight', 'get').mockReturnValue(0);
+
+    expect(viewportSize()).toEqual({ width: 1024, height: 768 });
+  });
+
   // `innerWidth` counts a classic scrollbar; the containing block of a
   // `position: fixed` box does not. Sizing the element from it over-constrains
   // left/right/width, CSS drops `right`, and the last strip of the background is

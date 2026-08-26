@@ -284,11 +284,26 @@ on a laptop at 1.25, and on a phone at 3 every edge in the scene was upscaled
 threefold. All three steps are load-bearing. The CSS size has to be set
 explicitly, because a canvas with no width or height in its style lays out at
 its _attribute_ size, which in device pixels is wider than the window it covers
-— and it is measured from `documentElement.clientWidth`, not `innerWidth`, since
-a classic scrollbar counts towards the latter but not towards the containing
-block of a `position: fixed` box: sized from it, `left`/`right`/`width` are all
+— and it is measured by `viewportSize`, not from `innerWidth`, since a classic
+scrollbar counts towards the latter but not towards the containing block of a
+`position: fixed` box: sized from it, `left`/`right`/`width` are all
 constrained, CSS drops `right`, and the last strip of the scene is drawn off the
 side of the screen.
+
+**One definition of "the viewport", used by everything.** A background that
+fits to one measure and decides whether to re-fit by another never re-fits — or
+never stops: comparing `innerWidth` against what `fitCanvas` had measured, the
+guards never once fired on a desktop with a scrollbar, so every one of the
+dozens of resize events a URL-bar collapse sends reallocated the buffer. Cello
+lays the _scene_ out in it too, or the scenery is arranged for a stage a
+scrollbar wider than the one it is drawn on — and so does `BackgroundStage`,
+which reserves the band that scenery stands in: measured from two different
+widths, "the band covers the scenery" stops holding by construction and holds
+only where `clientWidth <= innerWidth`, which is a platform's habit rather than
+a guarantee. The fallback to `innerWidth` is load-bearing rather than
+defensive — `clientWidth` is 0 wherever the document is not laid out, and a
+canvas sized to zero draws nothing and then agrees with every guard that nothing
+has changed.
 All three compare the window _and_ the ratio before refitting, because
 reallocating the buffer zeroes it and mobile browsers ask dozens of times as the
 URL bar collapses — and Cello reads the window before measuring the footer,

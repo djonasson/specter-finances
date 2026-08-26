@@ -376,6 +376,59 @@ describe('the stage the window gives it', () => {
     expect(stage.ground * sceneScale(360)).toBeCloseTo(700 - footerHeight() - GROUND_ABOVE_FOOTER);
   });
 
+  // A scrollbar makes the viewport and the window differ, and the canvas covers
+  // the viewport — so a scene laid out from `innerWidth` is arranged for a stage
+  // wider than the one it is drawn on, and its ground lands off the floor.
+  // Asked at 360x700, where `sceneScale` is not clamped, so the scale and the
+  // ground move with the width rather than sitting at 1 whatever happens.
+  it('lays the stage out in the viewport, not in the window', () => {
+    vi.stubGlobal('innerWidth', 420);
+    vi.stubGlobal('innerHeight', 760);
+    vi.spyOn(document.documentElement, 'clientWidth', 'get').mockReturnValue(360);
+    vi.spyOn(document.documentElement, 'clientHeight', 'get').mockReturnValue(700);
+    renderWithTheme(<CelloBackground />);
+
+    const stage = stageOf(0);
+    expect(sceneScale(360)).not.toBe(sceneScale(420));
+    expect(stage.width).toBeCloseTo(360 / sceneScale(360));
+    expect(stage.height).toBeCloseTo(700 / sceneScale(360));
+    expect(stage.ground * sceneScale(360)).toBeCloseTo(700 - footerHeight() - GROUND_ABOVE_FOOTER);
+  });
+
+  it('paints at the scale that viewport asks for, and reads clicks by it', () => {
+    vi.stubGlobal('innerWidth', 420);
+    vi.stubGlobal('innerHeight', 760);
+    vi.spyOn(document.documentElement, 'clientWidth', 'get').mockReturnValue(360);
+    vi.spyOn(document.documentElement, 'clientHeight', 'get').mockReturnValue(700);
+    renderWithTheme(<CelloBackground />);
+    act(() => {
+      vi.mocked(requestAnimationFrame).mock.calls[0][0](1000);
+      document.dispatchEvent(new MouseEvent('click', { clientX: 100, clientY: 200 }));
+    });
+
+    const scale = sceneScale(360);
+    expect(drawScene).toHaveBeenCalledWith(context2d, expect.anything(), false, scale);
+    expect(clickScene).toHaveBeenCalledWith(expect.anything(), 100 / scale, 200 / scale);
+  });
+
+  // The guard has two terms and the height one is the one that matters on iOS,
+  // where the URL bar makes the layout and visual viewports differ for the whole
+  // of a collapse — so it is asked with a viewport height of its own.
+  it('leaves the scene alone when neither viewport measurement changed', () => {
+    vi.stubGlobal('innerWidth', 420);
+    vi.stubGlobal('innerHeight', 760);
+    vi.spyOn(document.documentElement, 'clientWidth', 'get').mockReturnValue(360);
+    vi.spyOn(document.documentElement, 'clientHeight', 'get').mockReturnValue(700);
+    renderWithTheme(<CelloBackground />);
+    const canvas = document.querySelector('canvas')!;
+    canvas.width = 1;
+
+    resizeTo(420, 760);
+
+    expect(canvas.width).toBe(1);
+    expect(resizeScene).not.toHaveBeenCalled();
+  });
+
   it('re-measures the stage when the window changes size', () => {
     window.innerWidth = 1440;
     window.innerHeight = 900;

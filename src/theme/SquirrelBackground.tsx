@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useComputedColorScheme } from '@mantine/core';
-import { canvasPixelRatio, fitCanvas, watchPixelRatio } from './chrome';
+import { canvasPixelRatio, fitCanvas, viewportSize, watchPixelRatio } from './chrome';
 
 interface Acorn {
   x: number;
@@ -852,12 +852,9 @@ export function SquirrelBackground() {
       // the screen and restarts every falling acorn — and a mobile URL-bar
       // collapse fires `resize` dozens of times a scroll. The other two
       // backgrounds have carried this guard since the buffer grew.
-      if (
-        window.innerWidth === width &&
-        window.innerHeight === height &&
-        ratio === canvasPixelRatio()
-      )
-        return;
+      // Against the viewport `fitCanvas` measures, not against `innerWidth`.
+      const seen = viewportSize();
+      if (seen.width === width && seen.height === height && ratio === canvasPixelRatio()) return;
       // The buffer goes in the screen's own pixels and the context is scaled to
       // match, so everything below still works in CSS pixels. Sized in CSS
       // pixels the whole scene was drawn at a fraction of the screen's

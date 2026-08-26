@@ -218,6 +218,24 @@ describe('not refitting for nothing', () => {
     expect(canvas.width).toBe(1);
   });
 
+  it('still leaves the scene alone when there is a scrollbar', () => {
+    vi.stubGlobal('devicePixelRatio', 1);
+    vi.stubGlobal('innerWidth', 1024);
+    vi.stubGlobal('innerHeight', 768);
+    vi.spyOn(document.documentElement, 'clientWidth', 'get').mockReturnValue(1009);
+    // A viewport height of its own, not `innerHeight` again: the guard has two
+    // terms, and on iOS it is the height one that differs for the whole of a URL
+    // bar collapse — the case the guard exists for.
+    vi.spyOn(document.documentElement, 'clientHeight', 'get').mockReturnValue(700);
+    renderWithTheme(<SquirrelBackground />);
+    const canvas = document.querySelector('canvas')!;
+    canvas.width = 1;
+
+    resizeTo(1024, 768);
+
+    expect(canvas.width).toBe(1);
+  });
+
   it('refits when the ratio changes without the window changing', () => {
     // Only the resolution query: Mantine asks the same API about the colour
     // scheme, so the first listener registered is not necessarily this one's.

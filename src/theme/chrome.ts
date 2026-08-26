@@ -59,6 +59,32 @@ export function canvasPixelRatio(): number {
 }
 
 /**
+ * How big the viewport is, as CSS lays it out.
+ *
+ * Not `innerWidth`: a classic scrollbar counts towards that but not towards the
+ * containing block of a `position: fixed` box, so a canvas sized from it has
+ * `left`, `right` and `width` all constrained, CSS drops `right`, and the last
+ * strip of the background is drawn off the side of the screen.
+ *
+ * One definition, because a background that fits to one measure and decides
+ * whether to re-fit by another never re-fits — or never stops. That is not
+ * hypothetical: the guards were comparing `innerWidth` against what `fitCanvas`
+ * had measured, so on any desktop with a scrollbar they never once fired.
+ */
+export function viewportSize(): { width: number; height: number } {
+  const box = document.documentElement;
+  // Falling back on a falsy reading, not only on a missing one: `clientWidth` is
+  // 0 in jsdom and wherever the document is not laid out, and a canvas sized to
+  // zero draws nothing and — since the guards then agree it has not changed —
+  // never recovers. `documentElement` itself is not nullable, so there is
+  // nothing here to optional-chain.
+  return {
+    width: box.clientWidth || window.innerWidth,
+    height: box.clientHeight || window.innerHeight,
+  };
+}
+
+/**
  * Point a full-window canvas at the screen's own pixels, and hand back the size
  * to draw in.
  *
@@ -79,13 +105,7 @@ export function fitCanvas(
   ctx: CanvasRenderingContext2D,
 ): { width: number; height: number; ratio: number } {
   const ratio = canvasPixelRatio();
-  // The viewport as CSS lays it out, not as `innerWidth` reports it: a classic
-  // scrollbar counts towards `innerWidth` but not towards the containing block
-  // of a `position: fixed` box. Setting `style.width` from it over-constrains
-  // `left`/`right`/`width`, CSS drops `right`, and the last strip of every
-  // background is drawn off the side of the screen.
-  const width = document.documentElement?.clientWidth || window.innerWidth;
-  const height = document.documentElement?.clientHeight || window.innerHeight;
+  const { width, height } = viewportSize();
   canvas.width = Math.round(width * ratio);
   canvas.height = Math.round(height * ratio);
   canvas.style.width = `${width}px`;
