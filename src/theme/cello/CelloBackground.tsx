@@ -1,20 +1,8 @@
 import { useEffect, useRef } from 'react';
 import { useComputedColorScheme } from '@mantine/core';
-import {
-  canvasPixelRatio,
-  fitCanvas,
-  footerHeight,
-  viewportSize,
-  watchPixelRatio,
-} from '../chrome';
-import {
-  createScene,
-  resizeScene,
-  step,
-  clickScene,
-  sceneScale,
-  GROUND_ABOVE_FOOTER,
-} from './scene';
+import { canvasPixelRatio, fitCanvas, watchPixelRatio } from '../chrome';
+import { createScene, resizeScene, step, clickScene } from './scene';
+import { stageFor } from '../stage';
 import { drawScene } from './draw';
 
 /**
@@ -46,30 +34,7 @@ export function CelloBackground() {
     let animationId: number;
     let lastTime = 0;
 
-    /**
-     * The stage, in the scene's own units.
-     *
-     * The scene is drawn at `scale`, so a window of 360px is a stage of 500 and
-     * the scenery on it never changes size in the units it is written in. Every
-     * measurement below is divided the same way, which is what keeps the ground
-     * landing back on the same line of the screen.
-     */
-    function currentSize() {
-      // The viewport, which is what the canvas covers. Laid out from
-      // `innerWidth` on a desktop with a scrollbar the scene is arranged for a
-      // stage a scrollbar wider than the one it is drawn on.
-      const seen = viewportSize();
-      const scale = sceneScale(seen.width);
-      const ground = seen.height - footerHeight() - GROUND_ABOVE_FOOTER;
-      return {
-        width: seen.width / scale,
-        height: seen.height / scale,
-        ground: ground / scale,
-        scale,
-      };
-    }
-
-    let size = currentSize();
+    let size = stageFor();
     // `fitCanvas` puts the buffer in the screen's own pixels and scales the
     // context to match, so everything below still works in CSS pixels — and the
     // scene, in its own units on top of that.
@@ -88,7 +53,7 @@ export function CelloBackground() {
      */
     function resize() {
       const nextRatio = canvasPixelRatio();
-      const next = currentSize();
+      const next = stageFor();
       // Every term the scene is built from, the footer's measured height
       // included: reading the viewport alone and returning early left
       // `footerHeight` unmeasured, so a footer that laid out at a different

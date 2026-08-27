@@ -310,7 +310,7 @@ A background that draws _over_ the app rather than behind it (canvas at z-index 
 
 **What a background may paint on is granted by the system, not chosen by the theme.** `BackgroundEffect` wraps whichever background is showing in `SceneLayer`, which takes the footer's band away from the ones that draw over the app. It has to: a scene's canvas is fixed across the whole viewport, so the navigation bar is underneath it, and Cello's opaque ground painted straight over all five buttons — an app that could not be navigated, with no error to notice. A new scene cannot opt out, because a new scene does not render the clip; the registry does, and `backgrounds.test.tsx` drives that assertion off `BACKGROUNDS` so a background added later is covered the day it is added. Two details are load-bearing: it is `clip-path`, not `overflow: hidden`, because a `position: fixed` canvas escapes an ancestor's overflow; and the clip **must** carry `SCENE_Z` itself, because clipping makes it a stacking context and a canvas's own z-index is then resolved inside it and never reaches the page — leaving that off sinks the whole scene behind the app. The scenes still set a z-index of their own; inside the clip it is inert. And it wraps **only** the backgrounds that draw over the app: that stacking context is a one-way door, so the gradient and matrix at `z-index: -1` get hoisted in front of the whole app by it — wrapping them "for uniformity" left the gradient covering every row, chart and form with only the nav bar showing. `backgrounds.test.tsx` pins both directions against `drawsOverTheApp`.
 
-The `floor` belongs to the scene, and Cello's is **derived, not chosen**: `SCENE_REACH` is the taller of its chimney cap and its bird at the top of his hover, and `celloFloor(width)` scales that by `sceneScale(width)` and adds the ground clearance — which stays in **screen** pixels, since `CelloBackground` works the ground out in screen pixels before dividing by the scale. Rounded **up**, so a band can never be half a pixel shorter than the scenery standing in it. Anything above the floor is painted over the user's own list, so a hand-picked number goes stale the moment the scenery grows — but what is _thrown_ is deliberately outside it. A pizza sailing up over the app, like the squirrel's falling acorns, is the point.
+The `floor` belongs to the scene, and Cello's is **derived, not chosen**: `SCENE_REACH` is the taller of its chimney cap and its bird at the top of his hover, and `celloFloor` is `sceneFloor(SCENE_REACH)` — the scene contributes its reach and nothing else, while `theme/stage.ts` owns the clearance, the scaling and the rounding, so two scenes cannot answer differently how much of the user's list gets covered. The clearance stays in **screen** pixels, since the ground is worked out in screen pixels before dividing by the scale. Rounded **up**, so a band can never be half a pixel shorter than the scenery standing in it. Anything above the floor is painted over the user's own list, so a hand-picked number goes stale the moment the scenery grows — but what is _thrown_ is deliberately outside it. A pizza sailing up over the app, like the squirrel's falling acorns, is the point.
 
 Cello's left is a park, a school and a light beige Fiat 500 — which she drives, see below — mirroring the oven on the right. One thing there moves on its own: she lets herself into the school now and then, the window lights while she is inside, and the bird — having no shoulder to sit on — waits in the nearest tree. That last part is **a substituted target, not a new phase**: `perchX`/`perchY` return her shoulder or the treetop, and `perched`, `escorting` and even a dive for a passing pizza go on working without knowing she is gone. Two things follow from `perched` holding him _at_ his perch by setting his position every frame, and both were jerks worth naming: he must fly the last of the way down (`landing`) rather than entering `perched` from a hover and covering the whole hover height in one frame, and when the perch itself becomes a different perch — she goes in, she comes out — he notices for himself: `bird.perchedOn` remembers which perch he took, and `perched` puts him back in the air when it no longer matches `currentPerch`. **Identity, not distance, and not the caller's memory**: keying it on the two girl transitions that cause it today would leave the next cause to reintroduce the jump, while a geometry check would make `perched` doubt its own invariant and break every deliberate placement. The lit window and the swinging door are **derived from her phase** rather than stored, so a lit window with nobody in it is not a state the scene can reach, and `treeSway` is pure so the wind is something a test can hold. The chimney stands on the right-hand slope with its foot **cut to the pitch** — drawn square it had one corner buried in the roof and the other hanging over air — and smokes only while she is in there, through the same puff machinery the oven uses. Her silhouette at the window is gated on the same `schoolLit`, so the light, the smoke and the shadow cannot disagree about whether anybody is home. Sizes live in `scene.ts` beside `SCENE_REACH`, which counts the chimney rather than the ridge (it stands part way down a slope, so it is the taller) and is otherwise derived from one list of **perch heights** (`PERCH_HEIGHT`) plus how far above one he gets — the same list `perchY` places him with, so a perch added there cannot be forgotten here. He sits _in_ the crown rather than on top of it, which is both what a bird does and the difference between reserving 198px of the user's list and 171px: the band is measured from wherever he settles highest, so where he sits in a tree, not the park itself, is what costs screen. It grew 158px → 171px.
 
@@ -416,12 +416,34 @@ divided by `sceneScale` alone: `clientX` is in CSS pixels.
 
 **The scene is drawn to scale, and works in its own units.** `sceneScale(width)`
 runs from 1 at `SCENE_FULL_WIDTH` down to `SCENE_MIN_SCALE` at a phone's width,
-and `CelloBackground` hands the scene a stage of `width / scale` — so at 360px
+and `stageFor()` in `theme/stage.ts` hands the scene a stage of `width / scale` — so at 360px
 the layout has ~500 units to place a school, a car and a walk in, and nothing in
 `scene.ts` knows the window got smaller. `drawScene` applies the one `ctx.scale`,
 and clicks are divided by the same number on the way in. The alternative —
 laying the scene out differently on a phone — means every measurement in the
 file growing a narrow-window case.
+
+**How a window becomes a stage lives in `theme/stage.ts`, and belongs to no
+scene.** `sceneScale`, the widths it runs between, `SceneSize`,
+`GROUND_ABOVE_FOOTER`, `stageFor()` and `sceneFloor(reach)` are app policy about
+how a scene meets the window, and they sit beside `chrome.ts` for the reason
+`fitCanvas` sits in it: every canvas background needs them, and a scene that
+quietly used its own numbers would simply be laid out at a different size —
+nothing would fail, because `BackgroundStage` asks each scene for its own
+`floor(width)` and never compares two. A scene contributes exactly one number,
+its `SCENE_REACH`; the clearance, the scaling and the rounding up are not its to
+decide. `stageFor()` is the one place the three readings that cost a bug each are
+made — the width from `viewportSize` and not `innerWidth`, the height from
+`innerHeight` and not `clientHeight`, and a footer measured rather than assumed —
+so a second scene cannot get any of them subtly wrong and merely look different.
+Left in the cello, that conversion is exactly the half a new scene copies.
+
+The band's arithmetic is pinned as **literals**, not recomputed: an expectation
+spelling out `ceil(GROUND_ABOVE_FOOTER + reach * scale)` agrees with that line
+however wrong it is, which is how both `Math.ceil` → `Math.round` and
+`GROUND_ABOVE_FOOTER` → 0 once survived. 414px earns its place in that table —
+it is the only common width whose raw height falls below the half, so it is the
+only case that can tell the two roundings apart.
 
 **The car's outline is traced, and lives in `scene.ts`.** `CAR_OUTLINE` is the
 ink contour of a side-on drawing of the real car, nose-left, wheel wells

@@ -24,14 +24,8 @@ vi.mock('./scene', async (importOriginal) => {
 // returns from getContext. Nothing here asserts on pixels.
 vi.mock('./draw', () => ({ drawScene: vi.fn() }));
 
-import {
-  createScene,
-  resizeScene,
-  clickScene,
-  sceneScale,
-  GROUND_ABOVE_FOOTER,
-  SCENE_FULL_WIDTH,
-} from './scene';
+import { createScene, resizeScene, clickScene } from './scene';
+import { sceneScale, GROUND_ABOVE_FOOTER, SCENE_FULL_WIDTH } from '../stage';
 import type { Scene } from './scene';
 import { drawScene } from './draw';
 import { footerHeight } from '../chrome';
@@ -466,6 +460,75 @@ describe('the stage the window gives it', () => {
 
     const scale = sceneScale(360);
     expect(clickScene).toHaveBeenCalledWith(expect.anything(), 100 / scale, 200 / scale);
+  });
+
+  // The stage the wiring holds has to be *replaced* on a resize, not just
+  // compared against. Every other scale assertion here sets the window before
+  // rendering and never moves it, so dropping the assignment that re-holds it
+  // left the whole suite green while the scene was painted at the scale it
+  // launched at: a phone turned to landscape kept drawing at the portrait size
+  // on a buffer that had correctly refitted.
+  it('paints at the new scale after a resize, not the one it started at', () => {
+    window.innerWidth = 360;
+    window.innerHeight = 700;
+    renderWithTheme(<CelloBackground />);
+
+    resizeTo(1440, 900);
+    act(() => {
+      vi.mocked(requestAnimationFrame).mock.calls[0][0](1000);
+    });
+
+    expect(sceneScale(1440)).not.toBe(sceneScale(360));
+    expect(drawScene).toHaveBeenLastCalledWith(
+      context2d,
+      expect.anything(),
+      false,
+      sceneScale(1440),
+    );
+  });
+
+  // The same stale stage, reached the other way: clicks are divided by it, so a
+  // scene drawn correctly would still answer taps in the wrong place — nothing
+  // clickable where it appears to be, and no error anywhere.
+  it('divides a click by the new scale after a resize, not the one it started at', () => {
+    window.innerWidth = 360;
+    window.innerHeight = 700;
+    renderWithTheme(<CelloBackground />);
+
+    resizeTo(1440, 900);
+    act(() => {
+      document.dispatchEvent(new MouseEvent('click', { clientX: 100, clientY: 200 }));
+    });
+
+    const scale = sceneScale(1440);
+    expect(clickScene).toHaveBeenLastCalledWith(expect.anything(), 100 / scale, 200 / scale);
+  });
+
+  // The guard's third term. `resizeScene` is only reached when the stage really
+  // changed, and the ground is the term carrying the *measured* footer — drop it
+  // from the comparison and a footer that lays out at a new height moves the
+  // band while the scene stays standing where it was.
+  it('moves the scene when only the ground has changed, the window having not', () => {
+    const footer = document.createElement('div');
+    footer.className = 'mantine-AppShell-footer';
+    let height = 60;
+    footer.getBoundingClientRect = () => ({ height }) as DOMRect;
+    document.body.appendChild(footer);
+    try {
+      renderWithTheme(<CelloBackground />);
+      vi.mocked(resizeScene).mockClear();
+
+      height = 120;
+      act(() => window.dispatchEvent(new Event('resize')));
+
+      expect(resizeScene).toHaveBeenCalledTimes(1);
+      expect(vi.mocked(resizeScene).mock.calls[0][1].ground).toBeCloseTo(
+        (window.innerHeight - 120 - GROUND_ABOVE_FOOTER) / sceneScale(window.innerWidth),
+        10,
+      );
+    } finally {
+      footer.remove();
+    }
   });
 });
 
