@@ -121,22 +121,31 @@ export const MIN_WANDER = 110;
 export const MIN_FLANK = 26;
 
 /**
- * How far behind him they trail while he is dashing for a gratin.
+ * How fast they manage while he is dashing for a gratin.
  *
- * Big enough to actually see. Kept small it was invisible, because being
- * between them is otherwise held by a clamp that will not let him past — so
- * the clamp is lifted for the length of a dash and both of them fall in behind.
+ * Between their walking pace and his running one, and both halves matter.
  *
- * That is a real, deliberate hole in the scene's main invariant, and it is the
- * right one: he likes to be between them *where he feels comfortable*, and a
- * hedgehog who has just seen a potato gratin is not feeling comfortable. He
- * surges out in front, they scamper after him, and the moment he stops to eat
- * they close back up and it holds again.
+ * Slower than he runs, so the gap *grows* the whole way across the room — he
+ * pulls further ahead every frame, which is what being beside yourself about a
+ * potato gratin looks like. Matched to him, or offset by a fixed distance
+ * instead, the gap is a constant and the dash looks exactly like the walk with
+ * everybody shifted along.
+ *
+ * But well *above* the half-unit a frame that keeping up with a stroll costs
+ * them, or they amble after him and only break into a run once he has stopped
+ * and they are closing a gap — which is precisely backwards. Their stride is
+ * taken from the ground they cover, so twice the speed is visibly twice the
+ * scampering. They are back at their own top speed the moment it is over.
+ *
+ * Being between them is otherwise held by a clamp that will not let him past,
+ * and that clamp is lifted for the length of a dash. It is a real, deliberate
+ * hole in the invariant this scene is about, and it is the right one: he likes
+ * to be between them *where he feels comfortable*, and this is not that.
  */
-export const EXCITED_TRAIL = 52;
+export const DASH_FOLLOW_SPEED = 1.1;
 
 /** Scene units a frame, at the ~40fps the background loop is throttled to. */
-const WALK_SPEED = 0.55;
+export const WALK_SPEED = 0.55;
 /**
  * Faster than he *runs*, not merely faster than he walks.
  *
@@ -150,7 +159,7 @@ const WALK_SPEED = 0.55;
  */
 export const SQUIRREL_SPEED = 3.4;
 /** Near enough is near enough: without it they shuffle a fraction for ever. */
-const FLANK_SETTLED = 1.2;
+export const FLANK_SETTLED = 1.2;
 /** How much of a turn `facing` takes in one frame. */
 const TURN_EASE = 0.08;
 /** Chance a frame that he turns round for no reason at all. */
@@ -214,24 +223,38 @@ const SHOW_FRAMES = 3400;
 const NAP_FRAMES = 2200;
 /** He stays put this long once seated, so a walk over is never wasted. */
 const MIN_SIT = 400;
-/**
- * Chance a frame that he takes himself off to bed.
- *
- * Deliberately larger than `TV_CHANCE`: he is a hedgehog, and he sleeps more
- * than he watches television. It also keeps the two separable, which a test
- * needs — with the television the likelier of the two, no single roll can reach
- * the bed without switching the set on first, and the bed becomes untestable.
- */
-const SLEEP_CHANCE = 0.0006;
-/**
- * And that the television comes on by itself.
- *
- * Without it, watching is something only a tap can cause, and a screen nobody
- * touches never shows the one behaviour that puts all three of them on a sofa
- * together. The same argument as the oven's timer.
- */
-const TV_CHANCE = 0.0004;
 const STEAM_EVERY = 16;
+
+// -- the cat -----------------------------------------------------------------
+
+export const SQUIRREL_SCOLD = 'Pfff!';
+
+export const CAT_CALL = 'Meow!';
+/** Frames between one visit and the next. */
+const CAT_INTERVAL = 6400;
+
+/** Frames of pottering between one thing on the rota and the next. */
+const ROUTINE_GAP = 1500;
+/**
+ * What he does, in order, for ever: potter, eat, potter, watch something,
+ * potter, sleep, potter, eat...
+ *
+ * A rota rather than three independent chances. Rolled separately they came out
+ * in any order and sometimes not at all — a whole seeded day could go by with
+ * the television never once on — and the only way to see the scene was to sit
+ * through a great deal of it. Taps still interrupt whatever is happening; they
+ * do not shuffle the order.
+ */
+const ROTA = ['eat', 'watch', 'sleep'] as const;
+/** Scene units a frame. A cat is in no hurry. */
+const CAT_SPEED = 1.05;
+/** How close it comes before speaking kindly to him. */
+export const CAT_NEAR = 48;
+const MEOW_FRAMES = 110;
+const KISS_FRAMES = 90;
+/** How much of the bristling happens in one frame. */
+const BRISTLE_SPEED = 0.05;
+export const MAX_HEARTS = 10;
 
 export const CICCIO_CALL = 'Ciccio Ciccio!';
 export const CICCIO_GRATIN = 'Ciccio pasticcio!';
@@ -283,7 +306,10 @@ export type Spot = keyof typeof SEAT_HEIGHT;
  * and a taller squirrel would then be drawn over the user's own list with
  * nothing failing.
  */
-const OCCUPANT_REACH = Math.max(CICCIO_HEIGHT, SQUIRREL_HEIGHT + SQUIRREL_TAIL_RISE);
+/** The tallest a squirrel gets: the top of its tail. */
+export const SQUIRREL_REACH = SQUIRREL_HEIGHT + SQUIRREL_TAIL_RISE;
+
+const OCCUPANT_REACH = Math.max(CICCIO_HEIGHT, SQUIRREL_REACH);
 
 /**
  * How far above the ground the room reaches with nothing in the air.
@@ -309,6 +335,23 @@ export const SCENE_REACH = Math.max(
  * rounding cannot come out differently here than in any other scene.
  */
 export const ciccioFloor = sceneFloor(SCENE_REACH);
+
+/**
+ * How high one can get up the wall before the room runs out.
+ *
+ * **Derived from the wall, not chosen**: the tallest part of a squirrel is the
+ * top of its tail, and the band the app reserves ends at `WALL_HEIGHT`. Pick a
+ * number instead and the first time either of those moves, a squirrel climbs
+ * out through the ceiling and over the user's own list, with nothing to say so.
+ */
+export const CLIMB_MAX = WALL_HEIGHT - SEAT_HEIGHT.sofa - SQUIRREL_REACH;
+const CLIMB_SPEED = 0.55;
+/** How long he stays up there working out that he cannot get down. */
+const STUCK_FRAMES = 150;
+/** And how long the telling-off lasts. */
+const SCOLD_FRAMES = 130;
+/** Chance a frame, while they are watching something, that one goes up. */
+const RESCUE_CHANCE = 0.0022;
 
 export interface Layout {
   /** Left to right, the way the room reads: sleep, then cook, then sit. */
@@ -404,7 +447,8 @@ export type CiccioPhase =
   | 'mounting'
   | 'dismounting'
   | 'sitting'
-  | 'sleeping';
+  | 'sleeping'
+  | 'bristling';
 
 /**
  * What somebody is saying, and for how long.
@@ -452,6 +496,14 @@ export interface Ciccio {
   timer: number;
   bites: number;
   say: Say | null;
+  /**
+   * How far his spines are up, 0 to 1.
+   *
+   * Stored because it eases, easing towards a target derived from what the cat
+   * is doing — the bed's rule again, so a bristling hedgehog with no cat in the
+   * room is not a state the scene can reach.
+   */
+  bristle: number;
   x: number;
   /** Snaps. Which way he is going. */
   dir: -1 | 1;
@@ -487,6 +539,10 @@ export interface Squirrel {
   facing: number;
   /** Its own, not the scene's: see `side`, for the same reason. */
   say: Say | null;
+  /** How far up the wall it has got, above whatever it is standing on. */
+  climb: number;
+  /** Head down, the way a squirrel actually comes down a trunk. */
+  headDown: boolean;
 }
 
 /** A puff of steam coming off something hot. */
@@ -495,6 +551,30 @@ export interface Puff {
   y: number;
   rise: number;
   size: number;
+  life: number;
+}
+
+/**
+ * A small blue cat, who calls now and then and is very fond of him.
+ *
+ * `from` is the edge it came in by and the edge it will leave by — carried
+ * rather than recovered from which half of the room it is standing in, for the
+ * same reason `car.at` is: the first thing that nudges it past the middle would
+ * send it out of the wrong side.
+ */
+export interface Cat {
+  x: number;
+  from: -1 | 1;
+  phase: 'arriving' | 'meowing' | 'kissing' | 'leaving';
+  timer: number;
+  say: Say | null;
+}
+
+export interface Heart {
+  x: number;
+  y: number;
+  rise: number;
+  drift: number;
   life: number;
 }
 
@@ -533,6 +613,30 @@ export interface Scene {
    * nobody coming" is not.
    */
   bed: { turned: number };
+  /**
+   * The visitor, and the countdown to the next one.
+   *
+   * One at a time, by construction — there is only ever this slot, and the
+   * timer only runs down while it is empty.
+   */
+  cat: Cat | null;
+  catNextIn: number;
+  /** Where he has got to on the rota, and how long until the next thing. */
+  routine: { next: number; wait: number };
+  /**
+   * One of them has gone up the wall and cannot get down again.
+   *
+   * `climber` is which of the two, carried rather than worked out from whoever
+   * happens to be highest — the same rule as `side` and `car.at`, and the first
+   * frame both of them are off the ground is the frame that would break it.
+   */
+  rescue: {
+    climber: 0 | 1;
+    phase: 'climbing' | 'stuck' | 'fetching' | 'descending' | 'scolding';
+    timer: number;
+  } | null;
+  /** Rising off a kiss. Thrown, so they go above the reserved band on purpose. */
+  hearts: Heart[];
   /**
    * One at a time, by construction — there is only ever this one slot, and the
    * timer below only runs while it is empty.
@@ -590,12 +694,9 @@ export function flankX(scene: Scene, side: -1 | 1): number {
   // after him. Deliberate rather than incidental — with a top speed above his
   // they would otherwise stay pinned to his flanks at any pace, and the dash
   // would read exactly like the walk.
-  if (dashingForFood(scene)) {
-    // Both behind him, spread a little so they are two squirrels rather than
-    // one. They are chasing, not flanking.
-    const behind = scene.ciccio.x - scene.ciccio.dir * EXCITED_TRAIL + side * 18;
-    return clamp(behind, wanderLeft - FLANK_GAP, wanderRight + FLANK_GAP);
-  }
+  // The target is his flank whatever he is doing. What changes on a dash is how
+  // fast they may travel towards it, which is what makes the gap grow rather
+  // than sit at some fixed distance.
   return clamp(scene.ciccio.x + side * FLANK_GAP, wanderLeft - FLANK_GAP, wanderRight + FLANK_GAP);
 }
 
@@ -616,6 +717,7 @@ export function createScene(size: SceneSize, rng: Rng): Scene {
       after: 'wandering',
       goal: null,
       timer: 0,
+      bristle: 0,
       bites: 0,
       say: null,
       x: layout.wanderLeft + (layout.wanderRight - layout.wanderLeft) * rng(),
@@ -628,6 +730,11 @@ export function createScene(size: SceneSize, rng: Rng): Scene {
     tv: { on: false, showLeft: 0 },
     chatter: null,
     bed: { turned: 0 },
+    cat: null,
+    catNextIn: CAT_INTERVAL,
+    routine: { next: 0, wait: ROUTINE_GAP },
+    rescue: null,
+    hearts: [],
     oven: { nextIn: OVEN_INTERVAL },
     frame: 0,
   };
@@ -638,6 +745,8 @@ export function createScene(size: SceneSize, rng: Rng): Scene {
     facing: -side as -1 | 1,
     timer: 0,
     say: null,
+    climb: 0,
+    headDown: false,
   }));
   return scene;
 }
@@ -683,6 +792,11 @@ export function resizeScene(scene: Scene, size: SceneSize): void {
 function walkCiccio(scene: Scene, rng: Rng): void {
   const { ciccio } = scene;
   const { wanderLeft, wanderRight } = scene.layout;
+
+  if (ciccio.phase === 'bristling') {
+    // Rooted to the spot. Not even a wobble: he has seen a cat.
+    return;
+  }
 
   if (ciccio.phase === 'eating') {
     // Nobody but this may clear the gratin, and it is guarded rather than
@@ -791,12 +905,6 @@ function walkCiccio(scene: Scene, rng: Rng): void {
     return;
   }
 
-  if (rng() < SLEEP_CHANCE && !ciccio.goal) {
-    ciccio.goal = { x: scene.layout.bedX, then: 'sleep', urgent: false };
-    ciccio.phase = 'heading';
-    return;
-  }
-
   if (rng() < WOBBLE_CHANCE) {
     startWobble(ciccio);
     return;
@@ -818,15 +926,22 @@ function walkCiccio(scene: Scene, rng: Rng): void {
 }
 
 /**
- * They keep to his side, with a lag and a dead zone — and then are held there.
+ * They keep to his side, at their own pace, and nothing ever places them.
  *
- * Two mechanisms, and both are load-bearing. The layout insets his range by a
- * flank at each end, so there is always somewhere legal for a squirrel to
- * stand; the clamp below is what makes it true on the frames in between, when
- * he has walked past one that has not caught up yet. Lag alone inverts the pair
- * the first time he outruns it, and from then on the left squirrel is on the
- * right — with nothing failing, and the one thing the scene is about quietly
- * gone.
+ * The target is always his correct flank, so they are always *travelling* to
+ * the right side of him and get there under their own steam. There was a hard
+ * clamp here as well, holding them on their sides come what may, and it had to
+ * go: he overtakes the one in front of him on a dash, and the frame the dash
+ * ended that squirrel was put back beside him from wherever it had got to — a
+ * hundred units in a single frame. Worse, correcting it at walking pace instead
+ * still spent a second move on top of the first, so a squirrel could cover
+ * twice its own top speed in a frame and the max-step invariant went with it.
+ *
+ * So being between them is now something that *converges* rather than something
+ * held down: he can be in front of both while he runs for a gratin, and they
+ * are back either side of him a moment after he stops. The layout still insets
+ * his range by a flank at each end, so there is always somewhere for them to
+ * stand.
  *
  * Which way they *face* is not taken from which way they moved. The one ahead
  * of him is pushed rather than chasing, so it rides the edge of the dead zone —
@@ -845,10 +960,17 @@ function followSquirrels(scene: Scene): void {
       squirrel.timer = CLIMB_FRAMES;
     }
 
+    // Up the wall, the sideways business stops: it is holding on.
+    if (squirrel.climb > 0) continue;
+
     const target = flankX(scene, squirrel.side);
+    // Their top speed is the only thing that changes on a dash: they may not
+    // travel as fast as he can, so the gap grows the whole way across the room
+    // rather than sitting at some fixed distance behind him.
+    const top = dashingForFood(scene) ? DASH_FOLLOW_SPEED : SQUIRREL_SPEED;
     const away = target - squirrel.x;
     if (Math.abs(away) > FLANK_SETTLED) {
-      const move = clamp(away, -SQUIRREL_SPEED, SQUIRREL_SPEED);
+      const move = clamp(away, -top, top);
       squirrel.x += move;
       // Faces the way it is going, and *keeps* that when it is not going
       // anywhere. Both halves matter and each was a bug on its own: recomputed
@@ -857,15 +979,6 @@ function followSquirrels(scene: Scene): void {
       // instead, the same squirrel slid backwards down the room. Held, it turns
       // when the pair turns and walks the way it faces.
       squirrel.facing = move > 0 ? 1 : -1;
-    }
-
-    // Held on their own sides of him — except mid-dash, when he is meant to be
-    // out in front of both and the clamp is exactly what would stop him.
-    if (!dashingForFood(scene)) {
-      squirrel.x =
-        squirrel.side === -1
-          ? Math.min(squirrel.x, scene.ciccio.x - MIN_FLANK)
-          : Math.max(squirrel.x, scene.ciccio.x + MIN_FLANK);
     }
 
     // In front of the television they watch it rather than the room: the set is
@@ -990,17 +1103,13 @@ export function serveGratin(scene: Scene): void {
  * Ticked only while he is seated, a television he never reaches never expires,
  * and from then on the sofa is where he lives.
  */
-function runTv(scene: Scene, rng: Rng): void {
-  if (scene.tv.on) {
-    if (--scene.tv.showLeft <= 0) {
-      scene.tv.on = false;
-      scene.tv.showLeft = 0;
-    }
-    return;
-  }
-  if (scene.ciccio.at === 'floor' && rng() < TV_CHANCE) {
-    scene.tv.on = true;
-    scene.tv.showLeft = SHOW_FRAMES;
+function runTv(scene: Scene): void {
+  if (!scene.tv.on) return;
+  // Runs down whether or not anybody is watching, or a set he never reaches
+  // never expires and the sofa is where he lives from then on.
+  if (--scene.tv.showLeft <= 0) {
+    scene.tv.on = false;
+    scene.tv.showLeft = 0;
   }
 }
 
@@ -1024,14 +1133,229 @@ function runBed(scene: Scene): void {
   );
 }
 
-function runOven(scene: Scene): void {
-  // Only counts down while there is no gratin out. Left running, it empties
-  // during a long meal and puts a second one out the frame the first is
-  // finished — one gratin per meal, for ever after.
-  if (scene.gratin) return;
-  if (--scene.oven.nextIn <= 0) {
-    scene.oven.nextIn = OVEN_INTERVAL;
+/**
+ * Whether a cat would be welcome right now.
+ *
+ * Only while he is up and about. Startled off a sofa or out of a meal there is
+ * no sensible state to hand him back to, and every one of those combinations
+ * would be a case somebody had to think about — where "the cat calls when he is
+ * pottering" is one rule with no corners.
+ */
+const catMayCall = (scene: Scene) =>
+  scene.ciccio.at === 'floor' &&
+  (scene.ciccio.phase === 'wandering' || scene.ciccio.phase === 'wobbling') &&
+  !scene.gratin;
+
+/**
+ * A small blue cat lets itself in, walks up to him, says something kind, gives
+ * him a kiss and sees itself out.
+ *
+ * He freezes and puts his spines up the moment he sees it, and they only come
+ * down once it has spoken — which is the point of the whole visit, and the
+ * reason the meow is a phase of its own rather than something that happens on
+ * the way past.
+ */
+function runCat(scene: Scene, rng: Rng): void {
+  const cat = scene.cat;
+  if (!cat) {
+    if (--scene.catNextIn > 0 || !catMayCall(scene)) return;
+    const from: -1 | 1 = rng() < 0.5 ? -1 : 1;
+    scene.cat = {
+      // Off the edge it came in by, so it is never simply *there*.
+      x: from === -1 ? -30 : scene.width + 30,
+      from,
+      phase: 'arriving',
+      timer: 0,
+      say: null,
+    };
+    scene.ciccio.phase = 'bristling';
+    return;
+  }
+
+  runSaying(cat);
+
+  if (cat.phase === 'arriving') {
+    const away = scene.ciccio.x - cat.x;
+    const stopAt = CAT_NEAR * Math.sign(away || 1);
+    if (Math.abs(away) <= CAT_NEAR) {
+      cat.phase = 'meowing';
+      cat.timer = MEOW_FRAMES;
+      say(cat, CAT_CALL);
+    } else {
+      cat.x += Math.sign(away - stopAt) * CAT_SPEED;
+    }
+    return;
+  }
+
+  if (cat.phase === 'meowing') {
+    if (--cat.timer <= 0) {
+      cat.phase = 'kissing';
+      cat.timer = KISS_FRAMES;
+    }
+    return;
+  }
+
+  if (cat.phase === 'kissing') {
+    // Hearts over the pair of them, while the kiss lasts.
+    if (scene.frame % 14 === 0 && scene.hearts.length < MAX_HEARTS) {
+      scene.hearts.push({
+        x: (cat.x + scene.ciccio.x) / 2 + (rng() - 0.5) * 12,
+        y: -26,
+        rise: 0.4 + rng() * 0.22,
+        drift: (rng() - 0.5) * 0.3,
+        life: 90,
+      });
+    }
+    if (--cat.timer <= 0) cat.phase = 'leaving';
+    return;
+  }
+
+  // Leaving, by the edge it came in by.
+  cat.x += cat.from * CAT_SPEED * 1.3;
+  if (cat.x < -40 || cat.x > scene.width + 40) {
+    scene.cat = null;
+    scene.catNextIn = CAT_INTERVAL;
+    if (scene.ciccio.phase === 'bristling') scene.ciccio.phase = 'wandering';
+  }
+}
+
+/**
+ * His spines, and the hearts a kiss leaves behind.
+ *
+ * The target is derived — up while a cat is on its way over, down from the
+ * moment it speaks kindly to him — so a bristling hedgehog with no cat in the
+ * room is not a state the scene can reach.
+ */
+function runBristle(scene: Scene): void {
+  const target = scene.cat?.phase === 'arriving' ? 1 : 0;
+  scene.ciccio.bristle = clamp(
+    scene.ciccio.bristle + clamp(target - scene.ciccio.bristle, -BRISTLE_SPEED, BRISTLE_SPEED),
+    0,
+    1,
+  );
+
+  for (const heart of scene.hearts) {
+    heart.y -= heart.rise;
+    heart.x += heart.drift;
+    heart.life--;
+  }
+  scene.hearts = scene.hearts.filter((heart) => heart.life > 0);
+}
+
+/**
+ * Now and then, in front of the television, one of them goes straight up the
+ * wall — gets to the top, turns head-down, and finds it cannot come back.
+ *
+ * The other one climbs up, brings it down, and tells it off with a slap of the
+ * tail and a "Pfff!".
+ *
+ * The whole thing is abandoned the moment they stop watching: it belongs to
+ * sitting still on a sofa, and a squirrel left half way up a wall because a
+ * gratin came out would be stuck up there for the life of the tab.
+ */
+function runRescue(scene: Scene, rng: Rng): void {
+  const rescue = scene.rescue;
+
+  if (!watchingTelevision(scene)) {
+    // Everybody down, whatever they were in the middle of.
+    if (rescue) scene.rescue = null;
+    for (const squirrel of scene.squirrels) {
+      squirrel.climb = Math.max(0, squirrel.climb - CLIMB_SPEED * 2);
+      if (squirrel.climb === 0) squirrel.headDown = false;
+    }
+    return;
+  }
+
+  if (!rescue) {
+    if (rng() < RESCUE_CHANCE) {
+      scene.rescue = { climber: rng() < 0.5 ? 0 : 1, phase: 'climbing', timer: 0 };
+    }
+    return;
+  }
+
+  const climber = scene.squirrels[rescue.climber];
+  const other = scene.squirrels[rescue.climber === 0 ? 1 : 0];
+
+  if (rescue.phase === 'climbing') {
+    climber.climb = Math.min(CLIMB_MAX, climber.climb + CLIMB_SPEED);
+    if (climber.climb >= CLIMB_MAX) {
+      // Turns round at the top, which is when it works the problem out.
+      climber.headDown = true;
+      rescue.phase = 'stuck';
+      rescue.timer = STUCK_FRAMES;
+    }
+    return;
+  }
+
+  if (rescue.phase === 'stuck') {
+    if (--rescue.timer <= 0) rescue.phase = 'fetching';
+    return;
+  }
+
+  if (rescue.phase === 'fetching') {
+    // Up to just below it, which is where you would stop to collect somebody.
+    other.climb = Math.min(CLIMB_MAX - 10, other.climb + CLIMB_SPEED);
+    if (other.climb >= CLIMB_MAX - 10) rescue.phase = 'descending';
+    return;
+  }
+
+  if (rescue.phase === 'descending') {
+    for (const squirrel of [climber, other]) {
+      squirrel.climb = Math.max(0, squirrel.climb - CLIMB_SPEED * 1.4);
+    }
+    if (climber.climb === 0 && other.climb === 0) {
+      climber.headDown = false;
+      rescue.phase = 'scolding';
+      rescue.timer = SCOLD_FRAMES;
+      say(other, SQUIRREL_SCOLD);
+    }
+    return;
+  }
+
+  if (--rescue.timer <= 0) scene.rescue = null;
+}
+
+/** How far through the telling-off we are, 0 to 1, or null if there is none. */
+export function scoldingAt(scene: Scene): number | null {
+  const rescue = scene.rescue;
+  if (!rescue || rescue.phase !== 'scolding') return null;
+  return 1 - rescue.timer / SCOLD_FRAMES;
+}
+
+/** Which of them is doing the telling-off, if anybody is. */
+export const scolder = (scene: Scene) =>
+  scene.rescue?.phase === 'scolding' ? scene.squirrels[scene.rescue.climber === 0 ? 1 : 0] : null;
+
+/**
+ * The rota, which is what happens when nobody is clicking anything.
+ *
+ * Only counted down while he is pottering with nothing else on: it is a rota of
+ * things to do next, not a clock that fires into the middle of something.
+ */
+function runRoutine(scene: Scene): void {
+  const { ciccio } = scene;
+  const free =
+    ciccio.at === 'floor' &&
+    (ciccio.phase === 'wandering' || ciccio.phase === 'wobbling') &&
+    !ciccio.goal &&
+    !scene.gratin &&
+    !scene.tv.on &&
+    !scene.cat;
+  if (!free) return;
+
+  if (--scene.routine.wait > 0) return;
+  const doing = ROTA[scene.routine.next % ROTA.length];
+  scene.routine = { next: (scene.routine.next + 1) % ROTA.length, wait: ROUTINE_GAP };
+
+  if (doing === 'eat') {
     serveGratin(scene);
+    headForGratin(scene, false);
+  } else if (doing === 'watch') {
+    scene.tv.on = true;
+    scene.tv.showLeft = SHOW_FRAMES;
+  } else {
+    ciccio.goal = { x: scene.layout.bedX, then: 'sleep', urgent: false };
+    ciccio.phase = 'heading';
   }
 }
 
@@ -1072,9 +1396,12 @@ function squirrelWants(scene: Scene): Spot {
 /** One frame. Everything mutates `scene`; nothing here reads a clock. */
 export function step(scene: Scene, rng: Rng): void {
   scene.frame++;
-  runTv(scene, rng);
-  runOven(scene);
+  runTv(scene);
+  runRoutine(scene);
   runBed(scene);
+  runCat(scene, rng);
+  runRescue(scene, rng);
+  runBristle(scene);
   walkCiccio(scene, rng);
   runSteam(scene, rng);
   followSquirrels(scene);

@@ -31,6 +31,9 @@ import {
   ciccioAngle,
   ciccioNoseInFront,
   watchingTelevision,
+  dashingForFood,
+  scoldingAt,
+  scolder,
   ciccioBob,
   CICCIO_NARROWEST,
   ciccioY,
@@ -46,9 +49,11 @@ const LIGHT = {
   // the top of the room where the fade should be invisible.
   wallFade: 'rgba(221, 210, 195, 0)',
   skirting: '#f3ece2',
-  floor: '#c49f7d',
-  floorBack: '#b28c6b',
-  floorLine: '#a37f5f',
+  floor: '#e0cdb2',
+  floorBack: '#cdb695',
+  floorLine: '#b49a78',
+  floorSeam: '#c9b191',
+  floorGrain: '#d3bd9f',
   shadow: 'rgba(60, 40, 24, 0.16)',
   rug: '#c98d78',
   rugInner: '#dba894',
@@ -111,6 +116,13 @@ const LIGHT = {
   gratinTop: '#c98a3f',
   steam: '#ffffff',
 
+  cat: '#7fa8d8',
+  catDark: '#5c85b4',
+  catInner: '#e8b7c4',
+  catChest: '#eef4fb',
+  catNose: '#d98a9e',
+  heart: '#e2607e',
+
   bubble: '#ffffff',
   bubbleEdge: '#c8bda9',
   bubbleText: '#3d332a',
@@ -123,9 +135,11 @@ const DARK: Palette = {
   wallShade: '#2b241f',
   wallFade: 'rgba(43, 36, 31, 0)',
   skirting: '#3d352d',
-  floor: '#4a3c2f',
-  floorBack: '#3a2f26',
-  floorLine: '#2b231c',
+  floor: '#584838',
+  floorBack: '#463a2d',
+  floorLine: '#332a21',
+  floorSeam: '#4a3c2e',
+  floorGrain: '#61503e',
   shadow: 'rgba(0, 0, 0, 0.3)',
   rug: '#6b4438',
   rugInner: '#7d5344',
@@ -187,6 +201,13 @@ const DARK: Palette = {
   gratin: '#b89a63',
   gratinTop: '#a06e30',
   steam: '#cfc8bd',
+
+  cat: '#5b7ea8',
+  catDark: '#42607f',
+  catInner: '#a8798a',
+  catChest: '#c3ced9',
+  catNose: '#a9647a',
+  heart: '#b84a63',
 
   bubble: '#e8e2d8',
   bubbleEdge: '#7a7167',
@@ -275,7 +296,18 @@ function box(
  * on the sofa, without a single case written for it.
  */
 const STRIDE = 11;
-const gait = (x: number, foot: number) => Math.sin((x / STRIDE) * Math.PI + foot * Math.PI);
+/**
+ * A shorter one for running.
+ *
+ * Twice the speed over the same stride is twice the step *rate*, and it turned
+ * out that is not enough to read as running — they still looked like they were
+ * walking briskly behind him. A running animal takes shorter, quicker steps as
+ * well as covering more ground, so the stride shortens too and the legs go
+ * about four times as fast as at a stroll.
+ */
+const RUN_STRIDE = 5.5;
+const gait = (x: number, foot: number, running = false) =>
+  Math.sin((x / (running ? RUN_STRIDE : STRIDE)) * Math.PI + foot * Math.PI);
 
 /** What sits under a thing standing on the floor, so it is standing on it. */
 function contactShadow(
@@ -310,12 +342,49 @@ function drawRoom(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette): void
   ctx.fillStyle = wall;
   ctx.fillRect(0, g - WALL_HEIGHT, scene.width, WALL_HEIGHT);
 
-  // The floor, with the far strip darker: the two together read as a corner
-  // rather than as a line.
+  // The floor: pale oak boards running the length of the room. The far strip
+  // is darker, so the two together read as a corner rather than as a line.
   ctx.fillStyle = p.floorBack;
   ctx.fillRect(0, g - 1, scene.width, DEPTH * 0.5 + 1);
   ctx.fillStyle = p.floor;
   ctx.fillRect(0, g + DEPTH * 0.5, scene.width, scene.height - g);
+
+  // Boards, and the joins between their ends, staggered the way a floor is
+  // actually laid. All of it off a fixed hash of the position, so the grain
+  // belongs to the floor rather than swimming about under everybody's feet.
+  const top = g + DEPTH * 0.5;
+  const rows = Math.max(1, Math.ceil((scene.height - top) / 9));
+  for (let row = 0; row < rows; row++) {
+    const y = top + row * 9;
+    ctx.strokeStyle = p.floorSeam;
+    ctx.lineWidth = 0.8;
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(scene.width, y);
+    ctx.stroke();
+
+    // The short joins, offset half a board each row.
+    const step = 86;
+    for (let x = ((row % 2) * step) / 2; x < scene.width; x += step) {
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x, y + 9);
+      ctx.stroke();
+    }
+
+    // Grain: a few long, faint streaks along each board.
+    ctx.strokeStyle = p.floorGrain;
+    ctx.lineWidth = 0.7;
+    for (let i = 0; i < Math.ceil(scene.width / 34); i++) {
+      const seed = (i * 7919 + row * 104729) % 1000;
+      const gx = i * 34 + (seed % 17);
+      const gy = y + 2.5 + (seed % 4);
+      ctx.beginPath();
+      ctx.moveTo(gx, gy);
+      ctx.lineTo(gx + 16 + (seed % 11), gy + (seed % 3 === 0 ? 0.7 : -0.6));
+      ctx.stroke();
+    }
+  }
 
   // Skirting, along the join.
   ctx.fillStyle = p.skirting;
@@ -676,7 +745,7 @@ function drawCiccio(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette): vo
 
     ctx.fillStyle = p.furShade;
     [-11, 8].forEach((fx, foot) => {
-      const swing = gait(ciccio.x, foot);
+      const swing = gait(ciccio.x, foot, dashingForFood(scene));
       ctx.beginPath();
       ctx.ellipse(
         fx * turn + swing * 3.2,
@@ -703,18 +772,26 @@ function drawCiccio(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette): vo
       ctx.fill();
     }
 
+    // The coat, and — when there is a cat about — the spines it turns into.
+    // `bristle` eases, so they go up as it comes over and down again the moment
+    // it says something kind to him.
+    const up = ciccio.bristle;
     ctx.strokeStyle = p.quillDark;
-    ctx.lineWidth = 1.6;
-    ctx.lineCap = 'round';
+    ctx.lineWidth = 1.6 + up * 0.5;
+    ctx.lineCap = up > 0.5 ? 'butt' : 'round';
     for (let i = 0; i < 26; i++) {
       const a = (i * 2.399) % (Math.PI * 2);
       const r = 0.42 + ((i * 7) % 11) / 22;
       const fx = -2 * turn + Math.cos(a) * half * r;
       const fy = -3 - Math.abs(Math.sin(a)) * TALL * r;
       if (fy > -4) continue;
+      // Lying flat they are flecks in the coat; standing up they point away
+      // from the middle of him, which is what makes them read as thorns.
+      const outX = Math.cos(a) * (2.2 + up * 9);
+      const outY = -Math.abs(Math.sin(a)) * (2.6 + up * 9) - up * 2;
       ctx.beginPath();
       ctx.moveTo(fx, fy);
-      ctx.lineTo(fx + 2.2, fy - 2.6);
+      ctx.lineTo(fx + outX, fy + outY);
       ctx.stroke();
     }
     ctx.restore();
@@ -753,16 +830,30 @@ function drawSquirrel(
   squirrel: Squirrel,
   p: Palette,
 ): void {
-  const y = squirrelY(scene, squirrel);
+  const y = squirrelY(scene, squirrel) - squirrel.climb;
 
-  if (watchingTelevision(scene)) {
+  if (watchingTelevision(scene) && squirrel.climb === 0) {
     drawSquirrelFromBehind(ctx, squirrel.x, y, p);
     return;
   }
 
   ctx.save();
   ctx.translate(squirrel.x, y);
+  // Head down is how a squirrel actually comes down a wall, and it is also the
+  // moment it works out that it cannot. Turned about its own middle rather than
+  // mirrored, so the tail stays behind it and the feet stay on the wall.
+  if (squirrel.headDown) {
+    ctx.translate(0, -18);
+    ctx.rotate(Math.PI);
+    ctx.translate(0, -18);
+  }
   ctx.scale(squirrel.facing || 0.001, 1);
+
+  // The telling-off: a tail swung round at whoever needed fetching down.
+  const scolding = scolder(scene) === squirrel ? scoldingAt(scene) : null;
+  if (scolding !== null) {
+    ctx.rotate(Math.sin(scolding * Math.PI * 3) * 0.28);
+  }
 
   // The tail first, so it sits behind the body — a great question mark curling
   // up and over.
@@ -881,7 +972,7 @@ function drawSquirrel(
   // stride to alternate between.
   ctx.fillStyle = p.squirrelDark;
   [0, 1].forEach((foot) => {
-    const swing = gait(squirrel.x, foot);
+    const swing = gait(squirrel.x, foot, dashingForFood(scene));
     ctx.beginPath();
     ctx.ellipse(1.5 + swing * 3, -1.8 - Math.max(0, swing) * 1.6, 4.4, 2.5, 0, 0, Math.PI * 2);
     ctx.fill();
@@ -895,10 +986,14 @@ function drawSquirrel(
  * the far wall looks like.
  *
  * Not the side view mirrored: from behind, the tail is between us and the
- * animal and fills most of it, the head is a shape above it with ears and no
- * face, and there is nothing to face left or right. Turning the side view round
- * cannot express that, which is why "they still are not facing the television"
- * was true however the facing was set.
+ * animal and there is nothing to face left or right. Turning the side view
+ * round cannot express that, which is why "they still are not facing the
+ * television" was true however the facing was set.
+ *
+ * And it is *only* the tail. A head drawn peeping over the top is a head that
+ * would in fact be behind the thing drawn in front of it — the tail stands
+ * taller than the animal does, which is the whole reason `SQUIRREL_TAIL_RISE`
+ * is what sets their reach.
  */
 function drawSquirrelFromBehind(
   ctx: CanvasRenderingContext2D,
@@ -951,20 +1046,138 @@ function drawSquirrelFromBehind(
     ctx.stroke();
   }
 
-  // The back of the head, over the tail rather than behind it — from here the
-  // head is the one part of the animal the tail does not hide.
-  ctx.fillStyle = p.squirrel;
+  ctx.restore();
+}
+
+/**
+ * The little blue cat, who calls now and then.
+ *
+ * Drawn side-on and always facing him, which is the one direction it is ever
+ * going: it comes in from an edge, walks to him, and goes back the way it came.
+ */
+function drawCat(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette): void {
+  const cat = scene.cat;
+  if (!cat) return;
+  const g = scene.ground;
+  // It looks at him on the way in and while it is with him, and away from him
+  // on the way out — which is the same thing as the way it is walking.
+  const facing = cat.phase === 'leaving' ? cat.from : Math.sign(scene.ciccio.x - cat.x) || 1;
+
+  contactShadow(ctx, cat.x, g, 26, p);
+
+  ctx.save();
+  ctx.translate(cat.x, g);
+  ctx.scale(facing, 1);
+
+  // Tail, up and curled at the tip the way a pleased cat carries it.
+  ctx.strokeStyle = p.cat;
+  ctx.lineWidth = 4.5;
+  ctx.lineCap = 'round';
   ctx.beginPath();
-  ctx.arc(0, -34, 8.5, 0, Math.PI * 2);
+  ctx.moveTo(-11, -12);
+  ctx.quadraticCurveTo(-22, -18, -19, -31);
+  ctx.stroke();
+
+  // Legs, walking. Same stride as everybody else, off the ground it has covered.
+  ctx.strokeStyle = p.catDark;
+  ctx.lineWidth = 3.2;
+  [0, 1].forEach((leg) => {
+    const swing = gait(cat.x, leg) * 3;
+    for (const lx of [-7, 6]) {
+      ctx.beginPath();
+      ctx.moveTo(lx, -11);
+      ctx.lineTo(lx + swing * (lx < 0 ? 1 : -1), -1);
+      ctx.stroke();
+    }
+  });
+
+  // Body and head.
+  ctx.fillStyle = p.cat;
+  ctx.beginPath();
+  ctx.ellipse(-2, -16, 12, 9, 0, 0, Math.PI * 2);
   ctx.fill();
-  ctx.fillStyle = p.squirrelDark;
-  for (const ex of [-6, 6]) {
+  ctx.beginPath();
+  ctx.arc(10, -23, 8.5, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Ears.
+  ctx.fillStyle = p.cat;
+  for (const ex of [5, 14]) {
     ctx.beginPath();
-    ctx.ellipse(ex, -41, 3, 4.2, ex < 0 ? 0.3 : -0.3, 0, Math.PI * 2);
+    ctx.moveTo(ex - 3.5, -29);
+    ctx.lineTo(ex, -37);
+    ctx.lineTo(ex + 3.5, -29);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.fillStyle = p.catInner;
+  for (const ex of [5, 14]) {
+    ctx.beginPath();
+    ctx.moveTo(ex - 1.8, -29.5);
+    ctx.lineTo(ex, -34.5);
+    ctx.lineTo(ex + 1.8, -29.5);
+    ctx.closePath();
     ctx.fill();
   }
 
+  // A cream chest, and a face.
+  ctx.fillStyle = p.catChest;
+  ctx.beginPath();
+  ctx.ellipse(6, -14, 5, 6, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = p.eye;
+  ctx.beginPath();
+  ctx.arc(9, -25, 1.9, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(15, -25, 1.9, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = p.catNose;
+  ctx.beginPath();
+  ctx.ellipse(13, -20.5, 1.6, 1.2, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // Whiskers.
+  ctx.strokeStyle = p.catChest;
+  ctx.lineWidth = 0.8;
+  for (const wy of [-21.5, -19.5]) {
+    ctx.beginPath();
+    ctx.moveTo(14, wy);
+    ctx.lineTo(23, wy - 1.5);
+    ctx.stroke();
+  }
+
   ctx.restore();
+}
+
+/** The hearts a kiss leaves behind, rising over the pair of them. */
+function drawHearts(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette): void {
+  ctx.fillStyle = p.heart;
+  for (const heart of scene.hearts) {
+    const size = 4 + (1 - heart.life / 90) * 2;
+    ctx.globalAlpha = Math.min(0.85, heart.life / 45);
+    const x = heart.x;
+    const y = scene.ground + heart.y;
+    ctx.beginPath();
+    ctx.moveTo(x, y + size * 0.8);
+    ctx.bezierCurveTo(
+      x - size * 1.4,
+      y - size * 0.4,
+      x - size * 0.5,
+      y - size * 1.3,
+      x,
+      y - size * 0.4,
+    );
+    ctx.bezierCurveTo(
+      x + size * 0.5,
+      y - size * 1.3,
+      x + size * 1.4,
+      y - size * 0.4,
+      x,
+      y + size * 0.8,
+    );
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
 }
 
 /**
@@ -1090,6 +1303,8 @@ export function drawScene(
   drawGratin(ctx, scene, p);
   for (const squirrel of scene.squirrels) drawSquirrel(ctx, scene, squirrel, p);
   drawCiccio(ctx, scene, p);
+  drawCat(ctx, scene, p);
+  drawHearts(ctx, scene, p);
 
   // Bubbles last, over everything, so one is never half behind a sofa.
   for (const squirrel of scene.squirrels) {

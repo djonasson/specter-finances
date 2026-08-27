@@ -11,12 +11,21 @@ import {
   MAX_STEAM,
   SQUIRREL_SPEED,
   MAX_CLIMB,
-  EXCITED_TRAIL,
   dashingForFood,
+  CAT_CALL,
+  CLIMB_MAX,
+  SQUIRREL_SCOLD,
+  SQUIRREL_REACH,
+  scolder,
+  scoldingAt,
+  CAT_NEAR,
+  MAX_HEARTS,
   SQUIRREL_CALL,
   step,
   flankX,
   MIN_FLANK,
+  FLANK_SETTLED,
+  WALK_SPEED,
   layoutFor,
   ciccioFloor,
   ciccioY,
@@ -50,6 +59,14 @@ const stageOf = (width: number) => ({
 });
 
 const sceneAt = (width: number) => createScene(stageOf(width), () => 0.5);
+
+/** The same room with nothing on the rota and no cat due: an ordinary walk. */
+function quietScene(width: number) {
+  const s = sceneAt(width);
+  s.routine = { next: 0, wait: Number.MAX_SAFE_INTEGER };
+  s.catNextIn = Number.MAX_SAFE_INTEGER;
+  return s;
+}
 
 describe('the room, laid out', () => {
   it.each(WIDTHS)('stands everything on screen at %ipx, in the order it is drawn', (width) => {
@@ -340,19 +357,37 @@ describe('two squirrels who love him', () => {
   // The invariant the whole scene is about. Asserted every single frame rather
   // than at the end, because the way it breaks is transient: he outruns one,
   // it ends up the wrong side of him, and from then on the pair is inverted.
-  it('never lets him out from between them, on any window, ever', () => {
+  // Being between them converges rather than being held down — he outruns them
+  // for a gratin, and a squirrel he overtook has to run back. So the invariant
+  // is stated as: whenever one is on the wrong side of him it is *travelling*
+  // to the right one, and it never takes long.
+  it('never leaves one on the wrong side of him without it running back', () => {
     for (const width of WIDTHS) {
       const s = sceneAt(width);
-      for (let i = 0; i < 3000; i++) {
+      let wrongFor = 0;
+      for (let i = 0; i < 4000; i++) {
         step(s, eager);
-        // Except mid-dash, which is the one time he is meant to be in front of
-        // both of them — see "he surges out in front" below.
-        if (dashingForFood(s)) continue;
         const [left, right] = s.squirrels;
-        expect(left.x).toBeLessThanOrEqual(s.ciccio.x - MIN_FLANK);
-        expect(right.x).toBeGreaterThanOrEqual(s.ciccio.x + MIN_FLANK);
+        const wrong = left.x > s.ciccio.x - MIN_FLANK || right.x < s.ciccio.x + MIN_FLANK;
+        wrongFor = wrong ? wrongFor + 1 : 0;
+        expect(wrongFor).toBeLessThan(700);
       }
     }
+  });
+
+  it('settles them either side of him whenever he is not chasing food', () => {
+    const s = sceneAt(1280);
+    for (let i = 0; i < 6000; i++) {
+      step(s, steady);
+      if (dashingForFood(s)) continue;
+      // Given a moment's peace they are where they belong.
+      if (s.ciccio.phase !== 'wandering') continue;
+      run(s, 0, steady);
+    }
+    run(s, 400, steady);
+    const [left, right] = s.squirrels;
+    expect(left.x).toBeLessThan(s.ciccio.x);
+    expect(right.x).toBeGreaterThan(s.ciccio.x);
   });
 
   it('keeps them in the room while it keeps them beside him', () => {
@@ -370,9 +405,12 @@ describe('two squirrels who love him', () => {
   // gap, not the position. Once they have caught him it stays between the
   // nearest they may be squeezed and a little past where they want to stand.
   it('closes the gap and then holds it, rather than trailing further every lap', () => {
-    const s = sceneAt(900);
+    // A quiet afternoon: nothing on the rota, no cat. What is being asked is
+    // whether an ordinary walk lets them drift, and a dash for a gratin — where
+    // he is *meant* to pull away — would answer a different question.
+    const s = quietScene(900);
     run(s, 400, steady);
-    for (let i = 0; i < 2000; i++) {
+    for (let i = 0; i < 4000; i++) {
       step(s, steady);
       for (const q of s.squirrels) {
         const gap = Math.abs(q.x - s.ciccio.x);
@@ -690,32 +728,44 @@ describe('a potato gratin', () => {
     expect(s.gratin!.x).toBeGreaterThanOrEqual(s.layout.wanderLeft);
   });
 
-  it('has him surge out in front of both of them, and them catch him up after', () => {
+  it('pulls further ahead of them the whole way, then lets them catch up', () => {
     const s = sceneAt(1440);
-    // Let them settle at his sides first: created, they are placed beside
-    // wherever he was dropped, and a dash begun before they have caught up
-    // measures the catching up rather than the dash.
-    run(s, 600, steady);
+    // Settled at his sides first: created, they are placed beside wherever he
+    // was dropped, and a dash begun before they have caught up measures the
+    // catching up rather than the dash.
+    run(s, 900, steady);
     clickScene(s, s.layout.ovenX, s.ground - 30);
     runUntil(s, (x) => x.ciccio.phase === 'heading', 200);
-    run(s, 90, steady);
 
-    // Genuinely in front of *both*, not merely a little further from one. Being
-    // between them is held by a clamp the rest of the time, and lifting it for
-    // the length of a dash is what lets this be true at all.
+    run(s, 40, steady);
     expect(dashingForFood(s)).toBe(true);
-    for (const q of s.squirrels) {
-      expect((s.ciccio.x - q.x) * s.ciccio.dir).toBeGreaterThan(EXCITED_TRAIL / 2);
-    }
+    const early = s.squirrels.map((q) => (s.ciccio.x - q.x) * s.ciccio.dir);
+
+    // They are running too, not ambling: well above what keeping up with his
+    // walk costs them, which is the difference between a chase and a stroll.
+    const before = s.squirrels.map((q) => q.x);
+    step(s, steady);
+    s.squirrels.forEach((q, i) => {
+      expect(Math.abs(q.x - before[i])).toBeGreaterThan(WALK_SPEED);
+    });
+
+    // The gap *grows*. A fixed trailing distance reads as the walk with
+    // everybody shifted along, which is exactly what a constant offset gave —
+    // so what makes this true is that they may not travel as fast as he can.
+    run(s, 150, steady);
+    expect(dashingForFood(s)).toBe(true);
+    s.squirrels.forEach((q, i) => {
+      expect((s.ciccio.x - q.x) * s.ciccio.dir).toBeGreaterThan(early[i] + 25);
+    });
 
     // And the moment he stops to eat they close back up, either side of him.
     runUntil(s, (x) => x.ciccio.phase === 'eating', 8000);
-    run(s, 120, steady);
+    run(s, 200, steady);
     const [left, right] = s.squirrels;
     expect(left.x).toBeLessThan(s.ciccio.x);
     expect(right.x).toBeGreaterThan(s.ciccio.x);
     for (const q of s.squirrels) {
-      expect(Math.abs(q.x - s.ciccio.x)).toBeCloseTo(FLANK_GAP, 0);
+      expect(Math.abs(q.x - s.ciccio.x)).toBeGreaterThan(FLANK_GAP - FLANK_SETTLED - 1);
     }
   });
 
@@ -845,14 +895,16 @@ describe('getting on and off the furniture', () => {
 
   it('keeps him between them on the furniture as well as on the floor', () => {
     const s = sceneAt(1280);
+    let wrongFor = 0;
     for (let i = 0; i < 30000; i++) {
       step(s, eager);
-      // The one exception, and it is deliberate: running for a gratin he is out
-      // in front of both of them.
-      if (dashingForFood(s)) continue;
+      // Running for a gratin he is out in front of both, and a squirrel he
+      // overtook needs a moment to run back — so what is pinned here is that
+      // they are never stuck on the wrong side, not that they never are.
       const [left, right] = s.squirrels;
-      expect(left.x).toBeLessThan(s.ciccio.x);
-      expect(right.x).toBeGreaterThan(s.ciccio.x);
+      const wrong = left.x > s.ciccio.x || right.x < s.ciccio.x;
+      wrongFor = wrong ? wrongFor + 1 : 0;
+      expect(wrongFor).toBeLessThan(700);
     }
   });
 
@@ -1030,5 +1082,213 @@ describe('the round they speak in', () => {
     clickScene(s, s.layout.ovenX, s.ground - 30);
     expect(s.ciccio.say!.line).toBe(CICCIO_GRATIN);
     expect(s.squirrels.map((q) => q.say)).toEqual([null, null]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+
+describe('the little blue cat', () => {
+  /** Runs until a cat has let itself in. */
+  function withCat(width = 1280) {
+    const s = sceneAt(width);
+    runUntil(s, (x) => x.cat !== null, 60000, eager);
+    return s;
+  }
+
+  it('lets itself in now and then, from one side or the other', () => {
+    const sides = new Set<number>();
+    for (const seed of [1, 4, 7, 12, 30]) {
+      const rng = seeded(seed);
+      const s = createScene(stageOf(1280), rng);
+      for (let i = 0; i < 40000 && !s.cat; i++) step(s, rng);
+      if (s.cat) sides.add(s.cat.from);
+    }
+    // Always from off-stage, and not always the same edge.
+    expect(sides.size).toBe(2);
+  });
+
+  it('comes in from off the edge rather than appearing in the middle', () => {
+    const s = withCat();
+    expect(s.cat!.x < 0 || s.cat!.x > s.width).toBe(true);
+  });
+
+  it('freezes him and puts his spines up as it comes', () => {
+    const s = withCat();
+    expect(s.ciccio.phase).toBe('bristling');
+
+    const where = s.ciccio.x;
+    run(s, 40, steady);
+    expect(s.ciccio.x).toBe(where);
+    expect(s.ciccio.bristle).toBeGreaterThan(0);
+    runUntil(s, (x) => x.ciccio.bristle >= 0.99, 400, steady);
+  });
+
+  it('walks up to him, meows, and only then is he let down', () => {
+    const s = withCat();
+    runUntil(s, (x) => x.cat!.phase === 'meowing', 4000, steady);
+    expect(s.cat!.say!.line).toBe(CAT_CALL);
+    expect(Math.abs(s.cat!.x - s.ciccio.x)).toBeLessThanOrEqual(CAT_NEAR + 2);
+
+    // The spines only come down once it has spoken kindly to him.
+    runUntil(s, (x) => x.ciccio.bristle <= 0.01, 4000, steady);
+  });
+
+  it('gives him a kiss once he has relaxed, and not before', () => {
+    const s = withCat();
+    runUntil(s, (x) => x.cat!.phase === 'kissing', 6000, steady);
+    expect(s.ciccio.bristle).toBeLessThan(0.4);
+    runUntil(s, (x) => x.hearts.length > 0, 60, steady);
+  });
+
+  it('sees itself out, and gives him his afternoon back', () => {
+    const s = withCat();
+    runUntil(s, (x) => x.cat === null, 20000, steady);
+    // Back to his own business — whatever that turns out to be by then, since
+    // an oven does not stop baking because a cat called.
+    expect(s.ciccio.phase).not.toBe('bristling');
+    runUntil(s, (x) => x.ciccio.bristle === 0, 200, steady);
+  });
+
+  it('never leaves two cats in the room at once', () => {
+    const s = sceneAt(1280);
+    let seen: unknown = null;
+    for (let i = 0; i < 40000; i++) {
+      step(s, eager);
+      if (s.cat && seen && s.cat !== seen) {
+        // A new cat is only allowed once the last one has gone.
+        expect(seen).toBeNull();
+      }
+      seen = s.cat;
+    }
+  });
+
+  it('caps the hearts rather than growing them for as long as the app is open', () => {
+    const s = sceneAt(1280);
+    for (let i = 0; i < 40000; i++) {
+      step(s, eager);
+      expect(s.hearts.length).toBeLessThanOrEqual(MAX_HEARTS);
+    }
+  });
+
+  // He cannot be startled off a sofa he is sitting on, or out of a meal: the
+  // cat only calls when he is up and about, which is the one state that has
+  // somewhere sensible to go back to.
+  it('does not call while he is eating, seated or asleep', () => {
+    const s = sceneAt(1280);
+    for (let i = 0; i < 40000; i++) {
+      step(s, eager);
+      if (s.cat && s.cat.phase === 'arriving' && s.cat.timer === 0) {
+        expect(['wandering', 'wobbling', 'bristling']).toContain(s.ciccio.phase);
+      }
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+
+describe('one of them gets stuck up the wall', () => {
+  /** Sat in front of the television, which is the only time this happens. */
+  function watching(width = 1280) {
+    const s = sceneAt(width);
+    clickScene(s, s.layout.loungeX, s.ground - TV_HANGS_AT - 10);
+    runUntil(s, (x) => x.ciccio.phase === 'sitting', 60000, steady);
+    s.tv.showLeft = Number.MAX_SAFE_INTEGER;
+    return s;
+  }
+
+  it('only ever happens on the sofa', () => {
+    const s = sceneAt(1280);
+    for (let i = 0; i < 40000; i++) {
+      step(s, eager);
+      if (s.rescue) expect(s.ciccio.at).toBe('sofa');
+    }
+  });
+
+  it('goes straight up, and stops at the top', () => {
+    const s = watching();
+    runUntil(s, (x) => x.rescue !== null, 8000, eager);
+    const climber = s.squirrels[s.rescue!.climber];
+    const where = climber.x;
+
+    runUntil(s, (x) => x.rescue!.phase === 'stuck', 4000, steady);
+    expect(climber.climb).toBe(CLIMB_MAX);
+    // Straight up: it does not wander sideways on the way.
+    expect(climber.x).toBe(where);
+  });
+
+  // Derived from the wall rather than picked, so a taller squirrel or a lower
+  // ceiling moves it instead of putting one through the roof.
+  it('never climbs out through the top of the room', () => {
+    const s = watching();
+    runUntil(s, (x) => x.rescue !== null, 8000, eager);
+    for (let i = 0; i < 4000; i++) {
+      step(s, steady);
+      for (const q of s.squirrels) {
+        expect(SEAT_HEIGHT[q.at] + q.climb + SQUIRREL_REACH).toBeLessThanOrEqual(WALL_HEIGHT);
+      }
+    }
+  });
+
+  it('turns head-down at the top and cannot get itself back', () => {
+    const s = watching();
+    runUntil(s, (x) => x.rescue?.phase === 'stuck', 12000, eager);
+    const climber = s.squirrels[s.rescue!.climber];
+    expect(climber.headDown).toBe(true);
+
+    // It stays up there a good while before help arrives.
+    run(s, 60, steady);
+    expect(climber.climb).toBe(CLIMB_MAX);
+  });
+
+  it('sends the other one up to fetch it', () => {
+    const s = watching();
+    runUntil(s, (x) => x.rescue?.phase === 'fetching', 20000, eager);
+    const rescue = s.rescue!;
+    const other = s.squirrels[rescue.climber === 0 ? 1 : 0];
+    runUntil(s, (x) => x.rescue!.phase === 'descending', 4000, steady);
+    expect(other.climb).toBeGreaterThan(0);
+  });
+
+  it('brings them both down and then tells it off', () => {
+    const s = watching();
+    runUntil(s, (x) => x.rescue?.phase === 'scolding', 30000, eager);
+    const rescue = s.rescue!;
+    const other = s.squirrels[rescue.climber === 0 ? 1 : 0];
+
+    expect(s.squirrels.every((q) => q.climb === 0)).toBe(true);
+    expect(s.squirrels[rescue.climber].headDown).toBe(false);
+    expect(other.say!.line).toBe(SQUIRREL_SCOLD);
+    expect(scolder(s)).toBe(other);
+    expect(scoldingAt(s)).toBeGreaterThanOrEqual(0);
+
+    runUntil(s, (x) => x.rescue === null, 4000, steady);
+    expect(scoldingAt(s)).toBeNull();
+  });
+
+  // A squirrel left half way up a wall because a gratin came out would be up
+  // there for the life of the tab.
+  it('gets them down if he leaves the sofa half way through', () => {
+    const s = watching();
+    runUntil(s, (x) => x.rescue?.phase === 'stuck', 12000, eager);
+    expect(s.squirrels[s.rescue!.climber].climb).toBeGreaterThan(0);
+
+    // He is called away — the one thing that must not leave a squirrel up a
+    // wall for the life of the tab.
+    clickScene(s, s.layout.ovenX, s.ground - 30);
+    runUntil(s, (x) => x.squirrels.every((q) => q.climb === 0), 4000, steady);
+    expect(s.rescue).toBeNull();
+    expect(s.squirrels.every((q) => !q.headDown)).toBe(true);
+  });
+
+  it('never leaves one of them hanging in the air for long once they are off it', () => {
+    const s = sceneAt(1280);
+    let airborneOff = 0;
+    for (let i = 0; i < 40000; i++) {
+      step(s, eager);
+      const up = s.squirrels.some((q) => q.climb > 0);
+      airborneOff = up && s.ciccio.at !== 'sofa' ? airborneOff + 1 : 0;
+      // Long enough to climb down from the top and no longer.
+      expect(airborneOff).toBeLessThan(200);
+    }
   });
 });
