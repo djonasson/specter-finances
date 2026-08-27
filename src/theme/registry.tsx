@@ -72,8 +72,9 @@ export const BACKGROUNDS = [
     render: () => <CelloBackground />,
     // Taller than the squirrel's: this scene has a domed oven on a plinth and
     // two people standing beside it, not one bird's worth of ground. The scene
-    // works the number out from its own geometry rather than being told it —
-    // including how small it draws itself on a narrow window.
+    // contributes how tall its own scenery is and nothing else — `sceneFloor`
+    // turns that into a band, so the clearance, the scaling on a narrow window
+    // and the rounding come out the same for every scene.
     floor: celloFloor,
   },
 ] as const satisfies readonly BackgroundDescriptor[];
