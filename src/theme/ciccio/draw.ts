@@ -570,12 +570,20 @@ function drawSofa(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette): void
 }
 
 /**
- * A zebra's head in profile, which is what the screen turns to for the last few
+ * A zebra, standing side-on, which is what the screen turns to for the last few
  * seconds of whatever they are watching.
  *
- * Facing left, so it reads against the sofa below it rather than off the edge.
- * `size` is the height of the head and everything else is a share of it, so it
- * scales with the panel rather than needing a second set of numbers.
+ * A **whole animal**, not a head. The head alone was drawn first and at the size
+ * a television on the far wall actually is — about thirty pixels — it read as a
+ * striped blob: nothing in a head is recognisable once the stripes are a pixel
+ * apart. A standing zebra is recognisable from its outline alone, which is the
+ * only thing that survives at that size.
+ *
+ * Built as one silhouette and then **clipped**, so the stripes are contained by
+ * the body rather than laid over it. Drawing them as separate shapes means
+ * matching every edge by hand and getting it wrong on the belly and the legs.
+ *
+ * `size` is the height from hoof to ear; everything else is a share of it.
  */
 function drawZebra(
   ctx: CanvasRenderingContext2D,
@@ -584,77 +592,128 @@ function drawZebra(
   size: number,
   p: Palette,
 ): void {
-  const u = size / 30;
+  const u = size / 60;
 
   ctx.save();
-  ctx.translate(cx + 5 * u, cy);
+  ctx.translate(cx, cy + size * 0.46);
+  ctx.scale(u, u);
 
-  // Neck and head: one shape, muzzle out to the left.
+  /**
+   * The whole animal as one outline.
+   *
+   * Overlapping solids in a single path rather than an outline traced by hand —
+   * filled, they union, so the legs meet the barrel and the neck meets both
+   * without any of the joins having to be got right. Traced as one contour the
+   * legs hung a clear gap below the body.
+   */
+  function silhouette() {
+    ctx.beginPath();
+    // Legs, run well up into the barrel so they join it.
+    for (const lx of [-16, -9, 7, 14]) ctx.rect(lx, -30, 4.4, 30);
+    // Barrel.
+    ctx.moveTo(19, -30);
+    ctx.ellipse(-1, -32, 20, 11, 0, 0, Math.PI * 2);
+    // Neck, from the shoulder up to the poll.
+    ctx.moveTo(6, -36);
+    ctx.lineTo(15, -33);
+    ctx.lineTo(28, -49);
+    ctx.lineTo(19, -53);
+    ctx.closePath();
+    // Head: down and forward off the poll, to a muzzle.
+    ctx.moveTo(19, -54);
+    ctx.lineTo(30, -52);
+    ctx.lineTo(36, -45);
+    ctx.quadraticCurveTo(33, -42, 28, -43);
+    ctx.lineTo(20, -48);
+    ctx.closePath();
+    // Ears.
+    ctx.moveTo(20, -54);
+    ctx.lineTo(20.5, -60);
+    ctx.lineTo(24.5, -54);
+    ctx.closePath();
+    ctx.moveTo(25, -54);
+    ctx.lineTo(27, -60);
+    ctx.lineTo(29.5, -53);
+    ctx.closePath();
+    // Tail.
+    ctx.moveTo(-20, -40);
+    ctx.quadraticCurveTo(-26, -32, -25, -20);
+    ctx.lineTo(-22, -20);
+    ctx.quadraticCurveTo(-23, -31, -18, -38);
+    ctx.closePath();
+  }
+
   ctx.fillStyle = p.zebra;
-  ctx.beginPath();
-  // A long straight muzzle is most of what says horse rather than dog: the
-  // head runs well out to the left and narrows as it goes.
-  ctx.moveTo(6 * u, 15 * u);
-  ctx.lineTo(9 * u, -2 * u);
-  ctx.quadraticCurveTo(9 * u, -12 * u, 1 * u, -13 * u);
-  ctx.quadraticCurveTo(-9 * u, -13 * u, -17 * u, -8 * u);
-  ctx.quadraticCurveTo(-25 * u, -4 * u, -24 * u, 0.5 * u);
-  ctx.quadraticCurveTo(-21 * u, 3 * u, -16 * u, -1 * u);
-  ctx.quadraticCurveTo(-8 * u, 4 * u, -2 * u, 15 * u);
-  ctx.closePath();
+  silhouette();
   ctx.fill();
 
-  // Ear.
-  ctx.beginPath();
-  ctx.moveTo(3 * u, -12 * u);
-  ctx.lineTo(6 * u, -19 * u);
-  ctx.lineTo(9 * u, -11 * u);
-  ctx.closePath();
-  ctx.fill();
-
-  // The mane, standing up along the back of the neck.
-  ctx.fillStyle = p.zebraDark;
-  ctx.beginPath();
-  ctx.moveTo(7 * u, -10 * u);
-  ctx.lineTo(12 * u, -6 * u);
-  ctx.lineTo(11 * u, 13 * u);
-  ctx.lineTo(6 * u, 14 * u);
-  ctx.closePath();
-  ctx.fill();
-
-  // Stripes: across the neck, and a few over the cheek.
+  // Stripes, held inside the outline.
+  ctx.save();
+  silhouette();
+  ctx.clip();
   ctx.strokeStyle = p.zebraDark;
-  ctx.lineCap = 'round';
-  ctx.lineWidth = 2.2 * u;
-  for (let i = 0; i < 4; i++) {
-    const y = -2 * u + i * 4.4 * u;
-    ctx.beginPath();
-    ctx.moveTo(6 * u, y);
-    ctx.quadraticCurveTo(0, y + 1.5 * u, -3.5 * u, y + 3.5 * u);
-    ctx.stroke();
-  }
-  ctx.lineWidth = 1.7 * u;
-  for (let i = 0; i < 4; i++) {
-    const x = -4 * u - i * 4.2 * u;
-    ctx.beginPath();
-    ctx.moveTo(x, -11 * u + i * 1.9 * u);
-    ctx.lineTo(x - 2.4 * u, -5.5 * u + i * 2.1 * u);
-    ctx.stroke();
-  }
+  ctx.lineCap = 'butt';
 
-  // Muzzle, and an eye.
+  // Over the barrel: upright, and bent to follow it.
+  ctx.lineWidth = 2.2;
+  for (let i = 0; i < 9; i++) {
+    const x = -18 + i * 4.6;
+    ctx.beginPath();
+    ctx.moveTo(x, -45);
+    ctx.quadraticCurveTo(x + 2, -32, x, -19);
+    ctx.stroke();
+  }
+  // Up the neck, leaning with it.
+  ctx.lineWidth = 2.4;
+  for (let i = 0; i < 6; i++) {
+    const t = i / 5;
+    ctx.beginPath();
+    ctx.moveTo(4 + t * 15, -34 - t * 15);
+    ctx.lineTo(12 + t * 16, -40 - t * 15);
+    ctx.stroke();
+  }
+  // A few across the face.
+  ctx.lineWidth = 1.8;
+  for (let i = 0; i < 3; i++) {
+    ctx.beginPath();
+    ctx.moveTo(22 + i * 4, -53);
+    ctx.lineTo(26 + i * 4, -45);
+    ctx.stroke();
+  }
+  // And round the legs — thin, or a leg five units wide reads as a ladder
+  // rather than as a striped leg.
+  ctx.lineWidth = 1.3;
+  for (const lx of [-16, -9, 7, 14]) {
+    for (let i = 0; i < 6; i++) {
+      const y = -22 + i * 4.4;
+      ctx.beginPath();
+      ctx.moveTo(lx - 1, y);
+      ctx.lineTo(lx + 5.6, y);
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
+
+  // The mane along the crest of the neck, a dark muzzle, and a tail tuft.
   ctx.fillStyle = p.zebraDark;
   ctx.beginPath();
-  ctx.ellipse(-21 * u, -1.5 * u, 3.6 * u, 2.8 * u, -0.35, 0, Math.PI * 2);
+  ctx.moveTo(7, -37);
+  ctx.quadraticCurveTo(13, -48, 19, -54);
+  ctx.lineTo(22, -52);
+  ctx.quadraticCurveTo(16, -46, 11, -35);
+  ctx.closePath();
   ctx.fill();
-  // The eye last, so no stripe lands on top of it.
+  ctx.beginPath();
+  ctx.ellipse(34, -45, 2.8, 2.4, -0.5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.ellipse(-24, -19, 2.6, 3.6, 0.15, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Eye, last, so no stripe lands on it.
   ctx.fillStyle = p.zebraEye;
   ctx.beginPath();
-  ctx.ellipse(-2 * u, -6.5 * u, 1.8 * u, 2.2 * u, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = p.zebra;
-  ctx.beginPath();
-  ctx.arc(-1.4 * u, -7.4 * u, 0.7 * u, 0, Math.PI * 2);
+  ctx.ellipse(26, -49, 1.6, 1.8, 0, 0, Math.PI * 2);
   ctx.fill();
 
   ctx.restore();
@@ -690,7 +749,7 @@ function drawTv(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette): void {
 
   if (on) {
     if (showingZebra(scene)) {
-      drawZebra(ctx, loungeX, top + TV_PANEL / 2, TV_PANEL - 14, p);
+      drawZebra(ctx, loungeX, top + TV_PANEL / 2, TV_PANEL - 12, p);
     } else {
       // The letter, drawn as three strokes rather than as text: a font that is
       // not on the machine would silently substitute something else, and the

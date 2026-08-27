@@ -27,6 +27,7 @@ import {
   MIN_FLANK,
   FLANK_SETTLED,
   WALK_SPEED,
+  RUN_SPEED,
   layoutFor,
   ciccioFloor,
   ciccioY,
@@ -830,6 +831,22 @@ describe('watching television', () => {
 
     runUntil(s, (x) => !x.tv.on, 4000, steady);
     expect(showingZebra(s)).toBe(false);
+  });
+
+  it('walks him to the sofa faster than he potters, but does not run him', () => {
+    const s = sceneAt(1440);
+    s.ciccio.x = s.layout.wanderLeft;
+    // The rota's own errand, not a tap: taps get their own, quicker pace.
+    s.tv.on = true;
+    s.tv.showLeft = 100000;
+    runUntil(s, (x) => x.ciccio.phase === 'heading', 400, steady);
+    expect(s.ciccio.goal!.urgent).toBe(false);
+
+    const before = s.ciccio.x;
+    step(s, steady);
+    const pace = Math.abs(s.ciccio.x - before);
+    expect(pace).toBeGreaterThan(WALK_SPEED);
+    expect(pace).toBeLessThan(RUN_SPEED);
   });
 
   it('gets him back off the sofa once the programme has finished', () => {

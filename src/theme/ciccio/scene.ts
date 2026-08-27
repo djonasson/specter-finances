@@ -206,9 +206,17 @@ const BITE_REACH = 26;
  * At 1.35 he was only a fifth quicker than the squirrels behind him, so neither
  * he nor they read as running and the gap crept open at a quarter-unit a frame.
  */
-const RUN_SPEED = 2.4;
+export const RUN_SPEED = 2.4;
 /** And faster again when somebody has just asked for it by tapping. */
 const SUMMON_SPEED = 3.1;
+/**
+ * On his way to the next thing on the rota.
+ *
+ * Above a stroll and well below a run: he is going somewhere on purpose rather
+ * than pottering, and at his wandering pace the walk across a wide room to the
+ * sofa was most of the time he spent watching anything.
+ */
+const ERRAND_SPEED = 0.95;
 export const MAX_STEAM = 14;
 
 // -- getting on and off things -----------------------------------------------
@@ -229,13 +237,14 @@ const CLIMB_FRAMES = 14;
 export const MAX_CLIMB = 24 / CLIMB_FRAMES;
 
 /**
- * The last stretch of a programme, when the screen turns to a zebra.
+ * The last stretch of a programme, when the screen turns to a zebra — about
+ * five seconds at the rate the frame loop is throttled to.
  *
  * Derived from the time left rather than stored beside it, the way the lit
  * window is: a zebra on a set that is not about to go off is not a state the
  * scene can reach, and there is nothing to keep in step.
  */
-const ZEBRA_FRAMES = 170;
+const ZEBRA_FRAMES = 200;
 
 /** How long a programme lasts, and how long a nap does. */
 const SHOW_FRAMES = 3400;
@@ -898,7 +907,7 @@ function walkCiccio(scene: Scene, rng: Rng): void {
     const away = goal.x - ciccio.x;
     ciccio.dir = away >= 0 ? 1 : -1;
     ciccio.facing += clamp(ciccio.dir - ciccio.facing, -TURN_EASE, TURN_EASE);
-    const pace = goal.urgent ? SUMMON_SPEED : goal.then === 'dance' ? RUN_SPEED : WALK_SPEED;
+    const pace = goal.urgent ? SUMMON_SPEED : goal.then === 'dance' ? RUN_SPEED : ERRAND_SPEED;
     if (Math.abs(away) <= pace) {
       // Snapped on arrival. A step that overshoots leaves him oscillating
       // either side of the plate at running speed, for ever.
