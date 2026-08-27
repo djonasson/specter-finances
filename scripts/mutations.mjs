@@ -174,11 +174,16 @@ export const MUTATIONS = [
     replace: '  one.side = Math.PI / 2 + tilt - climbed;',
     tests: ['src/theme/cello/scene.test.ts'],
   },
+  // Not "read `PERCH_HEIGHT.tree` instead of the maximum": with today's heights
+  // the park tree *is* the maximum, so that mutation changes no behaviour at
+  // all and would sit here for ever as an unkillable survivor. What is worth
+  // asking is whether the band still follows a banana that outgrows the park —
+  // the case the derivation exists for and the one nothing covered before.
   {
-    name: 'the reserved band is measured from the park rather than the tallest tree',
+    name: 'a banana grows taller than the park and the band does not follow',
     file: 'src/theme/cello/scene.ts',
-    find: '  Math.max(PERCH_HEIGHT.tree, ...BANANA_TRUNKS) + CROSS_ARC * CROSS_ARC_MAX;',
-    replace: '  PERCH_HEIGHT.tree + CROSS_ARC * CROSS_ARC_MAX;',
+    find: 'export const BANANA_TRUNK = 62;',
+    replace: 'export const BANANA_TRUNK = 200;',
     tests: ['src/theme/cello/scene.test.ts'],
   },
 ];
