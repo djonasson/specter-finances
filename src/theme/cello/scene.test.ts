@@ -2681,6 +2681,21 @@ describe('the banana plants as the scene knows them', () => {
     expect(bananaLeaves(0)).not.toEqual(bananaLeaves(1));
   });
 
+  // A leaf whose half-width goes negative is drawn inside out. `across` is what
+  // decides it, and the bound on `across` is deliberately *not* what this
+  // asserts: measured over forty plants the bound never once binds, so removing
+  // it changes nothing and it does not belong on the mutation list — it is
+  // insurance against a wider wobble or a longer `BANANA_LEAVES`, not a rule
+  // holding today's drawing together. What is pinned here is the property
+  // itself, which stays true however that bound is later tuned.
+  it('never gives a leaf a negative width, whatever the fan does', () => {
+    for (let plant = 0; plant < 40; plant++) {
+      for (const leaf of bananaLeaves(plant)) {
+        expect(leaf.half).toBeGreaterThan(0);
+      }
+    }
+  });
+
   it('counts the leaves into the height it declares, not just the stem', () => {
     // Derived, never chosen: the plant is its stem plus however far the leaves
     // arch above the crown, and that reach is part of the scene, not of the

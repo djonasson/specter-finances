@@ -219,5 +219,49 @@ export const MUTATIONS = [
     find: 'export const BANANA_TRUNK = 62;',
     replace: 'export const BANANA_TRUNK = 200;',
     tests: ['src/theme/cello/scene.test.ts'],
+  },,
+  // -- how a window becomes a stage (src/theme/stage.ts) ---------------------
+  // Every scene reads its band from here, so a wrong number here covers a strip
+  // of the user's list in every theme at once, and nothing renders an error.
+  {
+    name: 'the band is rounded to nearest rather than up',
+    file: 'src/theme/stage.ts',
+    find: '  return (width) => Math.ceil(GROUND_ABOVE_FOOTER + reach * sceneScale(width));',
+    replace: '  return (width) => Math.round(GROUND_ABOVE_FOOTER + reach * sceneScale(width));',
+    tests: ['src/theme/stage.test.ts'],
   },
+  {
+    name: 'a scene is stood straight on the footer, with no clearance',
+    file: 'src/theme/stage.ts',
+    find: 'export const GROUND_ABOVE_FOOTER = 34;',
+    replace: 'export const GROUND_ABOVE_FOOTER = 0;',
+    tests: ['src/theme/stage.test.ts', 'src/theme/cello/scene.test.ts'],
+  },
+  {
+    name: 'the footer is assumed rather than measured',
+    file: 'src/theme/stage.ts',
+    find: '  const ground = seen.height - footerHeight() - GROUND_ABOVE_FOOTER;',
+    // The fallback's own value, spelled out: `FOOTER_HEIGHT` is not imported
+    // here, and a ReferenceError would be a kill for the wrong reason.
+    replace: '  const ground = seen.height - 60 - GROUND_ABOVE_FOOTER;',
+    tests: ['src/theme/stage.test.ts'],
+  },
+  {
+    name: 'the stage is measured on a resize but never re-held',
+    file: 'src/theme/cello/CelloBackground.tsx',
+    find: '      size = next;',
+    replace: '',
+    tests: ['src/theme/cello/CelloBackground.test.tsx'],
+  },
+  {
+    name: 'the resize guard ignores the ground, so a moved footer is not noticed',
+    file: 'src/theme/cello/CelloBackground.tsx',
+    find: ' && next.ground === size.ground',
+    replace: '',
+    tests: ['src/theme/cello/CelloBackground.test.tsx'],
+  },
+  // Deliberately not here: the bound on a banana leaf's `across`. Measured over
+  // forty plants it never once binds, so removing it changes nothing — an
+  // unkillable survivor rather than a finding. `scene.test.ts` pins the property
+  // it protects instead.
 ];
