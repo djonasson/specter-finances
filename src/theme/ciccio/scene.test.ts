@@ -14,9 +14,15 @@ import {
   MIN_WANDER,
   FLANK_GAP,
   OVEN_WIDTH,
+  OVEN_HOOD_TOP,
   BED_WIDTH,
+  BED_HEAD,
   SOFA_WIDTH,
+  SOFA_BACK,
   TV_WIDTH,
+  TV_PANEL,
+  TV_HANGS_AT,
+  WALL_HEIGHT,
 } from './scene';
 import { sceneScale } from '../stage';
 import { stageFloorHeight } from '../registry';
@@ -38,46 +44,56 @@ describe('the room, laid out', () => {
     const stage = stageOf(width);
     const l = layoutFor(stage.width);
 
-    // Left to right: the oven, then the bed against the back, then the sofa
-    // with the television beyond it. Nothing may leave the stage on either
-    // side — a click target off the edge is a dead feature, and the oven and
-    // the television are two of the four things anybody can click.
-    expect(l.ovenX - OVEN_WIDTH / 2).toBeGreaterThanOrEqual(0);
-    expect(l.tvX + TV_WIDTH / 2).toBeLessThanOrEqual(stage.width);
-    expect(l.ovenX).toBeLessThan(l.bedX);
-    expect(l.bedX).toBeLessThan(l.sofaX);
-    expect(l.sofaX).toBeLessThan(l.tvX);
+    // Bed, then kitchen, then living room — the order somebody would walk
+    // through a studio flat. Nothing may leave the stage on either side: a
+    // click target off the edge is a dead feature, and the oven and the
+    // television are two of the four things anybody can click.
+    expect(l.bedX - BED_WIDTH / 2).toBeGreaterThanOrEqual(0);
+    expect(l.loungeX + SOFA_WIDTH / 2).toBeLessThanOrEqual(stage.width);
+    expect(l.bedX).toBeLessThan(l.ovenX);
+    expect(l.ovenX).toBeLessThan(l.loungeX);
   });
 
-  it.each(WIDTHS)('never lets the sofa and the television overlap at %ipx', (width) => {
+  it.each(WIDTHS)('leaves the kitchen clear of both its neighbours at %ipx', (width) => {
     const l = layoutFor(stageOf(width).width);
-    expect(l.sofaX + SOFA_WIDTH / 2).toBeLessThanOrEqual(l.tvX - TV_WIDTH / 2);
+    expect(l.bedX + BED_WIDTH / 2).toBeLessThanOrEqual(l.ovenX - OVEN_WIDTH / 2);
+    expect(l.ovenX + OVEN_WIDTH / 2).toBeLessThanOrEqual(l.loungeX - SOFA_WIDTH / 2);
   });
 
-  // The whole reason there is no `bed: Bed | null`. The bed stands against the
-  // back *inside* his walk rather than competing with it, so there is no width
-  // at which it has to be given up — and a null arm that can never be taken is
+  // The television is hung above the sofa rather than stood beside it, so the
+  // living room costs the room one sofa's width and the set cannot drift off
+  // the furniture it belongs to. One number, not two that can disagree.
+  it.each(WIDTHS)('hangs the television on the wall over its own sofa at %ipx', (width) => {
+    const l = layoutFor(stageOf(width).width);
+    expect(TV_WIDTH).toBeLessThan(SOFA_WIDTH);
+    expect(TV_HANGS_AT).toBeGreaterThanOrEqual(SOFA_BACK);
+    expect(TV_HANGS_AT + TV_PANEL).toBeLessThanOrEqual(WALL_HEIGHT);
+    expect(l.loungeX).toBeGreaterThan(0);
+  });
+
+  it.each(WIDTHS)('keeps the whole room under its own ceiling at %ipx', (width) => {
+    void width;
+    // Everything in the room stands against the wall, and the wall is the
+    // reach. A piece taller than the room would be drawn over the user's list.
+    for (const height of [OVEN_HOOD_TOP, BED_HEAD, SOFA_BACK, TV_HANGS_AT + TV_PANEL]) {
+      expect(height).toBeLessThanOrEqual(WALL_HEIGHT);
+    }
+  });
+
+  // The whole reason there is no `bed: Bed | null`. Everything stands against
+  // the back wall and he walks the strip in front of all of it, so no piece
+  // ever competes with his floor — and a null arm that can never be taken is
   // dead weight in `resizeScene`, in the drawing and in every reader for ever.
-  it.each(WIDTHS)('keeps the bed inside his walk at %ipx, so it never has to go', (width) => {
-    const l = layoutFor(stageOf(width).width);
-    expect(l.bedX - BED_WIDTH / 2).toBeGreaterThanOrEqual(l.wanderLeft - BED_WIDTH);
-    expect(l.bedX).toBeGreaterThan(l.wanderLeft);
-    expect(l.bedX).toBeLessThan(l.wanderRight);
-  });
-
   it.each(WIDTHS)('leaves him a walk worth walking at %ipx, flanks included', (width) => {
     const l = layoutFor(stageOf(width).width);
     expect(l.wanderRight - l.wanderLeft).toBeGreaterThanOrEqual(MIN_WANDER);
   });
 
-  // He is between them by layout, not by a clamp fighting the layout every
-  // frame: his range is inset by a flank on each side, so a squirrel always has
-  // somewhere to stand that is still inside the room.
   it.each(WIDTHS)('insets his range so a squirrel always has room beside him at %ipx', (width) => {
     const stage = stageOf(width);
     const l = layoutFor(stage.width);
-    expect(l.wanderLeft - FLANK_GAP).toBeGreaterThan(0);
-    expect(l.wanderRight + FLANK_GAP).toBeLessThan(stage.width);
+    expect(l.wanderLeft - FLANK_GAP).toBeGreaterThanOrEqual(0);
+    expect(l.wanderRight + FLANK_GAP).toBeLessThanOrEqual(stage.width);
   });
 
   it('gives a wider window a wider walk, rather than bigger furniture', () => {
@@ -86,8 +102,9 @@ describe('the room, laid out', () => {
     expect(wide.wanderRight - wide.wanderLeft).toBeGreaterThan(
       narrow.wanderRight - narrow.wanderLeft,
     );
-    // The oven is the same size in scene units at both: the scene is drawn
-    // smaller on a phone, never laid out differently.
+    // The bed and the kitchen are the same size in scene units at both: the
+    // scene is drawn smaller on a phone, never laid out differently.
+    expect(wide.bedX).toBe(narrow.bedX);
     expect(wide.ovenX).toBe(narrow.ovenX);
   });
 });
@@ -183,11 +200,11 @@ describe('a window that changes size', () => {
   it('leaves him on the seat he was on, however far that seat moved', () => {
     const s = sceneAt(1440);
     s.ciccio.at = 'sofa';
-    s.ciccio.x = s.layout.sofaX;
+    s.ciccio.x = s.layout.loungeX;
     resizeScene(s, stageOf(360));
 
     expect(s.ciccio.at).toBe('sofa');
-    expect(s.ciccio.x).toBe(s.layout.sofaX);
+    expect(s.ciccio.x).toBe(s.layout.loungeX);
     expect(ciccioY(s)).toBe(s.ground - SEAT_HEIGHT.sofa);
   });
 
@@ -331,6 +348,49 @@ describe('two squirrels who love him', () => {
       step(s, eager);
       expect(ciccioY(s)).toBe(s.ground);
       for (const q of s.squirrels) expect(squirrelY(s, q)).toBe(s.ground);
+    }
+  });
+
+  // The one ahead of him is pushed along rather than chasing, so it sits on the
+  // edge of the dead zone: in it one frame, out of it the next. Recomputing
+  // `facing` from the movement therefore flipped it every frame, and since the
+  // drawing mirrors the whole figure about `facing`, that squirrel strobed.
+  //
+  // This is the assertion that catches it, rather than "the facing never
+  // changes" — it must change, once, each time the pair turns round. What it
+  // may never do is change twice in a handful of frames.
+  it('never turns a squirrel round twice in the space of a few frames', () => {
+    const s = sceneAt(1280);
+    run(s, 300, steady);
+    const lastFlip = s.squirrels.map(() => -Infinity);
+    const previous = s.squirrels.map((q) => Math.sign(q.facing));
+    for (let frame = 0; frame < 4000; frame++) {
+      step(s, steady);
+      s.squirrels.forEach((q, j) => {
+        const now = Math.sign(q.facing);
+        if (now !== previous[j]) {
+          expect(frame - lastFlip[j]).toBeGreaterThan(30);
+          lastFlip[j] = frame;
+          previous[j] = now;
+        }
+      });
+    }
+  });
+
+  // And the other half of the same bug: a squirrel that faces him while being
+  // pushed walks backwards down the room for the whole length of his walk.
+  it('walks a squirrel the way it is facing, never backwards', () => {
+    const s = sceneAt(1280);
+    run(s, 300, steady);
+    for (let i = 0; i < 3000; i++) {
+      const before = s.squirrels.map((q) => q.x);
+      step(s, steady);
+      s.squirrels.forEach((q, j) => {
+        const moved = q.x - before[j];
+        // Only judge frames where it actually travelled: the clamp that keeps
+        // it off him nudges it a fraction, and that is not walking.
+        if (Math.abs(moved) > 0.3) expect(Math.sign(moved)).toBe(Math.sign(q.facing));
+      });
     }
   });
 

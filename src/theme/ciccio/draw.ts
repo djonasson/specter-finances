@@ -14,33 +14,72 @@
  */
 
 import type { Scene, Squirrel } from './scene';
-import { OVEN_WIDTH, BED_WIDTH, SOFA_WIDTH, TV_WIDTH, SEAT_HEIGHT } from './scene';
+import {
+  OVEN_WIDTH,
+  OVEN_HEIGHT,
+  OVEN_HOOD_TOP,
+  BED_WIDTH,
+  BED_HEAD,
+  SOFA_WIDTH,
+  SOFA_BACK,
+  TV_WIDTH,
+  TV_PANEL,
+  TV_HANGS_AT,
+  WALL_HEIGHT,
+  DEPTH,
+  SEAT_HEIGHT,
+} from './scene';
 
 const LIGHT = {
-  floor: '#c9b8a4',
-  floorLine: '#b3a08a',
-  rug: '#d8b7a6',
-  rugTrim: '#c29a86',
+  wall: '#e7ded2',
+  wallShade: '#ddd2c3',
+  // The same colour at zero alpha, deliberately. Fading from `rgba(0,0,0,0)`
+  // interpolates through transparent *black*, which paints a dirty band across
+  // the top of the room where the fade should be invisible.
+  wallFade: 'rgba(221, 210, 195, 0)',
+  skirting: '#f3ece2',
+  floor: '#c49f7d',
+  floorBack: '#b28c6b',
+  floorLine: '#a37f5f',
+  shadow: 'rgba(60, 40, 24, 0.16)',
+  rug: '#c98d78',
+  rugInner: '#dba894',
+  rugTrim: '#b0725e',
 
   ovenBody: '#d9d2c8',
+  ovenBodyTop: '#e8e3db',
+  ovenEdge: '#b3aa9d',
   ovenTrim: '#a89f92',
+  ovenTrimTop: '#bfb7ab',
+  ovenDial: '#8d8479',
   ovenGlass: '#4c4038',
   ovenGlow: '#e8a13c',
   hood: '#bdb4a7',
+  hoodTop: '#d2cabe',
 
   bedFrame: '#a87f5c',
+  bedFrameTop: '#c0966f',
+  bedEdge: '#8a6544',
   mattress: '#f2ece2',
+  mattressTop: '#fbf7f0',
   blanket: '#8fae9b',
+  blanketTop: '#a3c0ad',
   blanketDark: '#7b9a87',
   pillow: '#ffffff',
 
-  sofa: '#7d90ad',
-  sofaDark: '#6a7d99',
-  sofaLight: '#93a5bf',
+  sofa: '#efe6d6',
+  sofaEdge: '#c2b49b',
+  sofaDark: '#dcd0bb',
+  sofaLight: '#f8f2e7',
+  sofaSeam: '#cbbda3',
 
-  tvStand: '#8a7c6d',
-  tvBody: '#3a3a3e',
-  tvScreenOff: '#54545a',
+  tvStand: '#6f6154',
+  tvStandTop: '#8a7a6a',
+  tvBody: '#26262a',
+  tvScreenOff: '#3a3a41',
+  tvSheen: 'rgba(255,255,255,0.07)',
+  picture: '#b9a68d',
+  pictureArt: '#8fa8a0',
 
   quillDark: '#7d6c58',
   quillLight: '#a8977f',
@@ -53,35 +92,58 @@ const LIGHT = {
   squirrelDark: '#ab5f2b',
   squirrelBelly: '#f4ead9',
   squirrelTail: '#d98a4a',
+  squirrelTailLight: '#eaa66a',
 };
 
 type Palette = typeof LIGHT;
 
 const DARK: Palette = {
-  floor: '#3b3229',
-  floorLine: '#2e2721',
-  rug: '#5c4038',
-  rugTrim: '#6e4d42',
+  wall: '#332c26',
+  wallShade: '#2b241f',
+  wallFade: 'rgba(43, 36, 31, 0)',
+  skirting: '#3d352d',
+  floor: '#4a3c2f',
+  floorBack: '#3a2f26',
+  floorLine: '#2b231c',
+  shadow: 'rgba(0, 0, 0, 0.3)',
+  rug: '#6b4438',
+  rugInner: '#7d5344',
+  rugTrim: '#8a5e4d',
 
   ovenBody: '#4a453e',
+  ovenBodyTop: '#57514a',
+  ovenEdge: '#2c2823',
   ovenTrim: '#332f2a',
+  ovenTrimTop: '#403b35',
+  ovenDial: '#6d665d',
   ovenGlass: '#211c18',
   ovenGlow: '#d2841f',
   hood: '#3d3831',
+  hoodTop: '#4a443c',
 
   bedFrame: '#5a4432',
+  bedFrameTop: '#6d5440',
+  bedEdge: '#3f2f22',
   mattress: '#4e4740',
+  mattressTop: '#5d554c',
   blanket: '#4a6355',
+  blanketTop: '#587465',
   blanketDark: '#3c5245',
   pillow: '#6b645b',
 
-  sofa: '#44506a',
-  sofaDark: '#36405a',
-  sofaLight: '#525f7c',
+  sofa: '#8d8375',
+  sofaEdge: '#5a534a',
+  sofaDark: '#746b5f',
+  sofaLight: '#9d9384',
+  sofaSeam: '#5f584e',
 
-  tvStand: '#4a4239',
-  tvBody: '#1e1e21',
-  tvScreenOff: '#2c2c31',
+  tvStand: '#403830',
+  tvStandTop: '#4e453b',
+  tvBody: '#141416',
+  tvScreenOff: '#212125',
+  tvSheen: 'rgba(255,255,255,0.05)',
+  picture: '#5a4d3e',
+  pictureArt: '#4a5f58',
 
   quillDark: '#4f453a',
   quillLight: '#6f6252',
@@ -94,84 +156,122 @@ const DARK: Palette = {
   squirrelDark: '#83491f',
   squirrelBelly: '#cbbda6',
   squirrelTail: '#b4713a',
+  squirrelTailLight: '#c98a52',
 };
 
-// -- the room ----------------------------------------------------------------
+// -- the room ---------------------------------------------------------------
 
-function drawFloor(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette): void {
-  // Down to the bottom of the stage, never below the ground line and up: the
-  // band the app reserves starts at the ground, and anything painted under it
-  // is painted over the navigation bar.
-  ctx.fillStyle = p.floor;
-  ctx.fillRect(0, scene.ground, scene.width, scene.height - scene.ground);
-  ctx.strokeStyle = p.floorLine;
-  ctx.lineWidth = 1.5;
+/**
+ * A box seen slightly from above and to the left: a front face, the top of it,
+ * and nothing else.
+ *
+ * One helper for every piece of furniture, so the room agrees with itself about
+ * where the light is and how deep it is. Drawn as flat rectangles the whole
+ * scene read as cardboard standing on a shelf; a single visible top face is
+ * most of the difference between that and a room.
+ */
+function box(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  ground: number,
+  w: number,
+  h: number,
+  front: string,
+  top: string,
+  radius = 3,
+  edge?: string,
+): void {
+  const left = x - w / 2;
+  ctx.fillStyle = top;
   ctx.beginPath();
-  ctx.moveTo(0, scene.ground);
-  ctx.lineTo(scene.width, scene.ground);
-  ctx.stroke();
+  ctx.moveTo(left, ground - h);
+  ctx.lineTo(left + DEPTH * 0.75, ground - h - DEPTH * 0.5);
+  ctx.lineTo(left + w + DEPTH * 0.75, ground - h - DEPTH * 0.5);
+  ctx.lineTo(left + w, ground - h);
+  ctx.closePath();
+  ctx.fill();
+  if (edge) {
+    ctx.strokeStyle = edge;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+
+  ctx.fillStyle = front;
+  ctx.beginPath();
+  ctx.roundRect(left, ground - h, w, h, radius);
+  ctx.fill();
+  // The room is drawn small — at a phone's scale a cream sofa on a cream wall
+  // is one shape. A hairline in the piece's own darker tone is what keeps the
+  // furniture legible without outlining it like a cartoon.
+  if (edge) {
+    ctx.strokeStyle = edge;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+}
+
+/** What sits under a thing standing on the floor, so it is standing on it. */
+function contactShadow(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  ground: number,
+  w: number,
+  p: Palette,
+): void {
+  ctx.fillStyle = p.shadow;
+  ctx.beginPath();
+  ctx.ellipse(x, ground + 1, w / 2, Math.max(2.5, w * 0.055), 0, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+/**
+ * The room itself: a wall to the height the app reserved, and a floor.
+ *
+ * The band is opaque down to the footer, so the strip above the ground line is
+ * the scene's own to paint — and painting it is what stops the furniture
+ * reading as cut-outs floating on a page. The wall fades out over its last
+ * stretch rather than ending on a hard line, so the room meets the user's list
+ * without a seam, in either colour scheme.
+ */
+function drawRoom(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette): void {
+  const g = scene.ground;
+
+  const wall = ctx.createLinearGradient(0, g - WALL_HEIGHT, 0, g);
+  wall.addColorStop(0, p.wallFade);
+  wall.addColorStop(0.35, p.wallShade);
+  wall.addColorStop(1, p.wall);
+  ctx.fillStyle = wall;
+  ctx.fillRect(0, g - WALL_HEIGHT, scene.width, WALL_HEIGHT);
+
+  // The floor, with the far strip darker: the two together read as a corner
+  // rather than as a line.
+  ctx.fillStyle = p.floorBack;
+  ctx.fillRect(0, g - 1, scene.width, DEPTH * 0.5 + 1);
+  ctx.fillStyle = p.floor;
+  ctx.fillRect(0, g + DEPTH * 0.5, scene.width, scene.height - g);
+
+  // Skirting, along the join.
+  ctx.fillStyle = p.skirting;
+  ctx.fillRect(0, g - 7, scene.width, 7);
+  ctx.fillStyle = p.floorLine;
+  ctx.fillRect(0, g - 1, scene.width, 1.2);
 }
 
 function drawRug(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette): void {
   const { rugX, rugWidth } = scene.layout;
   ctx.fillStyle = p.rug;
   ctx.beginPath();
-  ctx.ellipse(rugX, scene.ground + 3, rugWidth / 2, 7, 0, 0, Math.PI * 2);
+  ctx.ellipse(rugX, scene.ground + 8, rugWidth / 2, 8.5, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = p.rugInner;
+  ctx.beginPath();
+  ctx.ellipse(rugX, scene.ground + 8, rugWidth / 2 - 7, 5, 0, 0, Math.PI * 2);
   ctx.fill();
   ctx.strokeStyle = p.rugTrim;
-  ctx.lineWidth = 1.5;
+  ctx.lineWidth = 1.2;
   ctx.beginPath();
-  ctx.ellipse(rugX, scene.ground + 3, rugWidth / 2 - 5, 4.5, 0, 0, Math.PI * 2);
+  ctx.ellipse(rugX, scene.ground + 8, rugWidth / 2 - 3.5, 6.6, 0, 0, Math.PI * 2);
   ctx.stroke();
-}
-
-function drawOven(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette): void {
-  const { ovenX } = scene.layout;
-  const g = scene.ground;
-  const w = OVEN_WIDTH;
-  const left = ovenX - w / 2;
-
-  // The unit.
-  ctx.fillStyle = p.ovenBody;
-  ctx.beginPath();
-  ctx.roundRect(left, g - 66, w, 66, 4);
-  ctx.fill();
-
-  // Worktop.
-  ctx.fillStyle = p.ovenTrim;
-  ctx.fillRect(left - 3, g - 70, w + 6, 5);
-
-  // The door, and the glow behind it.
-  ctx.fillStyle = p.ovenGlass;
-  ctx.beginPath();
-  ctx.roundRect(left + 8, g - 44, w - 16, 32, 3);
-  ctx.fill();
-  ctx.fillStyle = p.ovenGlow;
-  ctx.globalAlpha = 0.55;
-  ctx.beginPath();
-  ctx.ellipse(ovenX, g - 26, w / 2 - 14, 9, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.globalAlpha = 1;
-
-  // Handle and dials.
-  ctx.fillStyle = p.ovenTrim;
-  ctx.fillRect(left + 6, g - 52, w - 12, 3);
-  for (let i = 0; i < 3; i++) {
-    ctx.beginPath();
-    ctx.arc(left + 14 + i * 12, g - 58, 2.4, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  // The hood above it, which is what makes the oven the tallest thing here.
-  ctx.fillStyle = p.hood;
-  ctx.beginPath();
-  ctx.moveTo(left - 2, g - 110);
-  ctx.lineTo(left + w + 2, g - 110);
-  ctx.lineTo(left + w - 8, g - 88);
-  ctx.lineTo(left + 8, g - 88);
-  ctx.closePath();
-  ctx.fill();
-  ctx.fillRect(ovenX - 8, g - 88, 16, 6);
 }
 
 function drawBed(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette): void {
@@ -181,95 +281,178 @@ function drawBed(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette): void 
   const left = bedX - w / 2;
   const mattress = SEAT_HEIGHT.bed;
 
-  // Headboard, at the left so the bed reads as being made up towards the room.
+  contactShadow(ctx, bedX, g, w + 6, p);
+
+  // Headboard at the left, tall enough to read as the head of the bed.
   ctx.fillStyle = p.bedFrame;
   ctx.beginPath();
-  ctx.roundRect(left - 4, g - 44, 10, 44, 3);
+  ctx.roundRect(left - 3, g - BED_HEAD, 12, BED_HEAD, 3);
   ctx.fill();
-  ctx.fillRect(left + w - 4, g - 22, 8, 22);
-
-  // Base and mattress.
+  ctx.strokeStyle = p.bedEdge;
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  // A footboard, lower than the head, so the bed reads as a bed from either end.
   ctx.fillStyle = p.bedFrame;
-  ctx.fillRect(left, g - 10, w, 10);
-  ctx.fillStyle = p.mattress;
   ctx.beginPath();
-  ctx.roundRect(left, g - mattress - 6, w, 12, 3);
+  ctx.roundRect(left + w - 9, g - 26, 11, 26, 3);
   ctx.fill();
+  ctx.stroke();
 
-  // Blanket over the foot end, folded back.
+  // Base, then the mattress on top of it with its own visible surface.
+  box(ctx, bedX, g, w, 13, p.bedFrame, p.bedFrameTop, 2, p.bedEdge);
+  box(ctx, bedX, g - 13, w - 4, mattress + 2, p.mattress, p.mattressTop, 3, p.bedEdge);
+
+  // Duvet over the foot end, with a fold turned back.
+  ctx.fillStyle = p.blanketTop;
+  ctx.beginPath();
+  ctx.moveTo(left + w * 0.4, g - mattress - 8);
+  ctx.lineTo(left + w * 0.4 + DEPTH * 0.75, g - mattress - 8 - DEPTH * 0.5);
+  ctx.lineTo(left + w - 4 + DEPTH * 0.75, g - mattress - 8 - DEPTH * 0.5);
+  ctx.lineTo(left + w - 4, g - mattress - 8);
+  ctx.closePath();
+  ctx.fill();
   ctx.fillStyle = p.blanket;
   ctx.beginPath();
-  ctx.roundRect(left + w * 0.42, g - mattress - 6, w * 0.58, 12, 3);
+  ctx.roundRect(left + w * 0.4, g - mattress - 8, w * 0.6 - 4, 12, 3);
   ctx.fill();
   ctx.fillStyle = p.blanketDark;
-  ctx.fillRect(left + w * 0.42, g - mattress - 6, 4, 12);
+  ctx.fillRect(left + w * 0.4, g - mattress - 8, 3.5, 12);
 
-  // Pillow.
+  // Pillow, propped against the headboard.
   ctx.fillStyle = p.pillow;
   ctx.beginPath();
-  ctx.roundRect(left + 6, g - mattress - 13, 26, 9, 4);
+  ctx.roundRect(left + 7, g - mattress - 12, 30, 10, 5);
   ctx.fill();
 }
 
-function drawSofa(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette): void {
-  const { sofaX } = scene.layout;
+function drawKitchen(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette): void {
+  const { ovenX } = scene.layout;
   const g = scene.ground;
-  const w = SOFA_WIDTH;
-  const left = sofaX - w / 2;
-  const seat = SEAT_HEIGHT.sofa;
+  const w = OVEN_WIDTH;
+  const left = ovenX - w / 2;
 
-  // Back.
-  ctx.fillStyle = p.sofaDark;
+  contactShadow(ctx, ovenX, g, w + 4, p);
+
+  // The unit, and a worktop with its own surface running over it.
+  box(ctx, ovenX, g, w, OVEN_HEIGHT, p.ovenBody, p.ovenBodyTop, 3, p.ovenEdge);
+  box(ctx, ovenX, g - OVEN_HEIGHT, w + 6, 5, p.ovenTrim, p.ovenTrimTop, 1.5, p.ovenEdge);
+
+  // Door, and the glow of something cooking behind it.
+  ctx.fillStyle = p.ovenGlass;
   ctx.beginPath();
-  ctx.roundRect(left + 4, g - 50, w - 8, 50, 6);
+  ctx.roundRect(left + 8, g - 44, w - 16, 32, 3);
   ctx.fill();
-
-  // Seat.
-  ctx.fillStyle = p.sofa;
+  ctx.fillStyle = p.ovenGlow;
+  ctx.globalAlpha = 0.5;
   ctx.beginPath();
-  ctx.roundRect(left, g - seat - 8, w, seat + 8, 5);
+  ctx.ellipse(ovenX, g - 26, w / 2 - 15, 8, 0, 0, Math.PI * 2);
   ctx.fill();
+  ctx.globalAlpha = 1;
 
-  // Two cushions, so the three of them have somewhere to sit.
-  ctx.fillStyle = p.sofaLight;
-  for (let i = 0; i < 2; i++) {
+  // Handle and dials.
+  ctx.fillStyle = p.ovenTrim;
+  ctx.beginPath();
+  ctx.roundRect(left + 7, g - 51, w - 14, 3.5, 1.5);
+  ctx.fill();
+  ctx.fillStyle = p.ovenDial;
+  for (let i = 0; i < 3; i++) {
     ctx.beginPath();
-    ctx.roundRect(left + 8 + (i * (w - 16)) / 2, g - seat - 7, (w - 16) / 2 - 3, 7, 3);
+    ctx.arc(left + 15 + i * 12, g - 58, 2.4, 0, Math.PI * 2);
     ctx.fill();
   }
 
-  // Arms.
-  ctx.fillStyle = p.sofaDark;
+  // Extractor hood over it, hung off the wall.
+  const hoodBottom = g - OVEN_HOOD_TOP + 22;
+  ctx.fillStyle = p.hoodTop;
   ctx.beginPath();
-  ctx.roundRect(left - 2, g - seat - 14, 9, seat + 14, 4);
+  ctx.moveTo(left - 4, g - OVEN_HOOD_TOP);
+  ctx.lineTo(left - 4 + DEPTH * 0.75, g - OVEN_HOOD_TOP - DEPTH * 0.5);
+  ctx.lineTo(left + w + 4 + DEPTH * 0.75, g - OVEN_HOOD_TOP - DEPTH * 0.5);
+  ctx.lineTo(left + w + 4, g - OVEN_HOOD_TOP);
+  ctx.closePath();
   ctx.fill();
+  ctx.fillStyle = p.hood;
   ctx.beginPath();
-  ctx.roundRect(left + w - 7, g - seat - 14, 9, seat + 14, 4);
+  ctx.moveTo(left - 4, g - OVEN_HOOD_TOP);
+  ctx.lineTo(left + w + 4, g - OVEN_HOOD_TOP);
+  ctx.lineTo(left + w - 10, hoodBottom);
+  ctx.lineTo(left + 10, hoodBottom);
+  ctx.closePath();
   ctx.fill();
 }
 
-function drawTv(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette): void {
-  const { tvX } = scene.layout;
+/**
+ * A three-seat sofa in cream leather: rolled arms, a low back, and two seams
+ * where the cushions meet.
+ */
+function drawSofa(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette): void {
+  const { loungeX } = scene.layout;
   const g = scene.ground;
-  const w = TV_WIDTH;
+  const w = SOFA_WIDTH;
+  const left = loungeX - w / 2;
+  const seat = SEAT_HEIGHT.sofa;
 
-  // Stand.
-  ctx.fillStyle = p.tvStand;
-  ctx.beginPath();
-  ctx.roundRect(tvX - w / 2 + 4, g - 24, w - 8, 24, 3);
-  ctx.fill();
+  contactShadow(ctx, loungeX, g, w + 6, p);
 
-  // Set.
+  // Back, standing behind the seat.
+  box(ctx, loungeX, g, w - 14, SOFA_BACK, p.sofaDark, p.sofaLight, 7, p.sofaEdge);
+
+  // The seat itself, and its cushions: three of them, so it is a three-seater
+  // at a glance rather than on being counted.
+  box(ctx, loungeX, g, w, seat + 9, p.sofa, p.sofaLight, 5, p.sofaEdge);
+  ctx.strokeStyle = p.sofaSeam;
+  ctx.lineWidth = 1.2;
+  for (let i = 1; i < 3; i++) {
+    const sx = left + 9 + ((w - 18) / 3) * i;
+    ctx.beginPath();
+    ctx.moveTo(sx, g - seat - 8);
+    ctx.lineTo(sx, g - 3);
+    ctx.stroke();
+  }
+
+  // Rolled arms, one either end, drawn over the seat.
+  for (const ax of [left + 5, left + w - 5]) {
+    ctx.fillStyle = p.sofaLight;
+    ctx.beginPath();
+    ctx.roundRect(ax - 7, g - seat - 19, 14, seat + 19, 7);
+    ctx.fill();
+    ctx.strokeStyle = p.sofaEdge;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.fillStyle = p.sofa;
+    ctx.beginPath();
+    ctx.ellipse(ax, g - seat - 13, 6, 5, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+/** The television: wide, thin, and hung on the wall over the sofa. */
+function drawTv(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette): void {
+  const { loungeX } = scene.layout;
+  const g = scene.ground;
+  const top = g - TV_HANGS_AT - TV_PANEL;
+
+  // A bare panel: the bezel is a hairline, which is what makes it read as a
+  // set somebody bought recently rather than a box.
   ctx.fillStyle = p.tvBody;
   ctx.beginPath();
-  ctx.roundRect(tvX - w / 2, g - 70, w, 46, 4);
+  ctx.roundRect(loungeX - TV_WIDTH / 2, top, TV_WIDTH, TV_PANEL, 3);
   ctx.fill();
 
-  // Screen, dark and off. A television that is on is a later change, and the
-  // scene does not yet have a fact for it to read.
   ctx.fillStyle = p.tvScreenOff;
   ctx.beginPath();
-  ctx.roundRect(tvX - w / 2 + 4, g - 66, w - 8, 38, 2);
+  ctx.roundRect(loungeX - TV_WIDTH / 2 + 1.6, top + 1.6, TV_WIDTH - 3.2, TV_PANEL - 5, 1.5);
+  ctx.fill();
+
+  // A sheen across the dark glass, so it reads as a screen that is off rather
+  // than as a hole in the wall.
+  ctx.fillStyle = p.tvSheen;
+  ctx.beginPath();
+  ctx.moveTo(loungeX - TV_WIDTH / 2 + 4, top + TV_PANEL - 6);
+  ctx.lineTo(loungeX - TV_WIDTH / 2 + 22, top + 2);
+  ctx.lineTo(loungeX - TV_WIDTH / 2 + 36, top + 2);
+  ctx.lineTo(loungeX - TV_WIDTH / 2 + 18, top + TV_PANEL - 6);
+  ctx.closePath();
   ctx.fill();
 }
 
@@ -395,15 +578,31 @@ function drawSquirrel(
 
   // The tail first, so it sits behind the body — a great question mark curling
   // up and over.
+  // Built out of overlapping lobes along a curve rather than as one crescent:
+  // a smooth outline read as a moon stuck behind the squirrel, and the whole
+  // point of these two is that they are fluffy.
+  const TAIL = [
+    { x: -6, y: -5, r: 6.5 },
+    { x: -12, y: -12, r: 7.5 },
+    { x: -16, y: -21, r: 8 },
+    { x: -16, y: -30, r: 8 },
+    { x: -12, y: -38, r: 7.5 },
+    { x: -5, y: -42, r: 6.5 },
+    { x: 1, y: -40, r: 5 },
+  ];
   ctx.fillStyle = p.squirrelTail;
-  ctx.beginPath();
-  ctx.moveTo(-5, -2);
-  ctx.quadraticCurveTo(-23, -7, -20, -27);
-  ctx.quadraticCurveTo(-18, -45, -4, -43);
-  ctx.quadraticCurveTo(-11, -35, -11, -25);
-  ctx.quadraticCurveTo(-11, -12, -2.5, -7);
-  ctx.closePath();
-  ctx.fill();
+  for (const lobe of TAIL) {
+    ctx.beginPath();
+    ctx.arc(lobe.x, lobe.y, lobe.r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  // A lighter core down the middle, the way the toy's tail is two-toned.
+  ctx.fillStyle = p.squirrelTailLight;
+  for (const lobe of TAIL.slice(1, 6)) {
+    ctx.beginPath();
+    ctx.arc(lobe.x + 2.4, lobe.y + 1, lobe.r * 0.5, 0, Math.PI * 2);
+    ctx.fill();
+  }
 
   // Body.
   ctx.fillStyle = p.squirrel;
@@ -455,9 +654,10 @@ function drawSquirrel(
 /**
  * The whole room, back to front.
  *
- * The bed is painted before the animals because it stands against the back and
- * he walks in front of it — which is the same fact that lets the room have no
- * nullable furniture: the bed never competes with his floor.
+ * Everything stands against the back wall and the three of them walk the strip
+ * in front of all of it, which is both the draw order and the reason the room
+ * has no nullable furniture: no piece ever competes with his floor. The
+ * television goes on before the sofa, because it is hung on the wall behind it.
  */
 export function drawScene(
   ctx: CanvasRenderingContext2D,
@@ -470,12 +670,12 @@ export function drawScene(
   ctx.save();
   ctx.scale(scale, scale);
 
-  drawFloor(ctx, scene, p);
+  drawRoom(ctx, scene, p);
   drawRug(ctx, scene, p);
   drawBed(ctx, scene, p);
-  drawOven(ctx, scene, p);
-  drawSofa(ctx, scene, p);
+  drawKitchen(ctx, scene, p);
   drawTv(ctx, scene, p);
+  drawSofa(ctx, scene, p);
 
   for (const squirrel of scene.squirrels) drawSquirrel(ctx, scene, squirrel, p);
   drawCiccio(ctx, scene, p);

@@ -31,21 +31,41 @@ import type { SceneSize } from '../stage';
 // Scene units. The room is drawn at `sceneScale`, so these never change with
 // the window: a phone gets the same room, drawn smaller.
 
-export const OVEN_WIDTH = 72;
-const OVEN_HEIGHT = 66;
-const OVEN_HOOD = 44;
+export const OVEN_WIDTH = 74;
+export const OVEN_HEIGHT = 64;
+export const OVEN_HOOD_TOP = 104;
 
-export const BED_WIDTH = 100;
-const BED_HEAD = 44;
-const BED_MATTRESS = 18;
+export const BED_WIDTH = 104;
+export const BED_HEAD = 46;
+const BED_MATTRESS = 20;
 
-export const SOFA_WIDTH = 88;
-const SOFA_BACK = 50;
-const SOFA_SEAT = 22;
+/** Three seats of cream leather. */
+export const SOFA_WIDTH = 116;
+export const SOFA_BACK = 52;
+const SOFA_SEAT = 24;
 
-export const TV_WIDTH = 54;
-const TV_STAND = 24;
-const TV_SET = 46;
+/**
+ * Wide, thin, and **hung on the wall** rather than stood on anything — which is
+ * where a television of this size goes, and which is also why the living room
+ * costs the room only a sofa's width: the set is above the sofa, not beside it.
+ */
+export const TV_WIDTH = 88;
+export const TV_PANEL = 46;
+/** The bottom of the panel, clear of the sofa's back. */
+export const TV_HANGS_AT = 62;
+
+/**
+ * How high the room's own wall goes.
+ *
+ * The band the app reserves is opaque down to the footer, so the strip above
+ * the ground is the scene's to paint — and painting it is what stops the room
+ * reading as furniture floating on a page. It is the tallest thing here by
+ * construction, so it *is* the reach; everything else has to fit under it.
+ */
+export const WALL_HEIGHT = 118;
+
+/** How deep the room is drawn, for the top faces that give it a third side. */
+export const DEPTH = 13;
 
 // The three of them are what the scene is about, so they are drawn a good deal
 // larger than a real hedgehog is next to a real oven. Room to grow: they are
@@ -59,11 +79,8 @@ const SQUIRREL_TAIL_RISE = 16;
 
 /** The room's own margin at each end, so nothing is drawn against the edge. */
 const EDGE = 10;
-/** He keeps this clear of the oven: it is hot, and he is made of plush. */
-const OVEN_CLEARANCE = 16;
-/** And this clear of the sofa, which he climbs rather than walks through. */
-const SOFA_CLEARANCE = 14;
-const TV_GAP = 12;
+/** Between one piece of furniture and the next. */
+const GAP = 14;
 
 /**
  * How far to either side of him a squirrel stands.
@@ -138,8 +155,9 @@ const OCCUPANT_REACH = Math.max(CICCIO_HEIGHT, SQUIRREL_HEIGHT + SQUIRREL_TAIL_R
  * way the cello's pizza is.
  */
 export const SCENE_REACH = Math.max(
-  OVEN_HEIGHT + OVEN_HOOD,
-  TV_STAND + TV_SET,
+  WALL_HEIGHT,
+  OVEN_HOOD_TOP,
+  TV_HANGS_AT + TV_PANEL,
   SOFA_BACK,
   BED_HEAD,
   Math.max(...Object.values(SEAT_HEIGHT)) + OCCUPANT_REACH,
@@ -153,11 +171,16 @@ export const SCENE_REACH = Math.max(
 export const ciccioFloor = sceneFloor(SCENE_REACH);
 
 export interface Layout {
-  ovenX: number;
-  /** Against the back wall, and *inside* his walk — he passes it. */
+  /** Left to right, the way the room reads: sleep, then cook, then sit. */
   bedX: number;
-  sofaX: number;
-  tvX: number;
+  ovenX: number;
+  /**
+   * The living room, as one number: the sofa stands here and the television
+   * hangs on the wall directly above it. Two fields would be two facts that can
+   * drift apart, and a set hung a few units off its sofa is exactly the sort of
+   * thing nobody notices until it is on a phone.
+   */
+  loungeX: number;
   /** The rug, which is scenery: nothing reads it, so it has no null case. */
   rugX: number;
   rugWidth: number;
@@ -166,41 +189,50 @@ export interface Layout {
 }
 
 /**
- * The oven at one end, the sofa and the television at the other, and the floor
- * between them.
+ * Bed, then kitchen, then living room — the order somebody would actually walk
+ * through a studio flat, rather than the order the pieces happened to be
+ * written in. Everything stands against the back wall and he walks the strip of
+ * floor in front of all of it, which is why he passes the bed rather than
+ * having to be given room for it.
  *
- * **Nothing here is nullable, and that is a measured claim rather than an
- * oversight.** The bed stands against the back inside his walk rather than
- * competing with it, so it never has to be given up; and at 320px — the
- * narrowest window the app is opened at, which is 444 scene units — the oven,
- * the sofa and the television leave 116 units of flanked walk against a
- * `MIN_WANDER` of 110. A `bed: Bed | null` whose null arm cannot be reached
- * would be dead weight in `resizeScene`, in `draw.ts` and in every reader for
- * ever. The sweep in `scene.test.ts` is what keeps that true: widen a piece
- * past the room and it goes red rather than going quietly wrong.
+ * **Nothing here is nullable, and that is measured rather than assumed.** At
+ * 320px — the narrowest window the app is opened at, which is 444 scene units —
+ * the bed, the oven and the living room fit with a gap between each, and his
+ * walk is the whole width less a flank at either end: 340 units, against the
+ * 110 that would make it worth walking. A null arm that cannot be reached is
+ * dead weight in `resizeScene`, in `draw.ts` and in every reader for ever. The
+ * sweep in `scene.test.ts` is what keeps it true.
  */
 export function layoutFor(width: number): Layout {
-  const ovenX = EDGE + OVEN_WIDTH / 2;
-  const tvX = width - EDGE - TV_WIDTH / 2;
-  const sofaX = tvX - TV_WIDTH / 2 - TV_GAP - SOFA_WIDTH / 2;
+  const bedX = EDGE + BED_WIDTH / 2;
+  const ovenX = bedX + BED_WIDTH / 2 + GAP + OVEN_WIDTH / 2;
 
-  const wanderLeft = ovenX + OVEN_WIDTH / 2 + OVEN_CLEARANCE;
-  // Floored at a walk worth walking. On a window too narrow for both he walks
-  // the last of it in front of the sofa rather than losing the walk, which is
-  // the one thing the scene cannot do without — he is drawn over the furniture,
-  // so it costs a little overlap and nothing else.
-  const wanderRight = Math.max(wanderLeft + MIN_WANDER, sofaX - SOFA_WIDTH / 2 - SOFA_CLEARANCE);
+  // The living room is anchored to the right-hand edge and pushed back off the
+  // kitchen if the two would meet — which they only do on a window narrower
+  // than the app is designed for. Capped rather than merely placed, the way the
+  // cello's school is: a piece placed without a cap goes wrong only on a phone,
+  // where nobody looks until it ships.
+  const kitchenRight = ovenX + OVEN_WIDTH / 2;
+  const loungeX = Math.max(kitchenRight + GAP + SOFA_WIDTH / 2, width - EDGE - SOFA_WIDTH / 2);
 
-  const bedX = wanderLeft + BED_WIDTH / 2 + 6;
-  const rugX = (wanderLeft + wanderRight) / 2;
+  // His whole floor, inset by a flank at each end so a squirrel beside him is
+  // still in the room. There is no clamp on how short this may get, because at
+  // every width the app is opened at it is three times what it needs to be —
+  // and a guard that cannot fire is a trap, not a safety net.
+  const wanderLeft = EDGE + FLANK_GAP;
+  const wanderRight = width - EDGE - FLANK_GAP;
+
+  // Centred on the open floor between the kitchen and the sofa, which is the
+  // part of the room he actually walks.
+  const openLeft = Math.max(wanderLeft, kitchenRight);
+  const openRight = Math.min(wanderRight, loungeX - SOFA_WIDTH / 2);
 
   return {
-    ovenX,
     bedX,
-    sofaX,
-    tvX,
-    rugX,
-    rugWidth: Math.max(80, (wanderRight - wanderLeft) * 0.72),
+    ovenX,
+    loungeX,
+    rugX: (openLeft + openRight) / 2,
+    rugWidth: Math.max(90, (openRight - openLeft) * 0.78),
     wanderLeft,
     wanderRight,
   };
@@ -318,8 +350,8 @@ export function resizeScene(scene: Scene, size: SceneSize): void {
   scene.ground = size.ground;
   scene.layout = layoutFor(size.width);
 
-  const { wanderLeft, wanderRight, sofaX, bedX } = scene.layout;
-  if (scene.ciccio.at === 'sofa') scene.ciccio.x = sofaX;
+  const { wanderLeft, wanderRight, loungeX, bedX } = scene.layout;
+  if (scene.ciccio.at === 'sofa') scene.ciccio.x = loungeX;
   else if (scene.ciccio.at === 'bed') scene.ciccio.x = bedX;
   else scene.ciccio.x = clamp(scene.ciccio.x, wanderLeft, wanderRight);
 
@@ -364,17 +396,28 @@ function walkCiccio(scene: Scene, rng: Rng): void {
  * the first time he outruns it, and from then on the left squirrel is on the
  * right — with nothing failing, and the one thing the scene is about quietly
  * gone.
+ *
+ * Which way they *face* is not taken from which way they moved. The one ahead
+ * of him is pushed rather than chasing, so it rides the edge of the dead zone —
+ * inside it one frame and outside the next — and a facing read off the movement
+ * flipped every frame, strobing the whole figure, which the drawing mirrors
+ * about it. They look at him: stable by construction, and what a squirrel who
+ * loves a hedgehog would be doing anyway.
  */
 function followSquirrels(scene: Scene): void {
   for (const squirrel of scene.squirrels) {
     const target = flankX(scene, squirrel.side);
     const away = target - squirrel.x;
     if (Math.abs(away) > FLANK_SETTLED) {
-      squirrel.x += clamp(away, -SQUIRREL_SPEED, SQUIRREL_SPEED);
-      squirrel.facing = away > 0 ? 1 : -1;
-    } else {
-      // Settled: turn and look at him rather than staring down the room.
-      squirrel.facing = -squirrel.side as -1 | 1;
+      const move = clamp(away, -SQUIRREL_SPEED, SQUIRREL_SPEED);
+      squirrel.x += move;
+      // Faces the way it is going, and *keeps* that when it is not going
+      // anywhere. Both halves matter and each was a bug on its own: recomputed
+      // every frame off the movement, the one being pushed along in front of
+      // him rode the edge of the dead zone and strobed; pinned to look at him
+      // instead, the same squirrel slid backwards down the room. Held, it turns
+      // when the pair turns and walks the way it faces.
+      squirrel.facing = move > 0 ? 1 : -1;
     }
 
     squirrel.x =
