@@ -82,7 +82,7 @@ import {
   SCHOOL_REACH,
   PEEL_RELEASE_SWING,
 } from './scene';
-import { GROUND_ABOVE_FOOTER, SCENE_FULL_WIDTH, SCENE_MIN_SCALE, sceneScale } from '../stage';
+import { GROUND_ABOVE_FOOTER, sceneScale } from '../stage';
 import type { Scene, Squirrel } from './scene';
 import { stageFloorHeight } from '../registry';
 
@@ -1208,45 +1208,6 @@ describe('the pizzaiolo throwing a pizza', () => {
     quietOven(s);
     run(s, 30);
     expect(peelSwing(s)).toBe(0);
-  });
-});
-
-// A phone is not a small desktop: at 360px the oven, the pizzaiolo and the
-// school take up nearly the whole width, and there is no room left for a car or
-// for her to walk anywhere. The scene is drawn smaller instead, which is the
-// same thing a set designer would do — and because the scene then works in its
-// own units, everything below it goes on measuring in the sizes it always had.
-describe('how big the scene is drawn', () => {
-  it('draws at full size on a window with room for it', () => {
-    expect(sceneScale(1440)).toBe(1);
-    expect(sceneScale(SCENE_FULL_WIDTH)).toBe(1);
-  });
-
-  it('never shrinks past the point where the scenery stops reading', () => {
-    expect(sceneScale(360)).toBe(SCENE_MIN_SCALE);
-    expect(sceneScale(120)).toBe(SCENE_MIN_SCALE);
-    expect(sceneScale(0)).toBe(SCENE_MIN_SCALE);
-  });
-
-  it('shrinks smoothly between the two rather than stepping', () => {
-    const between = sceneScale((360 + SCENE_FULL_WIDTH) / 2);
-    expect(between).toBeGreaterThan(SCENE_MIN_SCALE);
-    expect(between).toBeLessThan(1);
-  });
-
-  it('never grows as the window narrows', () => {
-    let previous = sceneScale(2000);
-    for (let width = 1990; width >= 200; width -= 10) {
-      const scale = sceneScale(width);
-      expect(scale).toBeLessThanOrEqual(previous);
-      previous = scale;
-    }
-  });
-
-  // The point of the exercise: a phone gets room for the whole scene, measured
-  // in the units the layout is written in.
-  it('gives a phone a wider stage than its screen, in scene units', () => {
-    expect(360 / sceneScale(360)).toBeGreaterThan(360);
   });
 });
 

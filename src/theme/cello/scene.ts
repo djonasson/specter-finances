@@ -14,7 +14,7 @@
  * is the only one that decides what happens.
  */
 
-import { sceneScale, GROUND_ABOVE_FOOTER } from '../stage';
+import { clamp, sceneFloor } from '../stage';
 import type { SceneSize } from '../stage';
 
 /** Frames, at the ~40fps the background loop is throttled to. */
@@ -255,11 +255,8 @@ export function bananaLeaves(plant: number): LeafShape[] {
     // Spread across the fan, then pushed off it: a plant whose leaves are evenly
     // spaced and matched in length is a diagram of a plant.
     const even = (leaf / (count - 1)) * 2 - 1;
-    // Bounded inline rather than through `clamp`: this runs while the module is
-    // still being evaluated, to derive BANANA_HEIGHT, and `clamp` is not built
-    // yet at that point.
     const nudged = even + (leafWobble(plant, leaf, 1) - 0.5) * 0.34;
-    const across = Math.max(-1.15, Math.min(1.15, nudged));
+    const across = clamp(nudged, -1.15, 1.15);
     const long = 0.82 + leafWobble(plant, leaf, 2) * 0.36;
     const droop = 0.8 + leafWobble(plant, leaf, 3) * 0.5;
     const reach = LEAF_REACH * across * size * long;
@@ -898,8 +895,6 @@ export interface Scene {
 }
 
 type Rng = () => number;
-
-const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
 /**
  * The oven sits on the right and the school on the left, and the girl walks the
@@ -2379,17 +2374,8 @@ export function clickScene(scene: Scene, x: number, y: number): void {
 }
 
 /**
- * The band this scene needs the app to reserve for it — the ground it stands on
- * plus everything standing on that ground. Derived rather than chosen, so the
- * scenery and the floor masking it cannot drift apart.
- *
- * It follows the width because the scenery does: a narrow window draws the whole
- * scene smaller, and a band sized for a full-width oven would then hold back a
- * strip of the user's list for empty sky.
+ * The band this scene needs the app to reserve for it. The scene contributes its
+ * reach and nothing else; `sceneFloor` owns the rest, so the clearance and the
+ * rounding cannot come out differently here than in any other scene.
  */
-export function celloFloor(width: number): number {
-  // Rounded up, not just rounded: a band half a pixel shorter than the scenery
-  // standing in it leaves the top of the chimney drawn over the user's list, and
-  // a fractional height gives the mask a seam to peek through.
-  return Math.ceil(GROUND_ABOVE_FOOTER + SCENE_REACH * sceneScale(width));
-}
+export const celloFloor = sceneFloor(SCENE_REACH);
