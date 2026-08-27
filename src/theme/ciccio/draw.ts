@@ -28,7 +28,10 @@ import {
   WALL_HEIGHT,
   DEPTH,
   SEAT_HEIGHT,
+  ciccioFacing,
+  ciccioBob,
 } from './scene';
+import type { Say } from './scene';
 
 const LIGHT = {
   wall: '#e7ded2',
@@ -93,6 +96,10 @@ const LIGHT = {
   squirrelBelly: '#f4ead9',
   squirrelTail: '#d98a4a',
   squirrelTailLight: '#eaa66a',
+
+  bubble: '#ffffff',
+  bubbleEdge: '#c8bda9',
+  bubbleText: '#3d332a',
 };
 
 type Palette = typeof LIGHT;
@@ -157,6 +164,10 @@ const DARK: Palette = {
   squirrelBelly: '#cbbda6',
   squirrelTail: '#b4713a',
   squirrelTailLight: '#c98a52',
+
+  bubble: '#e8e2d8',
+  bubbleEdge: '#7a7167',
+  bubbleText: '#2a241e',
 };
 
 // -- the room ---------------------------------------------------------------
@@ -480,8 +491,10 @@ function drawCiccio(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette): vo
   const TALL = 15; // how high the dome stands
 
   ctx.save();
-  ctx.translate(ciccio.x, y);
-  ctx.scale(ciccio.facing || 0.001, 1);
+  // Both come off the scene: the dance's turn and its bob are what `spin`
+  // means, and working them out again here would be a second copy of it.
+  ctx.translate(ciccio.x, y - ciccioBob(scene));
+  ctx.scale(ciccioFacing(scene) || 0.001, 1);
 
   // Feet, tucked well under: he is a cushion on legs.
   ctx.fillStyle = p.furShade;
@@ -652,6 +665,54 @@ function drawSquirrel(
 }
 
 /**
+ * What somebody is saying, in a bubble over their head.
+ *
+ * The scene owns the words and how long they stay up; the width is worked out
+ * here, because measuring text needs a canvas and `scene.ts` has none. It is
+ * drawn above the reserved band on purpose — a bubble is thrown, like the
+ * steam off a gratin, and the band covers what the room *stands* in.
+ */
+function drawSaying(
+  ctx: CanvasRenderingContext2D,
+  saying: Say,
+  x: number,
+  top: number,
+  p: Palette,
+): void {
+  ctx.font = '600 11px system-ui, -apple-system, "Segoe UI", sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  const width = ctx.measureText(saying.line).width + 14;
+  const height = 17;
+  const bottom = top - 7;
+
+  // Fades out over its last stretch rather than vanishing mid-sentence.
+  ctx.globalAlpha = Math.min(1, saying.left / 18);
+
+  ctx.fillStyle = p.bubble;
+  ctx.beginPath();
+  ctx.roundRect(x - width / 2, bottom - height, width, height, 7);
+  ctx.fill();
+  ctx.strokeStyle = p.bubbleEdge;
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  // The tail, pointing down at whoever said it.
+  ctx.fillStyle = p.bubble;
+  ctx.beginPath();
+  ctx.moveTo(x - 4, bottom - 1);
+  ctx.lineTo(x + 1, bottom + 5);
+  ctx.lineTo(x + 4, bottom - 1);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle = p.bubbleText;
+  ctx.fillText(saying.line, x, bottom - height / 2);
+  ctx.globalAlpha = 1;
+}
+
+/**
  * The whole room, back to front.
  *
  * Everything stands against the back wall and the three of them walk the strip
@@ -679,6 +740,22 @@ export function drawScene(
 
   for (const squirrel of scene.squirrels) drawSquirrel(ctx, scene, squirrel, p);
   drawCiccio(ctx, scene, p);
+
+  // Bubbles last, over everything, so one is never half behind a sofa.
+  for (const squirrel of scene.squirrels) {
+    if (squirrel.say) {
+      drawSaying(ctx, squirrel.say, squirrel.x, scene.ground - SEAT_HEIGHT[squirrel.at] - 46, p);
+    }
+  }
+  if (scene.ciccio.say) {
+    drawSaying(
+      ctx,
+      scene.ciccio.say,
+      scene.ciccio.x,
+      scene.ground - SEAT_HEIGHT[scene.ciccio.at] - 34,
+      p,
+    );
+  }
 
   ctx.restore();
 }

@@ -2,6 +2,13 @@ import { describe, it, expect } from 'vitest';
 import {
   createScene,
   resizeScene,
+  clickScene,
+  say,
+  ciccioFacing,
+  CICCIO_NARROWEST,
+  CICCIO_CALL,
+  CICCIO_GRATIN,
+  SQUIRREL_CALL,
   step,
   flankX,
   MIN_FLANK,
@@ -94,6 +101,14 @@ describe('the room, laid out', () => {
     const l = layoutFor(stage.width);
     expect(l.wanderLeft - FLANK_GAP).toBeGreaterThanOrEqual(0);
     expect(l.wanderRight + FLANK_GAP).toBeLessThanOrEqual(stage.width);
+  });
+
+  // The drawing takes insets off this — a trim inside a border inside the rug —
+  // and a canvas arc with a negative radius throws, which inside the frame loop
+  // means the scene stops for the life of the tab. `layoutFor` floors it, so
+  // there is no guard in `draw.ts` to go stale; this is what says so.
+  it.each(WIDTHS)('never hands the drawing a rug too small to inset at %ipx', (width) => {
+    expect(layoutFor(stageOf(width).width).rugWidth).toBeGreaterThanOrEqual(90);
   });
 
   it('gives a wider window a wider walk, rather than bigger furniture', () => {
@@ -221,6 +236,20 @@ describe('a window that changes size', () => {
 /** Run the scene forward, the way the frame loop would. */
 function run(scene: ReturnType<typeof sceneAt>, frames: number, rng = () => 0.5) {
   for (let i = 0; i < frames; i++) step(scene, rng);
+}
+
+/** Steps until the predicate holds, and says so rather than hanging if it never does. */
+function runUntil(
+  scene: ReturnType<typeof sceneAt>,
+  holds: (s: ReturnType<typeof sceneAt>) => boolean,
+  limit: number,
+  rng = () => 0.5,
+) {
+  for (let i = 0; i < limit; i++) {
+    if (holds(scene)) return i;
+    step(scene, rng);
+  }
+  throw new Error(`never happened within ${limit} frames`);
 }
 
 const steady = () => 0.5;
@@ -408,5 +437,127 @@ describe('a frame that does nothing to the room', () => {
     expect(s.frame).toBe(0);
     run(s, 10, steady);
     expect(s.frame).toBe(10);
+  });
+});
+
+// ---------------------------------------------------------------------------
+
+describe('the wobble, which is his dance', () => {
+  it('spins right round and comes back to wandering', () => {
+    const s = sceneAt(900);
+    clickScene(s, s.ciccio.x, s.ground - 10);
+    expect(s.ciccio.phase).toBe('wobbling');
+
+    const frames = runUntil(s, (x) => x.ciccio.phase === 'wandering', 4000);
+    expect(frames).toBeGreaterThan(20);
+    expect(s.ciccio.spin).toBe(0);
+  });
+
+  // Exiting on `spin % TAU` makes the last frame depend on where the spin
+  // started and on how far one frame carries it, so some starts never land in
+  // the window and he spins for ever. Accumulated and compared against a total,
+  // every start terminates.
+  it('terminates from every angle it could start at', () => {
+    for (let start = 0; start < 40; start++) {
+      const s = sceneAt(900);
+      clickScene(s, s.ciccio.x, s.ground - 10);
+      s.ciccio.spin = (start / 40) * Math.PI * 2;
+      expect(() => runUntil(s, (x) => x.ciccio.phase !== 'wobbling', 5000)).not.toThrow();
+    }
+  });
+
+  it('stays on the spot, rather than wandering off mid-spin', () => {
+    const s = sceneAt(900);
+    const where = s.ciccio.x;
+    clickScene(s, s.ciccio.x, s.ground - 10);
+    run(s, 20, steady);
+    expect(s.ciccio.phase).toBe('wobbling');
+    expect(s.ciccio.x).toBe(where);
+  });
+
+  it('never lifts him off the floor while he turns', () => {
+    const s = sceneAt(900);
+    clickScene(s, s.ciccio.x, s.ground - 10);
+    for (let i = 0; i < 200; i++) {
+      step(s, steady);
+      expect(ciccioY(s)).toBe(s.ground);
+      expect(s.ciccio.at).toBe('floor');
+    }
+  });
+
+  it('refuses a second dance while the first is still going', () => {
+    const s = sceneAt(900);
+    clickScene(s, s.ciccio.x, s.ground - 10);
+    run(s, 10, steady);
+    const spin = s.ciccio.spin;
+    clickScene(s, s.ciccio.x, s.ground - 10);
+    expect(s.ciccio.spin).toBe(spin);
+  });
+
+  // Drawn about a horizontal scale, he passes through nothing at all twice a
+  // turn and blinks out. He is a round animal: end-on he is still a blob.
+  it('never draws him down to a sliver as he comes edge-on', () => {
+    const s = sceneAt(900);
+    clickScene(s, s.ciccio.x, s.ground - 10);
+    for (let i = 0; i < 400; i++) {
+      step(s, steady);
+      expect(Math.abs(ciccioFacing(s))).toBeGreaterThanOrEqual(CICCIO_NARROWEST);
+    }
+  });
+
+  it('turns him the whole way round, showing both sides of him', () => {
+    const s = sceneAt(900);
+    s.ciccio.facing = 1;
+    clickScene(s, s.ciccio.x, s.ground - 10);
+    const seen = new Set<number>();
+    for (let i = 0; i < 400; i++) {
+      step(s, steady);
+      seen.add(Math.sign(ciccioFacing(s)));
+    }
+    expect([...seen].sort()).toEqual([-1, 1]);
+  });
+
+  it('keeps his walking facing across the dance rather than resuming flipped', () => {
+    const s = sceneAt(900);
+    run(s, 120, steady);
+    const facing = s.ciccio.facing;
+    clickScene(s, s.ciccio.x, s.ground - 10);
+    runUntil(s, (x) => x.ciccio.phase === 'wandering', 4000);
+    // `spin` turns him; `facing` is the walk's and is left alone, or the walk
+    // resumes from wherever the spin last happened to leave it.
+    expect(s.ciccio.facing).toBeCloseTo(facing, 5);
+  });
+});
+
+describe('what the three of them say', () => {
+  it('gives him something to say now and then, unprompted', () => {
+    const s = sceneAt(900);
+    runUntil(s, (x) => x.ciccio.say !== null, 40000, eager);
+    expect(s.ciccio.say!.line).toBe(CICCIO_CALL);
+  });
+
+  it('takes it away again, so a bubble is not left hanging', () => {
+    const s = sceneAt(900);
+    runUntil(s, (x) => x.ciccio.say !== null, 40000, eager);
+    runUntil(s, (x) => x.ciccio.say === null, 4000, steady);
+  });
+
+  it('lets a new line replace the one showing rather than queue behind it', () => {
+    const s = sceneAt(900);
+    say(s.ciccio, CICCIO_CALL);
+    const first = s.ciccio.say!.left;
+    say(s.ciccio, CICCIO_GRATIN);
+    expect(s.ciccio.say!.line).toBe(CICCIO_GRATIN);
+    expect(s.ciccio.say!.left).toBeGreaterThanOrEqual(first);
+  });
+
+  // Each squirrel carries its own, for the reason each carries its own `side`:
+  // shared, one could never speak while the other was speaking, and it would
+  // look like a bug in the flanking.
+  it('lets both squirrels speak at once, each for itself', () => {
+    const s = sceneAt(900);
+    say(s.squirrels[0], SQUIRREL_CALL);
+    say(s.squirrels[1], SQUIRREL_CALL);
+    expect(s.squirrels.map((q) => q.say?.line)).toEqual([SQUIRREL_CALL, SQUIRREL_CALL]);
   });
 });

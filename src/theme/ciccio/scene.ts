@@ -119,6 +119,46 @@ const TURN_EASE = 0.08;
 /** Chance a frame that he turns round for no reason at all. */
 const TURN_CHANCE = 0.0016;
 
+// -- the dance ---------------------------------------------------------------
+
+const TAU = Math.PI * 2;
+/** How many times round he goes, wobbling, before he has had enough. */
+const WOBBLE_TURNS = 2;
+/** Radians a frame. Slow enough to read as a wobble rather than a blur. */
+const WOBBLE_SPEED = 0.075;
+/** Chance a frame that he starts one himself. */
+const WOBBLE_CHANCE = 0.0011;
+/** How narrow he may be drawn passing edge-on, as a share of full width. */
+export const CICCIO_NARROWEST = 0.3;
+
+// -- what they say -----------------------------------------------------------
+
+export const CICCIO_CALL = 'Ciccio Ciccio!';
+export const CICCIO_GRATIN = 'Ciccio pasticcio!';
+export const SQUIRREL_CALL = 'Susin!';
+
+/** Frames a line stays up: long enough to read, short enough not to nag. */
+const SAY_FRAMES = 110;
+/** Chance a frame that he says his own name for no reason. */
+const CICCIO_CALL_CHANCE = 0.0009;
+/** And that one of them answers. */
+const SQUIRREL_CALL_CHANCE = 0.0007;
+
+/**
+ * Give somebody a line, replacing whatever they were saying.
+ *
+ * Replacing rather than queueing is the whole of it: queued, the line for
+ * spotting a gratin would wait behind an idle "Ciccio Ciccio!" and he would
+ * announce the food after eating it.
+ */
+export function say(who: { say: Say | null }, line: string): void {
+  who.say = { line, left: SAY_FRAMES };
+}
+
+function runSaying(who: { say: Say | null }): void {
+  if (who.say && --who.say.left <= 0) who.say = null;
+}
+
 /**
  * Where each spot's surface is, measured up from the ground.
  *
@@ -240,11 +280,34 @@ export function layoutFor(width: number): Layout {
 
 // -- the cast ----------------------------------------------------------------
 
-/** What he is doing. One entry today; the scene grows into it. */
-export type CiccioPhase = 'wandering';
+/** What he is doing. */
+export type CiccioPhase = 'wandering' | 'wobbling';
+
+/**
+ * What somebody is saying, and for how long.
+ *
+ * The scene owns the words and the countdown; how wide the bubble has to be to
+ * hold them is `draw.ts`'s, because it is the only one with a canvas to measure
+ * text on. Two owners of one fact is what the cello's peel and pizza were.
+ */
+export interface Say {
+  line: string;
+  left: number;
+}
 
 export interface Ciccio {
   phase: CiccioPhase;
+  /**
+   * How far round the dance has come, in radians, accumulated.
+   *
+   * Compared against a total with `>=` and never with a modulus: `spin % TAU`
+   * makes the exit depend on the angle it started at and on how far one frame
+   * carries it, and some starts step straight over the window and spin for
+   * ever. Separate from `facing`, which is the walk's — sharing one field, the
+   * walk resumes from wherever the spin last left it and he flips.
+   */
+  spin: number;
+  say: Say | null;
   x: number;
   /** Snaps. Which way he is going. */
   dir: -1 | 1;
@@ -276,6 +339,8 @@ export interface Squirrel {
   at: Spot;
   x: number;
   facing: number;
+  /** Its own, not the scene's: see `side`, for the same reason. */
+  say: Say | null;
 }
 
 export interface Scene {
@@ -319,6 +384,8 @@ export function createScene(size: SceneSize, rng: Rng): Scene {
     layout,
     ciccio: {
       phase: 'wandering',
+      spin: 0,
+      say: null,
       x: layout.wanderLeft + (layout.wanderRight - layout.wanderLeft) * rng(),
       dir: rng() < 0.5 ? -1 : 1,
       facing: 1,
@@ -332,6 +399,7 @@ export function createScene(size: SceneSize, rng: Rng): Scene {
     at: 'floor' as Spot,
     x: flankX(scene, side),
     facing: -side as -1 | 1,
+    say: null,
   }));
   return scene;
 }
@@ -370,6 +438,22 @@ export function resizeScene(scene: Scene, size: SceneSize): void {
 function walkCiccio(scene: Scene, rng: Rng): void {
   const { ciccio } = scene;
   const { wanderLeft, wanderRight } = scene.layout;
+
+  if (ciccio.phase === 'wobbling') {
+    ciccio.spin += WOBBLE_SPEED;
+    if (ciccio.spin >= WOBBLE_TURNS * TAU) {
+      ciccio.spin = 0;
+      ciccio.phase = 'wandering';
+    }
+    // He stays exactly where he is: the dance is on the spot, and `facing` is
+    // the walk's and is not touched, so the walk resumes the way it left off.
+    return;
+  }
+
+  if (rng() < WOBBLE_CHANCE) {
+    startWobble(ciccio);
+    return;
+  }
 
   ciccio.x += ciccio.dir * WALK_SPEED;
   if (ciccio.x <= wanderLeft) {
@@ -427,9 +511,96 @@ function followSquirrels(scene: Scene): void {
   }
 }
 
+/** Starts one, or leaves the one in progress alone. */
+function startWobble(ciccio: Ciccio): void {
+  if (ciccio.phase === 'wobbling') return;
+  ciccio.phase = 'wobbling';
+  ciccio.spin = 0;
+}
+
+/** Now and then, somebody says something. */
+function runTalking(scene: Scene, rng: Rng): void {
+  runSaying(scene.ciccio);
+  for (const squirrel of scene.squirrels) runSaying(squirrel);
+
+  if (!scene.ciccio.say && rng() < CICCIO_CALL_CHANCE) say(scene.ciccio, CICCIO_CALL);
+  for (const squirrel of scene.squirrels) {
+    if (!squirrel.say && rng() < SQUIRREL_CALL_CHANCE) say(squirrel, SQUIRREL_CALL);
+  }
+}
+
 /** One frame. Everything mutates `scene`; nothing here reads a clock. */
 export function step(scene: Scene, rng: Rng): void {
   scene.frame++;
   walkCiccio(scene, rng);
   followSquirrels(scene);
+  runTalking(scene, rng);
+}
+
+/**
+ * Which way he is drawn facing, dance included.
+ *
+ * Turning on the spot in a side-on scene is his facing running all the way
+ * round: 1, through 0 where he is edge-on, to −1 where his back is to you, and
+ * back. It lives here rather than in `draw.ts` because it is what the spin
+ * *means*, and a drawing that worked it out for itself would be a second copy
+ * free to disagree — which is exactly what the cello's peel and pizza were.
+ */
+export function ciccioFacing(scene: Scene): number {
+  const { ciccio } = scene;
+  if (ciccio.phase !== 'wobbling') return ciccio.facing;
+
+  const turn = Math.cos(ciccio.spin) * ciccio.facing;
+  // Never all the way to nothing. A figure drawn about a horizontal scale
+  // vanishes to a one-pixel sliver as it passes edge-on, which reads as him
+  // blinking out twice a turn — where a hedgehog seen end-on is a round blob.
+  // The floor keeps him solid the whole way round.
+  const narrowest = Math.max(Math.abs(turn), CICCIO_NARROWEST);
+  return turn < 0 ? -narrowest : narrowest;
+}
+
+/** The bob that makes it a wobble rather than a turntable. */
+export function ciccioBob(scene: Scene): number {
+  return scene.ciccio.phase === 'wobbling' ? Math.abs(Math.sin(scene.ciccio.spin * 2)) * 2.5 : 0;
+}
+
+// -- clicks ------------------------------------------------------------------
+
+/**
+ * How wide a hit box each of them gets.
+ *
+ * Far wider than they are drawn, deliberately: a hedgehog is forty units across
+ * on a screen a thousand wide, and a target nobody can hit is a feature nobody
+ * has. The cello's `hitsGirl` is the same shape.
+ */
+const HIT_WIDE = 34;
+const HIT_TALL = 46;
+
+const hits = (x: number, y: number, atX: number, ground: number, wide = HIT_WIDE) =>
+  Math.abs(x - atX) <= wide && y >= ground - HIT_TALL && y <= ground + 10;
+
+export const hitsCiccio = (scene: Scene, x: number, y: number) =>
+  hits(x, y, scene.ciccio.x, scene.ground);
+
+export const hitsSquirrel = (scene: Scene, squirrel: Squirrel, x: number, y: number) =>
+  hits(x, y, squirrel.x, scene.ground, 26);
+
+/**
+ * A click, in the scene's own units.
+ *
+ * Order matters where boxes overlap: the animals are tested before the room,
+ * because their boxes are the generous ones and a squirrel standing in front of
+ * the cooker should answer the tap rather than the cooker behind it.
+ */
+export function clickScene(scene: Scene, x: number, y: number): void {
+  for (const squirrel of scene.squirrels) {
+    if (hitsSquirrel(scene, squirrel, x, y)) {
+      say(squirrel, SQUIRREL_CALL);
+      return;
+    }
+  }
+  if (hitsCiccio(scene, x, y)) {
+    startWobble(scene.ciccio);
+    say(scene.ciccio, CICCIO_CALL);
+  }
 }

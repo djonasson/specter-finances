@@ -12,13 +12,14 @@ vi.mock('./scene', async (importOriginal) => {
     createScene: vi.fn(actual.createScene),
     resizeScene: vi.fn(actual.resizeScene),
     step: vi.fn(actual.step),
+    clickScene: vi.fn(actual.clickScene),
   };
 });
 // jsdom implements no canvas, and every drawing call would land on the null it
 // returns from getContext. Nothing here asserts on pixels.
 vi.mock('./draw', () => ({ drawScene: vi.fn() }));
 
-import { createScene, step } from './scene';
+import { createScene, step, clickScene } from './scene';
 import { sceneScale, GROUND_ABOVE_FOOTER } from '../stage';
 import { drawScene } from './draw';
 import { footerHeight } from '../chrome';
@@ -67,6 +68,7 @@ beforeEach(() => {
   vi.mocked(createScene).mockClear();
   vi.mocked(step).mockClear();
   vi.mocked(drawScene).mockClear();
+  vi.mocked(clickScene).mockClear();
 });
 
 afterEach(() => {
@@ -145,13 +147,26 @@ describe('the room the component builds', () => {
     );
   });
 
-  // Nothing in the room answers a tap yet, so the component must not take one
-  // off the app: a document-wide listener that does nothing is still a listener
-  // every click in the application runs through.
-  it('takes no clicks while nothing in the room is clickable', () => {
-    const add = vi.spyOn(document, 'addEventListener');
+  // `clientX` is in CSS pixels and the scene works in its own units, so the one
+  // thing between a tap and the room is that division. Off by the device ratio
+  // as well and nothing is clickable where it is drawn, with no error anywhere.
+  it('takes a click in window coordinates and asks the room in its own', () => {
+    resizeTo(360, 700);
     renderWithTheme(<CiccioBackground />);
-    expect(add.mock.calls.map(([type]) => type)).not.toContain('click');
+
+    act(() => {
+      document.dispatchEvent(new MouseEvent('click', { clientX: 120, clientY: 300 }));
+    });
+
+    const scale = sceneScale(360);
+    expect(clickScene).toHaveBeenCalledWith(expect.anything(), 120 / scale, 300 / scale);
+  });
+
+  it('drops the click listener when it goes away', () => {
+    const remove = vi.spyOn(document, 'removeEventListener');
+    const { unmount } = renderWithTheme(<CiccioBackground />);
+    unmount();
+    expect(remove.mock.calls.map(([type]) => type)).toContain('click');
   });
 
   it('carries on through a switch to dark rather than starting the room over', async () => {

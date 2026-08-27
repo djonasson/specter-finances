@@ -2,7 +2,7 @@ import { useRef } from 'react';
 import { useComputedColorScheme } from '@mantine/core';
 import { watchPixelRatio } from '../chrome';
 import { useSceneCanvas } from '../sceneCanvas';
-import { createScene, resizeScene, step } from './scene';
+import { createScene, resizeScene, step, clickScene } from './scene';
 import { drawScene } from './draw';
 
 /**
@@ -10,8 +10,9 @@ import { drawScene } from './draw';
  * wiring is `useSceneCanvas`, shared with every other canvas scene so that a
  * new one cannot get the buffer, the stage or the frame loop subtly wrong.
  *
- * Nothing is clickable yet, so no `clickScene` is handed over and the hook adds
- * no listener — the dance and the four click targets come with the next change.
+ * Clicking him sets him dancing and clicking a squirrel gets its name out of
+ * it, so a `clickScene` is handed over and the hook listens on the document —
+ * the canvas has `pointer-events: none`, so none of it costs the app a tap.
  */
 export function CiccioBackground() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -22,6 +23,7 @@ export function CiccioBackground() {
     resizeScene,
     step,
     drawScene,
+    clickScene,
     isDark: () => isDark,
     watchPixelRatio,
   });
