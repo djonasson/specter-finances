@@ -65,8 +65,6 @@ const LIGHT = {
   ovenDial: '#8d8479',
   ovenGlass: '#4c4038',
   ovenGlow: '#e8a13c',
-  hood: '#bdb4a7',
-  hoodTop: '#d2cabe',
 
   bedFrame: '#a87f5c',
   bedFrameTop: '#c0966f',
@@ -151,8 +149,6 @@ const DARK: Palette = {
   ovenDial: '#6d665d',
   ovenGlass: '#211c18',
   ovenGlow: '#d2841f',
-  hood: '#3d3831',
-  hoodTop: '#4a443c',
 
   bedFrame: '#5a4432',
   bedFrameTop: '#6d5440',
@@ -1107,8 +1103,11 @@ function drawSquirrel(
 ): void {
   const y = squirrelY(scene, squirrel) + FRONT_OF_ROOM;
 
+  const scolding = scolder(scene) === squirrel ? scoldingAt(scene) : null;
+  const swing = scolding === null ? 0 : Math.sin(scolding * Math.PI * 3) * 0.28;
+
   if (watchingTelevision(scene) && squirrel.climb === 0) {
-    drawSquirrelFromBehind(ctx, squirrel.x, y, p);
+    drawSquirrelFromBehind(ctx, squirrel.x, y, p, swing);
     return;
   }
 
@@ -1129,10 +1128,7 @@ function drawSquirrel(
   ctx.scale(squirrel.facing || 0.001, 1);
 
   // The telling-off: a tail swung round at whoever needed fetching down.
-  const scolding = scolder(scene) === squirrel ? scoldingAt(scene) : null;
-  if (scolding !== null) {
-    ctx.rotate(Math.sin(scolding * Math.PI * 3) * 0.28);
-  }
+  if (swing !== 0) ctx.rotate(swing);
 
   // The tail first, so it sits behind the body — a great question mark curling
   // up and over.
@@ -1227,9 +1223,15 @@ function drawSquirrelFromBehind(
   x: number,
   y: number,
   p: Palette,
+  swing = 0,
 ): void {
   ctx.save();
   ctx.translate(x, y);
+  // The telling-off. It used to be drawn only in the side-on pose, which a
+  // scolding never reaches: entering it puts both squirrels back on the sofa,
+  // and the sofa is exactly what routes them through here — so the slap that
+  // the "Pfff!" is paired with was never once seen.
+  if (swing !== 0) ctx.rotate(swing);
 
   // Feet either side, just showing past the tail.
   ctx.fillStyle = p.squirrelDark;
@@ -1485,6 +1487,10 @@ function drawSaying(
   ctx.fillStyle = p.bubbleText;
   ctx.fillText(saying.line, x, bottom - height / 2);
   ctx.globalAlpha = 1;
+  // Put the text state back. Left set, the next thing to draw text — the "z"
+  // over a sleeping hedgehog — inherited this alignment and sat off his head.
+  ctx.textAlign = 'start';
+  ctx.textBaseline = 'alphabetic';
 }
 
 /**
@@ -1518,20 +1524,20 @@ export function drawScene(
   drawCat(ctx, scene, p);
   drawHearts(ctx, scene, p);
 
-  // Bubbles last, over everything, so one is never half behind a sofa.
+  // Bubbles last, over everything, so one is never half behind a sofa — the
+  // cat's included, which the scene has built, ticked and typed all along while
+  // nothing here drew it, leaving a silent cat through the whole of the meow
+  // this code calls "the point of the visit".
   for (const squirrel of scene.squirrels) {
     if (squirrel.say) {
       drawSaying(ctx, squirrel.say, squirrel.x, squirrelY(scene, squirrel) - 46, p);
     }
   }
+  // Off `ciccioY`, the same way a squirrel's is off `squirrelY`: the seat alone
+  // ignores how far onto it he has got, so the bubble jumped a whole cushion on
+  // the frame `at` changed while he was still half way up.
   if (scene.ciccio.say) {
-    drawSaying(
-      ctx,
-      scene.ciccio.say,
-      scene.ciccio.x,
-      scene.ground - SEAT_HEIGHT[scene.ciccio.at] - 34,
-      p,
-    );
+    drawSaying(ctx, scene.ciccio.say, scene.ciccio.x, ciccioY(scene) - 34, p);
   }
 
   ctx.restore();

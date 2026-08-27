@@ -89,7 +89,7 @@ describe('how tall a band a background asks for', () => {
   });
 
   it('lets one scene ask for a shorter band than another, off its own scenery', () => {
-    // The room's tallest thing is an oven hood; the cello's is a bird in a
+    // The room's tallest thing is its own wall; the cello's is a bird in a
     // tree. Neither number is written down anywhere but in the scene it
     // belongs to, which is the point.
     expect(stageFloorHeight('ciccio', 1440)).toBeLessThan(stageFloorHeight('cello', 1440));

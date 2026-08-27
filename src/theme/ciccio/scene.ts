@@ -75,8 +75,8 @@ export const DEPTH = 13;
 
 // The three of them are what the scene is about, so they are drawn a good deal
 // larger than a real hedgehog is next to a real oven. Room to grow: they are
-// well under the oven's hood, which is what sets the reach.
-const CICCIO_HEIGHT = 30;
+// well under the room's own ceiling, which is what sets the reach.
+export const CICCIO_HEIGHT = 30;
 const SQUIRREL_HEIGHT = 32;
 /**
  * How far a squirrel's tail stands above the rest of it.
@@ -195,16 +195,14 @@ export const CICCIO_NARROWEST = 0.3;
 // -- the oven ----------------------------------------------------------------
 
 /**
- * Frames between one gratin and the next, once the last has been eaten.
+ * How many mouthfuls a gratin is.
  *
- * Set to 1400 the room was never anything but a canteen: a gratin was on the
- * floor 44% of the time, and since food interrupts a sit, he headed for the
- * sofa twenty-three thousand frames in a day and actually sat for thirteen.
- * The day-split test is what said so, and is the only thing that would say so
- * again if this were tuned back down.
+ * There is no oven timer, and there was not one for a while before this said
+ * so: `oven.nextIn` was seeded and then never read or decremented, while eight
+ * lines of comment above it explained how it had been tuned. Gratins come from
+ * the rota and from a tap on the cooker, both of which go through
+ * `serveGratin`.
  */
-const OVEN_INTERVAL = 5200;
-/** How many mouthfuls a gratin is. */
 export const GRATIN_BITES = 150;
 /** How close he has to be to it to be eating it rather than near it. */
 const BITE_REACH = 26;
@@ -267,15 +265,15 @@ export const SQUIRREL_SCOLD = 'Pfff!';
 
 export const CAT_CALL = 'Meow!';
 /**
- * Frames between one visit and the next — about fifty seconds at the frame rate
- * the loop is throttled to.
- *
- * It was 6400, which measured out at very nearly *three minutes* before the
- * first cat, and the visit is one of the two best things in the scene. Nobody
- * watches a background for three minutes to find out whether anything else
- * happens.
+ * Roughly how much *pottering* there is between visits — measured in the frames
+ * he is actually free, not in frames of the clock, since that is the only kind
+ * this counts (see `runCat`). Retuned from 2100 when the counter stopped
+ * running down through meals and programmes: over four seeded fifty-minute
+ * days that put the first cat at 65 seconds and one every two and a half
+ * minutes after, which is the "quietly never" the measurement below exists to
+ * catch. At this it is ~50 seconds and one every two minutes.
  */
-const CAT_INTERVAL = 2100;
+const CAT_INTERVAL = 1500;
 
 /** Frames of pottering between one thing on the rota and the next. */
 const ROUTINE_GAP = 1500;
@@ -572,9 +570,21 @@ export interface Ciccio {
    * reads as a click that did nothing.
    */
   goal: { x: number; then: Errand; urgent: boolean } | null;
-  /** Frames left of the climb on or off, or of the sit or the sleep. */
+  /**
+   * How far onto `at` he has got, 0 to 1.
+   *
+   * The seat is named from the *start* of a climb and the height is this
+   * fraction of it, which is what makes an interrupt mid-climb safe: he turns
+   * round from wherever he had reached. Taken off a timer with `at` only set at
+   * the end, three separate things dropped him a whole cushion in one frame — a
+   * tap during a mount (`at` still said floor, so the interrupt sent him
+   * walking), a tap during a dismount (the timer reset and yanked him back up),
+   * and a destination that changed under an interpolation still aiming at the
+   * old one.
+   */
+  lift: number;
+  /** Frames left of the sit or the sleep. */
   timer: number;
-  bites: number;
   say: Say | null;
   /**
    * How far his spines are up, 0 to 1.
@@ -613,8 +623,8 @@ export interface Squirrel {
    */
   side: -1 | 1;
   at: Spot;
-  /** Frames left of its own climb on or off, so it never snaps either. */
-  timer: number;
+  /** How far onto `at` it has got, 0 to 1. See `Ciccio.lift`. */
+  lift: number;
   x: number;
   facing: number;
   /** Its own, not the scene's: see `side`, for the same reason. */
@@ -735,7 +745,6 @@ export interface Scene {
    * timer below only runs while it is empty.
    */
   gratin: Gratin | null;
-  oven: { nextIn: number };
   frame: number;
 }
 
@@ -749,31 +758,16 @@ type Rng = () => number;
  * single frame, which is the bird-teleport with extra steps. `at` says where
  * somebody is; this says how far up they have got.
  */
-function liftBetween(from: Spot, to: Spot, along: number): number {
-  return SEAT_HEIGHT[from] + (SEAT_HEIGHT[to] - SEAT_HEIGHT[from]) * along;
-}
+/** How far off the ground somebody part way onto a seat is. */
+const seatLift = (at: Spot, lift: number) => SEAT_HEIGHT[at] * lift;
 
-export function ciccioY(scene: Scene): number {
-  const { ciccio } = scene;
-  if (ciccio.phase === 'mounting') {
-    const onto: Spot = ciccio.goal?.then === 'sleep' ? 'bed' : 'sofa';
-    return scene.ground - liftBetween('floor', onto, 1 - ciccio.timer / CLIMB_FRAMES);
-  }
-  if (ciccio.phase === 'dismounting') {
-    return scene.ground - liftBetween('floor', ciccio.at, ciccio.timer / CLIMB_FRAMES);
-  }
-  return scene.ground - SEAT_HEIGHT[ciccio.at];
-}
+export const ciccioY = (scene: Scene) =>
+  scene.ground - seatLift(scene.ciccio.at, scene.ciccio.lift);
 
-export function squirrelY(scene: Scene, squirrel: Squirrel): number {
-  // The climb included, which is what makes a squirrel up the wall clickable
+export const squirrelY = (scene: Scene, squirrel: Squirrel) =>
+  // The wall climb included, which is what makes a squirrel up there clickable
   // where it is drawn rather than at the floor under it.
-  const seat =
-    squirrel.timer > 0
-      ? liftBetween(squirrel.at, squirrelWants(scene), 1 - squirrel.timer / CLIMB_FRAMES)
-      : SEAT_HEIGHT[squirrel.at];
-  return scene.ground - seat - squirrel.climb;
-}
+  scene.ground - seatLift(squirrel.at, squirrel.lift) - squirrel.climb;
 
 /**
  * Where a squirrel belongs right now.
@@ -817,9 +811,9 @@ export function createScene(size: SceneSize, rng: Rng): Scene {
       spin: 0,
       after: 'wandering',
       goal: null,
+      lift: 0,
       timer: 0,
       bristle: 0,
-      bites: 0,
       say: null,
       x: layout.wanderLeft + (layout.wanderRight - layout.wanderLeft) * rng(),
       dir: rng() < 0.5 ? -1 : 1,
@@ -836,7 +830,6 @@ export function createScene(size: SceneSize, rng: Rng): Scene {
     routine: { next: 0, wait: ROUTINE_GAP },
     rescue: null,
     hearts: [],
-    oven: { nextIn: OVEN_INTERVAL },
     frame: 0,
   };
   scene.squirrels = ([-1, 1] as const).map((side) => ({
@@ -844,7 +837,7 @@ export function createScene(size: SceneSize, rng: Rng): Scene {
     at: 'floor' as Spot,
     x: flankX(scene, side),
     facing: -side as -1 | 1,
-    timer: 0,
+    lift: 0,
     say: null,
     climb: 0,
     headDown: false,
@@ -873,9 +866,17 @@ export function resizeScene(scene: Scene, size: SceneSize): void {
 
   // Clamped into *his* range, never deleted: a gratin left where the room used
   // to be wider is a gratin he can never reach, and `heading` never arrives.
-  if (scene.gratin) {
-    scene.gratin.x = clamp(scene.gratin.x, wanderLeft, wanderRight);
-    if (scene.ciccio.goal) scene.ciccio.goal = { ...scene.ciccio.goal, x: scene.gratin.x };
+  if (scene.gratin) scene.gratin.x = clamp(scene.gratin.x, wanderLeft, wanderRight);
+
+  // And the errand is re-aimed at the thing it was for. Rewriting every goal to
+  // the gratin's x sent him to the cooker for a programme; leaving a sofa or a
+  // bed goal alone sent him to where the furniture used to be, and he climbed
+  // onto nothing.
+  const goal = scene.ciccio.goal;
+  if (goal) {
+    const where = goal.then === 'eat' ? scene.gratin?.x : goal.then === 'sit' ? loungeX : bedX;
+    if (where === undefined) scene.ciccio.goal = null;
+    else scene.ciccio.goal = { ...goal, x: clamp(where, wanderLeft, wanderRight) };
   }
 
   for (const squirrel of scene.squirrels) squirrel.x = flankX(scene, squirrel.side);
@@ -927,10 +928,8 @@ function walkCiccio(scene: Scene, rng: Rng): void {
   }
 
   if (ciccio.phase === 'mounting') {
-    if (--ciccio.timer <= 0) {
-      // `at` changes on the last frame of the climb and nowhere else, which is
-      // what keeps "on the floor" and "in a phase that means it" in step.
-      ciccio.at = spotFor(ciccio.goal?.then);
+    ciccio.lift = Math.min(1, ciccio.lift + 1 / CLIMB_FRAMES);
+    if (ciccio.lift >= 1) {
       ciccio.phase = ciccio.at === 'bed' ? 'sleeping' : 'sitting';
       ciccio.timer = ciccio.at === 'bed' ? NAP_FRAMES : MIN_SIT;
       ciccio.goal = null;
@@ -939,7 +938,8 @@ function walkCiccio(scene: Scene, rng: Rng): void {
   }
 
   if (ciccio.phase === 'dismounting') {
-    if (--ciccio.timer <= 0) {
+    ciccio.lift = Math.max(0, ciccio.lift - 1 / CLIMB_FRAMES);
+    if (ciccio.lift <= 0) {
       ciccio.at = 'floor';
       ciccio.phase = ciccio.goal ? 'heading' : 'wandering';
     }
@@ -981,8 +981,10 @@ function walkCiccio(scene: Scene, rng: Rng): void {
         ciccio.after = 'eating';
         startWobble(ciccio);
       } else {
+        // The seat is named now, at the start of the climb, so an interrupt
+        // half way up turns round from where it had got to.
+        ciccio.at = spotFor(goal.then);
         ciccio.phase = 'mounting';
-        ciccio.timer = CLIMB_FRAMES;
       }
       return;
     }
@@ -1042,6 +1044,35 @@ function wander(scene: Scene, rng: Rng): void {
 }
 
 /**
+ * They go where he is, seat included, and take the same frames over it — so a
+ * sofa does not gain two squirrels in one frame either.
+ *
+ * **Only ever one change of height at a time**, and it runs *before* the
+ * rescue rather than after. A squirrel coming off the wall and off the sofa on
+ * the same frame moved 2.8 units, well past what either alone is allowed —
+ * and merely checking `climb === 0` here was not enough, because the rescue
+ * zeroes the climb earlier in the very same frame. Ordered ahead of it, the
+ * seat waits a frame and the two never coincide.
+ */
+function settleSquirrelSeats(scene: Scene): void {
+  for (const squirrel of scene.squirrels) {
+    if (squirrel.climb > 0) continue;
+    const wants = squirrelWants(scene);
+    if (wants === 'floor') {
+      squirrel.lift = Math.max(0, squirrel.lift - 1 / CLIMB_FRAMES);
+      if (squirrel.lift <= 0) squirrel.at = 'floor';
+    } else if (squirrel.at !== wants && squirrel.lift > 0) {
+      // Off the one it is on before it may name another: naming a seat while a
+      // lift is still standing on the old one is a step of the difference.
+      squirrel.lift = Math.max(0, squirrel.lift - 1 / CLIMB_FRAMES);
+    } else {
+      squirrel.at = wants;
+      squirrel.lift = Math.min(1, squirrel.lift + 1 / CLIMB_FRAMES);
+    }
+  }
+}
+
+/**
  * They keep to his side, at their own pace, and nothing ever places them.
  *
  * The target is always his correct flank, so they are always *travelling* to
@@ -1068,14 +1099,6 @@ function wander(scene: Scene, rng: Rng): void {
  */
 function followSquirrels(scene: Scene): void {
   for (const squirrel of scene.squirrels) {
-    // They go where he is, seat included — and take the same frames over the
-    // climb, so a sofa does not gain two squirrels in one frame either.
-    if (squirrel.timer > 0) {
-      if (--squirrel.timer <= 0) squirrel.at = squirrelWants(scene);
-    } else if (squirrel.at !== squirrelWants(scene)) {
-      squirrel.timer = CLIMB_FRAMES;
-    }
-
     // Up the wall, the sideways business stops: it is holding on.
     if (squirrel.climb > 0) continue;
 
@@ -1113,8 +1136,9 @@ function followSquirrels(scene: Scene): void {
  * floor and skip the climb.
  */
 function startDismount(ciccio: Ciccio): void {
+  // `lift` is deliberately left where it is: reset to full, an interrupt during
+  // a dismount yanked him back up onto the seat he was climbing off.
   ciccio.phase = 'dismounting';
-  ciccio.timer = CLIMB_FRAMES;
 }
 
 /**
@@ -1129,8 +1153,8 @@ function headForGratin(scene: Scene, urgent: boolean): void {
   const { ciccio } = scene;
   if (!scene.gratin) return;
   ciccio.goal = { x: scene.gratin.x, then: 'eat', urgent };
-  ciccio.phase = ciccio.at === 'floor' ? 'heading' : 'dismounting';
-  if (ciccio.phase === 'dismounting') ciccio.timer = CLIMB_FRAMES;
+  if (ciccio.at === 'floor') ciccio.phase = 'heading';
+  else startDismount(ciccio);
   ciccio.spin = 0;
   ciccio.after = 'wandering';
   // Said on the frame he spots it. Keyed on the goal *holding*, he would shout
@@ -1152,19 +1176,44 @@ function summon(scene: Scene, x: number, then: Errand): void {
   ciccio.goal = { x, then, urgent: true };
   ciccio.spin = 0;
   ciccio.after = 'wandering';
-  if (ciccio.at === 'floor') {
-    ciccio.phase = 'heading';
-  } else {
-    ciccio.phase = 'dismounting';
-    ciccio.timer = CLIMB_FRAMES;
-  }
+  // `at` names a seat from the moment a climb begins, so this is false while he
+  // is on his way up — which is what stops an interrupt there dropping him.
+  if (ciccio.at === 'floor') ciccio.phase = 'heading';
+  else startDismount(ciccio);
 }
 
-/** Starts one, or leaves the one in progress alone. */
+/**
+ * Starts one, or leaves the one in progress alone.
+ *
+ * Whatever errand he was on is dropped with it. Left set, the goal is orphaned:
+ * `wander` will not reissue one that already exists and the rota will not start
+ * anything while one does, so he potters for the life of the tab past a gratin
+ * he was on his way to.
+ */
 function startWobble(ciccio: Ciccio): void {
   if (ciccio.phase === 'wobbling') return;
   ciccio.phase = 'wobbling';
   ciccio.spin = 0;
+  ciccio.goal = null;
+}
+
+/**
+ * What a tap on him does, which depends on where he is.
+ *
+ * On his feet he dances. On the sofa or in bed he gets up — a dance has nowhere
+ * to happen up there, and simply setting the phase left `at` naming a seat he
+ * was no longer climbing off: he walked the room a cushion's height in the air
+ * for ever, and since the rota only starts something while he is on the floor,
+ * it never ran again either.
+ */
+export function tapCiccio(scene: Scene): void {
+  const { ciccio } = scene;
+  if (ciccio.at === 'floor') {
+    startWobble(ciccio);
+    return;
+  }
+  ciccio.goal = null;
+  startDismount(ciccio);
 }
 
 /**
@@ -1270,7 +1319,12 @@ const catMayCall = (scene: Scene) =>
 function runCat(scene: Scene, rng: Rng): void {
   const cat = scene.cat;
   if (!cat) {
-    if (--scene.catNextIn > 0 || !catMayCall(scene)) return;
+    // Counted down only while a visit is *possible*, the way the oven's timer
+    // runs only while there is no gratin out. Ticked regardless, it went as far
+    // as −1500 across a busy day and the cat then walked in on the very frame
+    // he swallowed the last bite or stepped off the sofa — pouncing rather than
+    // dropping by.
+    if (!catMayCall(scene) || --scene.catNextIn > 0) return;
     const from: -1 | 1 = rng() < 0.5 ? -1 : 1;
     scene.cat = {
       // Off the edge it came in by, so it is never simply *there*.
@@ -1366,20 +1420,31 @@ function runBristle(scene: Scene): void {
  * gratin came out would be stuck up there for the life of the tab.
  */
 function runRescue(scene: Scene, rng: Rng): void {
-  const rescue = scene.rescue;
+  const watching = watchingTelevision(scene);
 
-  if (!watchingTelevision(scene)) {
-    // Everybody down, whatever they were in the middle of.
-    if (rescue) scene.rescue = null;
+  // Abandoned the moment they stop watching — but abandoning it is only the
+  // decision. Coming down is what has to keep happening afterwards, and it
+  // belongs to *not having a rescue* rather than to *not watching*: a
+  // programme resumed part way through the descent (tapping the set while he
+  // is still on the sofa dismounts and remounts in half the frames a full
+  // descent needs) left both of them hanging in mid air, one upside down, not
+  // following him and with nothing to bring them down again.
+  if (!watching) scene.rescue = null;
+
+  const rescue = scene.rescue;
+  if (!rescue) {
     for (const squirrel of scene.squirrels) {
       squirrel.climb = Math.max(0, squirrel.climb - CLIMB_SPEED * 2);
       if (squirrel.climb === 0) squirrel.headDown = false;
     }
-    return;
-  }
-
-  if (!rescue) {
-    if (rng() < RESCUE_CHANCE) {
+    // And nobody starts a climb while either of them is still moving
+    // vertically — the seat rule again, one change of height at a time. It
+    // would otherwise pick one still settling onto the cushion and add the
+    // wall to that same frame (1.7 of sofa and 0.55 of wall at once), or one
+    // still unwinding from an abandoned rescue, which starts at the top and so
+    // drops straight into `stuck` with no climb to watch.
+    const settled = scene.squirrels.every((squirrel) => squirrel.climb === 0 && squirrel.lift >= 1);
+    if (watching && settled && rng() < RESCUE_CHANCE) {
       scene.rescue = { climber: rng() < 0.5 ? 0 : 1, phase: 'climbing', timer: 0 };
     }
     return;
@@ -1535,6 +1600,7 @@ export function step(scene: Scene, rng: Rng): void {
   runTv(scene);
   runRoutine(scene);
   runBed(scene);
+  settleSquirrelSeats(scene);
   runCat(scene, rng);
   runRescue(scene, rng);
   runBristle(scene);
@@ -1666,6 +1732,17 @@ export const hitsOven = (scene: Scene, x: number, y: number) =>
  * past him for it.
  */
 export function clickScene(scene: Scene, x: number, y: number): void {
+  // A squirrel off the ground is asked *before* the set, and only then: the two
+  // share the wall, and the set's box swallowed the middle of a stuck one — so
+  // the single interaction the whole rescue has was aimed at a television that
+  // answered by restarting the programme. Everywhere else the room comes first,
+  // because his own box is enormous and the furniture never moves.
+  for (const squirrel of scene.squirrels) {
+    if (squirrel.climb > 0 && hitsSquirrel(scene, squirrel, x, y)) {
+      startChatter(scene);
+      return;
+    }
+  }
   if (hitsOven(scene, x, y)) {
     serveGratin(scene);
     // Sent, not merely offered. Leaving him to notice it on his own turn means
@@ -1690,7 +1767,7 @@ export function clickScene(scene: Scene, x: number, y: number): void {
     }
   }
   if (hitsCiccio(scene, x, y)) {
-    startWobble(scene.ciccio);
+    tapCiccio(scene);
     startChatter(scene);
   }
 }

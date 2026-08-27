@@ -83,9 +83,10 @@ export const BACKGROUNDS = [
     value: 'ciccio',
     label: 'Ciccio',
     render: () => <CiccioBackground />,
-    // Shorter than the cello's: one room of low furniture, where the tallest
-    // thing is the oven's hood. Same rule though — the scene contributes how
-    // tall its own scenery is and `sceneFloor` turns that into a band.
+    // A room, so the tallest thing in it is the room: `SCENE_REACH` resolves to
+    // its own wall height, which every piece of furniture fits under. Same rule
+    // as the cello's — the scene contributes how tall its scenery is and
+    // `sceneFloor` turns that into a band.
     floor: ciccioFloor,
   },
 ] as const satisfies readonly BackgroundDescriptor[];

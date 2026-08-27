@@ -247,6 +247,42 @@ export const MUTATIONS = [
     tests: ['src/theme/stage.test.ts'],
   },
   {
+    name: 'the resize guard is gone, so every event reallocates the buffer',
+    file: 'src/theme/sceneCanvas.ts',
+    find: '      if (sameStage && nextRatio === ratio) return;',
+    replace: '',
+    tests: ['src/theme/sceneCanvas.test.tsx'],
+  },
+  {
+    name: 'the buffer is refitted only for a change of ratio, never a resize',
+    file: 'src/theme/sceneCanvas.ts',
+    find: '      if (sameStage && nextRatio === ratio) return;',
+    replace: '      if (nextRatio === ratio) return;',
+    tests: ['src/theme/sceneCanvas.test.tsx'],
+  },
+  {
+    name: 'a resize builds a second scene rather than moving the one there is',
+    file: 'src/theme/sceneCanvas.ts',
+    find: '      resizeScene(scene, next);',
+    replace: '      createScene(next, Math.random);',
+    tests: ['src/theme/sceneCanvas.test.tsx'],
+  },
+  {
+    name: 'the screen is followed past twice, at four times the paint',
+    file: 'src/theme/chrome.ts',
+    find: 'export const MAX_PIXEL_RATIO = 2;',
+    replace: 'export const MAX_PIXEL_RATIO = 4;',
+    tests: ['src/theme/sceneCanvas.test.tsx', 'src/theme/chrome.test.ts'],
+  },
+  {
+    name: 'a click is divided by the device ratio as well as the scene scale',
+    file: 'src/theme/sceneCanvas.ts',
+    find: '      clickScene?.(scene, event.clientX / size.scale, event.clientY / size.scale);',
+    replace:
+      '      clickScene?.(scene, event.clientX / (size.scale * ratio), event.clientY / size.scale);',
+    tests: ['src/theme/sceneCanvas.test.tsx'],
+  },
+  {
     name: 'the stage is measured on a resize but never re-held',
     file: 'src/theme/sceneCanvas.ts',
     find: '      size = next;',
@@ -263,7 +299,7 @@ export const MUTATIONS = [
   // Deliberately not here: the bound on a banana leaf's `across`. Measured over
   // forty plants it never once binds, so removing it changes nothing — an
   // unkillable survivor rather than a finding. `scene.test.ts` pins the property
-  // it protects instead.,
+  // it protects instead.
   // -- Ciccio's room (src/theme/ciccio/scene.ts) -----------------------------
   // The scene draws over the user's own list, and several of these decide how
   // much of it gets covered. The rest are the guards that keep the three of
@@ -324,6 +360,27 @@ export const MUTATIONS = [
     file: 'src/theme/ciccio/scene.ts',
     find: '  const target = bedExpectsHim(scene) ? 1 : 0;',
     replace: '  const target = 1;',
+    tests: ['src/theme/ciccio/scene.test.ts'],
+  },
+  {
+    name: 'an abandoned climb only unwinds while they are not watching',
+    file: 'src/theme/ciccio/scene.ts',
+    find: '  if (!watching) scene.rescue = null;',
+    replace: '  if (!watching) scene.rescue = null;\n  if (watching && !scene.rescue) return;',
+    tests: ['src/theme/ciccio/scene.test.ts'],
+  },
+  {
+    name: 'a climb may start while one of them is still settling onto the sofa',
+    file: 'src/theme/ciccio/scene.ts',
+    find: '    if (watching && settled && rng() < RESCUE_CHANCE) {',
+    replace: '    if (watching && rng() < RESCUE_CHANCE) {',
+    tests: ['src/theme/ciccio/scene.test.ts'],
+  },
+  {
+    name: "the cat's interval runs down through his meals rather than counting his free time",
+    file: 'src/theme/ciccio/scene.ts',
+    find: '    if (!catMayCall(scene) || --scene.catNextIn > 0) return;',
+    replace: '    if (--scene.catNextIn > 0 || !catMayCall(scene)) return;',
     tests: ['src/theme/ciccio/scene.test.ts'],
   },
 ];

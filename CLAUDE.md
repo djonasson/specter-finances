@@ -261,17 +261,25 @@ BrowserRouter → AuthProvider → ExpensesProvider → ThemeProvider → App
 
 ### UI
 
-Mantine v8 component library with Tabler icons. Five routes: `/` (Dashboard with charts via chart.js), `/add` (tabbed Expense/Transfer/Gift/Recurring form), `/list` (`ExpensesPage`: Expenses | Recurring), `/transfers`, `/gifts`. Bottom nav bar for mobile. Theme system with customizable backgrounds in `theme/` (gradient, matrix, squirrel, cello). Date filtering (`filterByDate`/`FilterMode` in `utils.ts`) is shared across the dashboard and lists.
+Mantine v8 component library with Tabler icons. Five routes: `/` (Dashboard with charts via chart.js), `/add` (tabbed Expense/Transfer/Gift/Recurring form), `/list` (`ExpensesPage`: Expenses | Recurring), `/transfers`, `/gifts`. Bottom nav bar for mobile. Theme system with customizable backgrounds in `theme/` (gradient, matrix, squirrel, cello, ciccio). Date filtering (`filterByDate`/`FilterMode` in `utils.ts`) is shared across the dashboard and lists.
 
-**Every canvas scene shares one component.** `useSceneCanvas` in
-`theme/sceneCanvas.ts` is the buffer, the frame loop, the two-decision resize and
-the clicks, once — a scene hands it `createScene`/`resizeScene`/`step`/`drawScene`
-and an optional `clickScene`, and owns nothing else about the browser. Copied per
-scene, as the cello's and Ciccio's were at first, the next scene inherits today's
-version and one of the copies goes quietly stale; it also meant duplicating five
-hundred lines of wiring tests to cover the second copy. The cello's whole
-component suite passes against it unchanged, which is the evidence the extraction
-moved nothing.
+**The cello and Ciccio share one component.** `SceneCanvas` in
+`theme/sceneCanvas.tsx` is the canvas, the buffer, the frame loop, the
+two-decision resize and the clicks, once — a scene hands it
+`createScene`/`resizeScene`/`step`/`drawScene` and an optional `clickScene`, and
+owns nothing else about the browser, not even the `<canvas>` element. (Matrix and
+Squirrel predate it and still hand-roll their own; they would be the next two to
+move.) Copied per scene, as these two were at first, the next scene inherits
+today's version and one of the copies goes quietly stale.
+
+Its tests are **`sceneCanvas.test.tsx`, against a fake scene that does nothing** —
+they lived in the cello's file while the wiring did, and leaving them there meant
+one background owned the contract of a module every other one depends on: retire
+that theme and the coverage goes with it, and a mutation in the shared guard
+reports as a cello failure. Moving them cost four guards that no test then
+covered — `npm run mutate` found every one — so the mutation list carries them
+now: the resize early-out, the refit condition, building a second scene on a
+resize, `MAX_PIXEL_RATIO`, and the click divisor.
 
 **Backgrounds are listed once, in `theme/registry.tsx`, and that is the only place any of them is named.** The `BackgroundName` union is derived from the list, so a background cannot be half-added, and `loadSettings` validates a stored name against it with `isBackgroundName` — storage outlives releases, and an unrecognised name used to render nothing at all. (The union is `BackgroundName`, not `BackgroundEffect`: that name belongs to the component in `backgrounds.tsx` that renders one.)
 
@@ -326,7 +334,11 @@ The `floor` belongs to the scene, and Cello's is **derived, not chosen**: `SCENE
 Cello's left is a park, a school and a light beige Fiat 500 — which she drives, see below — mirroring the oven on the right. One thing there moves on its own: she lets herself into the school now and then, the window lights while she is inside, and the bird — having no shoulder to sit on — waits in the nearest tree. That last part is **a substituted target, not a new phase**: `perchX`/`perchY` return her shoulder or the treetop, and `perched`, `escorting` and even a dive for a passing pizza go on working without knowing she is gone. Two things follow from `perched` holding him _at_ his perch by setting his position every frame, and both were jerks worth naming: he must fly the last of the way down (`landing`) rather than entering `perched` from a hover and covering the whole hover height in one frame, and when the perch itself becomes a different perch — she goes in, she comes out — he notices for himself: `bird.perchedOn` remembers which perch he took, and `perched` puts him back in the air when it no longer matches `currentPerch`. **Identity, not distance, and not the caller's memory**: keying it on the two girl transitions that cause it today would leave the next cause to reintroduce the jump, while a geometry check would make `perched` doubt its own invariant and break every deliberate placement. The lit window and the swinging door are **derived from her phase** rather than stored, so a lit window with nobody in it is not a state the scene can reach, and `treeSway` is pure so the wind is something a test can hold. The chimney stands on the right-hand slope with its foot **cut to the pitch** — drawn square it had one corner buried in the roof and the other hanging over air — and smokes only while she is in there, through the same puff machinery the oven uses. Her silhouette at the window is gated on the same `schoolLit`, so the light, the smoke and the shadow cannot disagree about whether anybody is home. Sizes live in `scene.ts` beside `SCENE_REACH`, which counts the chimney rather than the ridge (it stands part way down a slope, so it is the taller) and is otherwise derived from one list of **perch heights** (`PERCH_HEIGHT`) plus how far above one he gets — the same list `perchY` places him with, so a perch added there cannot be forgotten here. He sits _in_ the crown rather than on top of it, which is both what a bird does and the difference between reserving 198px of the user's list and 171px: the band is measured from wherever he settles highest, so where he sits in a tree, not the park itself, is what costs screen. It grew 158px → 171px.
 
 **Ciccio is a plush hedgehog in one room with two plush squirrels who love him**
-(`theme/ciccio/`), and the room is **bed, then kitchen, then living room**, all
+(`theme/ciccio/`). _(On the naming rule above: `Ciccio` and `Susin` are the
+toys' names, chosen deliberately for this theme. The rule bans the two partners'
+real names, and a plush hedgehog's is not one — but it is the sort of thing worth
+saying once rather than leaving a reader to wonder whether the rule slipped.)_
+The room is **bed, then kitchen, then living room**, all
 standing against a back wall with the strip of floor in front of it as his walk.
 That layout is why the room has **no nullable furniture**: nothing competes with
 his floor, so at 320px — 444 scene units, the narrowest window the app is opened
@@ -344,9 +356,11 @@ so the strip above the ground was always the scene's to paint. It fades out at
 the top with the wall's own colour at **zero alpha** — fading from
 `rgba(0,0,0,0)` interpolates through transparent _black_ and paints a dirty band
 right across the room. `WALL_HEIGHT` is the tallest thing here by construction,
-so it **is** the reach, and `CLIMB_MAX` is what is left of it once a squirrel and
-its tail are subtracted: pick that number instead and the first time either moves
-a squirrel climbs out through the ceiling and over the user's own list.
+so it **is** the reach — every piece of furniture fits under it, and nothing in
+the room sets it. `CLIMB_MAX` is what is left of that wall once a squirrel's
+whole height and the sofa it starts from are subtracted: pick that number instead
+and the first time any of the three moves, a squirrel climbs out through the
+ceiling and over the user's own list.
 
 **He is between them, and that converges rather than being held down.** Each
 squirrel's `side` is fixed when it is made — assigned by whichever is nearer, one
@@ -391,15 +405,46 @@ how far through the easing it has got.
 drop whatever he was doing and send him at a trot — he still climbs down off
 furniture rather than appearing on the floor, because the one thing an interrupt
 may not do is skip frames a change of height is owed. The room is hit-tested
-**before** the animals: his box is forty units either side of an animal a few
-units across, so testing him first makes the oven unclickable exactly while he is
-standing in front of it, which is when somebody is most likely reaching past him
-for it.
+**before** the animals: his box is thirty-four units either side of an animal a
+few units across, so testing him first makes the oven unclickable exactly while
+he is standing in front of it, which is when somebody is most likely reaching
+past him for it. The **one** exception is a squirrel off the ground: it and the
+television share the wall, and the set's box is the wider of the two, so the
+single interaction the whole wall-rescue has was being answered by restarting the
+programme.
 
 **What happens on its own is a rota, not three chances**: potter, eat, potter,
 watch something, potter, sleep. Rolled separately they came out in any order and
 sometimes not at all — a whole seeded day could pass with the television never
-once on. Taps interrupt; they do not shuffle the order.
+once on. Taps interrupt; they do not shuffle the order. There is **no oven
+timer**: the rota and a tap on the cooker both go through `serveGratin`, and the
+one that used to exist sat seeded and unread for a while with eight lines of
+comment above it explaining how it had been tuned.
+
+**An interrupt drops the errand it interrupts.** Left set, a goal is orphaned —
+neither the wander nor the rota will issue one while another exists — so he
+potters for the life of the tab past a gratin he was on his way to. And a tap on
+him while he is _on_ something gets him off it rather than starting a dance,
+because a dance has nowhere to happen up there and the rota only starts anything
+while he is on the floor.
+
+**Coming down the wall belongs to _having no rescue_, not to _not watching_.**
+The climb is abandoned the moment the programme stops, but the unwinding has to
+outlive the abandoning: tapping the set while he is already on the sofa takes him
+off it and puts him back in half the frames a descent from the top needs, so a
+rule that lowered them only while nobody was watching left both squirrels hanging
+beside the sofa — one upside down, `followSquirrels` skipping anybody off the
+ground, and nothing left in the scene to bring them down. And nobody starts a
+climb while either of them is still moving vertically, the seat rule again: rolled
+on a squirrel still settling onto the cushion, it added the wall to that same
+frame.
+
+**A timer that counts frames counts the wrong thing.** The cat's interval runs
+down only while a visit is actually possible, the way the oven's runs only while
+there is no gratin out. Ticked on every frame it went as far as −1500 across a
+busy day, and the cat then walked in on the very frame he swallowed the last bite
+or stepped off the sofa — pouncing rather than dropping by. The pacing it names
+is therefore in _pottering_, which is why the number moved when the floor went in.
 
 **"Sometimes" and "faster" are measured, never described.** Three of these were
 quietly wrong by a factor of three and only a count found them: the cat's first
@@ -481,9 +526,10 @@ forced layout flush off every render of the app, since `clientWidth` flushes
 where `innerWidth` did not. And because a scrollbar appearing fires **no**
 `resize` at all, the stage watches `document.documentElement` with a
 `ResizeObserver` as well as the window.
-All three compare the viewport _and_ the ratio before refitting, because
+All three of those — Matrix's, Squirrel's and the one `useSceneCanvas` holds
+for the cello and Ciccio — compare the viewport _and_ the ratio before refitting, because
 reallocating the buffer zeroes it and mobile browsers ask dozens of times as the
-URL bar collapses — and all three keep the buffer and the scene as **two**
+URL bar collapses — and all of them keep the buffer and the scene as **two**
 decisions, since a change of monitor alters nothing about the stage: folding
 them into one early-out teleports the girl mid-stride, restarts every falling
 acorn and re-seeds the rain. Cello's comparison includes the footer's measured
@@ -496,7 +542,8 @@ fraction of the paint.
 
 It lives in `chrome.ts` rather than in a scene because every canvas background
 needs it and a scene that forgot would simply be blurry — nothing would fail.
-All three canvas backgrounds call it. The squirrel took the most moving: it read
+Every canvas background reaches it: Matrix and Squirrel call it
+themselves, and the cello and Ciccio get it from `useSceneCanvas`. The squirrel took the most moving: it read
 `canvas.width` as a **scene coordinate** in sixteen places, and its own click
 handler compares the squirrel's `x` against a click's `clientX`, so a buffer in
 device pixels would have put the squirrel at twice his own position and made him
@@ -505,7 +552,7 @@ is what the whole file already assumed they were.
 
 A ratio change is **not** a resize event: moving a window between monitors can
 leave `innerWidth` and `innerHeight` untouched, and `resize` is not specified to
-fire. `watchPixelRatio`, beside `fitCanvas` and used by all three, watches
+fire. `watchPixelRatio`, beside `fitCanvas` and reached by every scene the same three ways, watches
 `matchMedia('(resolution: Ndppx)')` and re-arms at the new ratio. Left in one
 scene, the other two kept the launch screen's buffer for the life of the tab —
 which for an installed PWA is days. Three guards, all load-bearing: on the

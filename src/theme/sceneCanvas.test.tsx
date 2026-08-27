@@ -132,11 +132,16 @@ describe('the canvas a scene stands on', () => {
     expect(canvas.style.width).toBe('800px');
   });
 
+  // The literal, not the constant. Asserted against `MAX_PIXEL_RATIO` itself
+  // both sides read the same symbol, and raising it to four passes — while the
+  // buffer is the whole viewport repainted forty times a second, so its cost
+  // grows with the square of that number.
   it('stops following the device beyond twice, however dense the screen', () => {
     vi.stubGlobal('devicePixelRatio', 4);
     resizeTo(800, 600);
     render();
-    expect(document.querySelector('canvas')!.width).toBe(800 * MAX_PIXEL_RATIO);
+    expect(document.querySelector('canvas')!.width).toBe(1600);
+    expect(MAX_PIXEL_RATIO).toBe(2);
   });
 
   it("puts the screen's ratio on the context and leaves the scene its own scale", () => {
@@ -224,6 +229,47 @@ describe('two decisions, not one', () => {
   // The buffer and the scene are separate: `resizeScene` is not a no-op on
   // unchanged input, so folding the ratio into one early-out moves the whole
   // cast for a change of monitor that altered nothing about the stage.
+  // Without the early-out, every one of the dozens of resize events a URL bar
+  // collapse sends reallocates the buffer — which zeroes it — and re-places the
+  // whole cast.
+  it('does nothing at all when neither the stage nor the ratio moved', () => {
+    resizeTo(800, 600);
+    render();
+    const before = document.querySelector('canvas')!;
+    const setTransforms = vi.mocked(context2d.setTransform).mock.calls.length;
+
+    act(() => window.dispatchEvent(new Event('resize')));
+
+    expect(vi.mocked(context2d.setTransform).mock.calls.length).toBe(setTransforms);
+    expect(document.querySelector('canvas')).toBe(before);
+    expect(spec.resizeScene).not.toHaveBeenCalled();
+  });
+
+  // A resize builds no second scene: rebuilt, everything mid-flight is lost and
+  // the cast is re-placed on every drag of a window edge.
+  it('never builds the scene again, however the window is dragged about', () => {
+    resizeTo(800, 600);
+    render();
+    for (const width of [900, 1000, 1100, 640]) resizeTo(width, 600);
+    expect(spec.createScene).toHaveBeenCalledTimes(1);
+    expect(spec.resizeScene).toHaveBeenCalledTimes(4);
+  });
+
+  // And what it is handed is the stage, in the scene's own units — not the
+  // window, and not a stage with the ground left at nothing.
+  it('hands the resize the same shape it handed the build', () => {
+    resizeTo(800, 600);
+    render();
+    resizeTo(1200, 700);
+
+    const built = spec.createScene.mock.calls[0][0];
+    const moved = spec.resizeScene.mock.calls[0][1];
+    expect(Object.keys(moved).sort()).toEqual(Object.keys(built).sort());
+    const scale = sceneScale(1200);
+    expect(moved.width).toBeCloseTo(1200 / scale, 10);
+    expect(moved.ground).toBeCloseTo((700 - footerHeight() - GROUND_ABOVE_FOOTER) / scale, 10);
+  });
+
   it('refits the buffer for a change of ratio without moving the scene', () => {
     vi.stubGlobal('devicePixelRatio', 1);
     resizeTo(800, 600);
@@ -276,6 +322,23 @@ describe('two decisions, not one', () => {
 });
 
 describe('a tap on the scene', () => {
+  // The one number between a finger and the room. Divided by the device ratio
+  // as well, or not at all, nothing is clickable where it is drawn and there is
+  // no error anywhere to say so.
+  it('divides a real click by the scene scale and by nothing else', () => {
+    vi.stubGlobal('devicePixelRatio', 3);
+    resizeTo(414, 800);
+    render();
+
+    act(() => document.dispatchEvent(new MouseEvent('click', { clientX: 207, clientY: 400 })));
+
+    const scale = sceneScale(414);
+    const [, x, y] = spec.clickScene.mock.calls[0];
+    expect(x).toBeCloseTo(207 / scale, 10);
+    expect(y).toBeCloseTo(400 / scale, 10);
+    expect(x).not.toBeCloseTo(207 / (scale * 3), 10);
+  });
+
   it('takes a click in window coordinates and asks the scene in its own', () => {
     resizeTo(360, 700);
     render();
