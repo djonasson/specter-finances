@@ -39,15 +39,34 @@ if (chosen.length === 0) {
   process.exit(2);
 }
 
-/** Runs the suite and says only whether it went red. */
+/**
+ * Runs the suite and says only whether it went red.
+ *
+ * Politely: this runs the suite once per mutation, twenty-odd times back to
+ * back, and none of it is work anybody is waiting on. `nice` where there is one
+ * — everywhere but Windows — so a long run stays out of the way of whatever
+ * else the machine is doing.
+ */
 function suiteFails(tests) {
+  const args = ['vitest', 'run', ...(tests ?? [])];
+  const [command, argv] = polite ? ['nice', ['-n', '19', 'npx', ...args]] : ['npx', args];
   try {
-    execFileSync('npx', ['vitest', 'run', ...(tests ?? [])], { stdio: 'pipe' });
+    execFileSync(command, argv, { stdio: 'pipe' });
     return false;
   } catch {
     return true;
   }
 }
+
+/** `nice` exists on anything but Windows, and is not worth a failure if not. */
+const polite = (() => {
+  try {
+    execFileSync('nice', ['-n', '19', 'true'], { stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+})();
 
 const survivors = [];
 let restore = null;
