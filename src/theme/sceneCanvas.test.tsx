@@ -167,6 +167,26 @@ describe('the stage a scene is handed', () => {
     expect(stage.ground).toBeCloseTo((700 - footerHeight() - GROUND_ABOVE_FOOTER) / scale, 10);
   });
 
+  // The two measurements are deliberately from different places, and each was a
+  // bug. The width comes from the document, because a classic scrollbar counts
+  // towards `innerWidth` but not towards the containing block of the fixed
+  // canvas. The height comes from the window, because `clientHeight` is the
+  // *layout* viewport — pinned on a phone, so it does not move when the URL bar
+  // collapses, while the footer the ground is measured off does.
+  it('measures the width off the document and the height off the window', () => {
+    resizeTo(1024, 800);
+    vi.spyOn(document.documentElement, 'clientWidth', 'get').mockReturnValue(1009);
+    vi.spyOn(document.documentElement, 'clientHeight', 'get').mockReturnValue(742);
+    render();
+
+    const stage = spec.createScene.mock.calls[0][0];
+    const scale = sceneScale(1009);
+    expect(stage.width).toBeCloseTo(1009 / scale, 10);
+    expect(stage.ground).toBeCloseTo((800 - footerHeight() - GROUND_ABOVE_FOOTER) / scale, 10);
+    // Not the layout viewport's 742, which a collapsing URL bar never changes.
+    expect(stage.ground).not.toBeCloseTo((742 - footerHeight() - GROUND_ABOVE_FOOTER) / scale, 10);
+  });
+
   it('builds the scene once, and hands it randomness rather than taking it', () => {
     render();
     expect(spec.createScene).toHaveBeenCalledTimes(1);
