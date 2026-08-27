@@ -12,6 +12,7 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:shuffled": "vitest run --sequence.shuffle",
     "prepare": "husky",
     "mutate": "node scripts/mutate.mjs"
   },

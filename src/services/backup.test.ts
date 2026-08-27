@@ -261,6 +261,20 @@ describe('handing the file to the browser', () => {
     await nextTask();
     expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:mock-url');
   });
+
+  // The link went into the page to be clicked and has no business staying there
+  // afterwards, least of all when the click failed. Removed only on the way out
+  // of a successful click, a blocked one — an extension, a policy, a browser
+  // that refuses a synthetic click — left an anchor in the document for every
+  // press of the backup button, and they accumulate for the life of the tab.
+  it('takes the link back out even when the click throws', () => {
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {
+      throw new Error('blocked');
+    });
+
+    expect(() => downloadBlob(new Blob(['x']), 'x.xlsx')).toThrow('blocked');
+    expect(document.querySelector('a[download]')).toBeNull();
+  });
 });
 
 // The id is read back from localStorage, where it has outlived the pick that

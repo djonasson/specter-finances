@@ -82,6 +82,16 @@ than getting anything done. `npm run mutate` additionally asks `nice` to put it
 last in the queue, since it runs the suite once per mutation and nobody is
 waiting on it.
 
+**`npm run test:shuffled` asks whether the suite passes in any order.** Tests
+that lean on what an earlier test left behind are green until the day something
+is added above them, and then the failure looks unrelated to whatever caused
+it. Three were found this way and all three were real: a `clientWidth` spy that
+was never restored, a window size jsdom keeps for the life of a file, and
+module state that made "before `initAuth` has run" untrue for every test but the
+first. The third pointed at a production bug — `downloadBlob` removed its link
+only after a successful click, so a blocked one left an anchor in the page for
+every press of the backup button.
+
 **`npm run mutate` asks the other question: would the suite notice?** It breaks
 each load-bearing thing on purpose — the settlement signs and coefficients, the
 asymmetric write ranges that keep a recurring marker from being erased, the
