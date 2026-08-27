@@ -139,8 +139,16 @@ export const CICCIO_NARROWEST = 0.3;
 
 // -- the oven ----------------------------------------------------------------
 
-/** Frames between one gratin and the next, once the last has been eaten. */
-const OVEN_INTERVAL = 1400;
+/**
+ * Frames between one gratin and the next, once the last has been eaten.
+ *
+ * Set to 1400 the room was never anything but a canteen: a gratin was on the
+ * floor 44% of the time, and since food interrupts a sit, he headed for the
+ * sofa twenty-three thousand frames in a day and actually sat for thirteen.
+ * The day-split test is what said so, and is the only thing that would say so
+ * again if this were tuned back down.
+ */
+const OVEN_INTERVAL = 5200;
 /** How many mouthfuls a gratin is. */
 export const GRATIN_BITES = 150;
 /** How close he has to be to it to be eating it rather than near it. */
@@ -148,6 +156,43 @@ const BITE_REACH = 26;
 /** Scene units a frame. Faster than a walk: it is a gratin. */
 const RUN_SPEED = 1.35;
 export const MAX_STEAM = 14;
+
+// -- getting on and off things -----------------------------------------------
+
+/** Frames a climb on or off takes. */
+const CLIMB_FRAMES = 14;
+/**
+ * The most anybody's height may change in one frame.
+ *
+ * The tallest seat over the frames a climb takes, and the whole reason
+ * `mounting` and `dismounting` exist: without frames that own the change, he is
+ * on the rug the frame after he was on a cushion, and all three of them snap at
+ * once. It is asserted rather than described.
+ */
+export const MAX_CLIMB = 24 / CLIMB_FRAMES;
+
+/** How long a programme lasts, and how long a nap does. */
+const SHOW_FRAMES = 3400;
+const NAP_FRAMES = 2200;
+/** He stays put this long once seated, so a walk over is never wasted. */
+const MIN_SIT = 400;
+/**
+ * Chance a frame that he takes himself off to bed.
+ *
+ * Deliberately larger than `TV_CHANCE`: he is a hedgehog, and he sleeps more
+ * than he watches television. It also keeps the two separable, which a test
+ * needs — with the television the likelier of the two, no single roll can reach
+ * the bed without switching the set on first, and the bed becomes untestable.
+ */
+const SLEEP_CHANCE = 0.0006;
+/**
+ * And that the television comes on by itself.
+ *
+ * Without it, watching is something only a tap can cause, and a screen nobody
+ * touches never shows the one behaviour that puts all three of them on a sofa
+ * together. The same argument as the oven's timer.
+ */
+const TV_CHANCE = 0.0004;
 const STEAM_EVERY = 16;
 
 export const CICCIO_CALL = 'Ciccio Ciccio!';
@@ -298,7 +343,15 @@ export function layoutFor(width: number): Layout {
 // -- the cast ----------------------------------------------------------------
 
 /** What he is doing. */
-export type CiccioPhase = 'wandering' | 'wobbling' | 'heading' | 'eating';
+export type CiccioPhase =
+  | 'wandering'
+  | 'wobbling'
+  | 'heading'
+  | 'eating'
+  | 'mounting'
+  | 'dismounting'
+  | 'sitting'
+  | 'sleeping';
 
 /**
  * What somebody is saying, and for how long.
@@ -335,7 +388,9 @@ export interface Ciccio {
    */
   after: 'wandering' | 'eating';
   /** Where he is going and why, or nothing. */
-  goal: { x: number; then: 'dance' } | null;
+  goal: { x: number; then: 'dance' | 'sit' | 'sleep' } | null;
+  /** Frames left of the climb on or off, or of the sit or the sleep. */
+  timer: number;
   bites: number;
   say: Say | null;
   x: number;
@@ -367,6 +422,8 @@ export interface Squirrel {
    */
   side: -1 | 1;
   at: Spot;
+  /** Frames left of its own climb on or off, so it never snaps either. */
+  timer: number;
   x: number;
   facing: number;
   /** Its own, not the scene's: see `side`, for the same reason. */
@@ -398,6 +455,14 @@ export interface Scene {
   /** Exactly two, one either side. */
   squirrels: Squirrel[];
   /**
+   * Stored, not derived — deliberately unlike the cello's lit school window.
+   * "On while he is still walking over" is a state somebody reaches by clicking
+   * it, so it has to be a fact rather than a consequence. The price is that it
+   * can now outlive the room it belongs to, and `resizeScene` is where that is
+   * paid.
+   */
+  tv: { on: boolean; showLeft: number };
+  /**
    * One at a time, by construction — there is only ever this one slot, and the
    * timer below only runs while it is empty.
    */
@@ -408,11 +473,37 @@ export interface Scene {
 
 type Rng = () => number;
 
-/** How high off the ground somebody on this spot is drawn. */
-const spotY = (scene: Scene, at: Spot) => scene.ground - SEAT_HEIGHT[at];
+/**
+ * How high off the ground somebody is drawn, the climb included.
+ *
+ * The height is *interpolated* across the frames of a climb, not merely delayed
+ * until the end of one: delaying it still moves a whole cushion's height in a
+ * single frame, which is the bird-teleport with extra steps. `at` says where
+ * somebody is; this says how far up they have got.
+ */
+function liftBetween(from: Spot, to: Spot, along: number): number {
+  return SEAT_HEIGHT[from] + (SEAT_HEIGHT[to] - SEAT_HEIGHT[from]) * along;
+}
 
-export const ciccioY = (scene: Scene) => spotY(scene, scene.ciccio.at);
-export const squirrelY = (scene: Scene, squirrel: Squirrel) => spotY(scene, squirrel.at);
+export function ciccioY(scene: Scene): number {
+  const { ciccio } = scene;
+  if (ciccio.phase === 'mounting') {
+    const onto: Spot = ciccio.goal?.then === 'sleep' ? 'bed' : 'sofa';
+    return scene.ground - liftBetween('floor', onto, 1 - ciccio.timer / CLIMB_FRAMES);
+  }
+  if (ciccio.phase === 'dismounting') {
+    return scene.ground - liftBetween('floor', ciccio.at, ciccio.timer / CLIMB_FRAMES);
+  }
+  return scene.ground - SEAT_HEIGHT[ciccio.at];
+}
+
+export function squirrelY(scene: Scene, squirrel: Squirrel): number {
+  if (squirrel.timer > 0) {
+    const wants = squirrelWants(scene);
+    return scene.ground - liftBetween(squirrel.at, wants, 1 - squirrel.timer / CLIMB_FRAMES);
+  }
+  return scene.ground - SEAT_HEIGHT[squirrel.at];
+}
 
 /**
  * Where a squirrel belongs right now.
@@ -438,6 +529,7 @@ export function createScene(size: SceneSize, rng: Rng): Scene {
       spin: 0,
       after: 'wandering',
       goal: null,
+      timer: 0,
       bites: 0,
       say: null,
       x: layout.wanderLeft + (layout.wanderRight - layout.wanderLeft) * rng(),
@@ -447,6 +539,7 @@ export function createScene(size: SceneSize, rng: Rng): Scene {
     },
     squirrels: [],
     gratin: null,
+    tv: { on: false, showLeft: 0 },
     oven: { nextIn: OVEN_INTERVAL },
     frame: 0,
   };
@@ -455,6 +548,7 @@ export function createScene(size: SceneSize, rng: Rng): Scene {
     at: 'floor' as Spot,
     x: flankX(scene, side),
     facing: -side as -1 | 1,
+    timer: 0,
     say: null,
   }));
   return scene;
@@ -530,6 +624,42 @@ function walkCiccio(scene: Scene, rng: Rng): void {
     return;
   }
 
+  if (ciccio.phase === 'mounting') {
+    if (--ciccio.timer <= 0) {
+      // `at` changes on the last frame of the climb and nowhere else, which is
+      // what keeps "on the floor" and "in a phase that means it" in step.
+      ciccio.at = ciccio.goal?.then === 'sleep' ? 'bed' : 'sofa';
+      ciccio.phase = ciccio.at === 'bed' ? 'sleeping' : 'sitting';
+      ciccio.timer = ciccio.at === 'bed' ? NAP_FRAMES : MIN_SIT;
+      ciccio.goal = null;
+    }
+    return;
+  }
+
+  if (ciccio.phase === 'dismounting') {
+    if (--ciccio.timer <= 0) {
+      ciccio.at = 'floor';
+      ciccio.phase = ciccio.goal ? 'heading' : 'wandering';
+    }
+    return;
+  }
+
+  if (ciccio.phase === 'sitting') {
+    ciccio.timer--;
+    // Food gets him up; so does the programme ending, but not before he has
+    // sat long enough for the walk over to have been worth it.
+    if (scene.gratin || (!scene.tv.on && ciccio.timer <= 0)) startDismount(ciccio);
+    return;
+  }
+
+  if (ciccio.phase === 'sleeping') {
+    // A gratin does not wake him: it is scenery, not a projectile, and it will
+    // keep. It does shorten the nap, because he can smell it.
+    ciccio.timer -= scene.gratin ? 3 : 1;
+    if (ciccio.timer <= 0) startDismount(ciccio);
+    return;
+  }
+
   if (ciccio.phase === 'heading') {
     const goal = ciccio.goal;
     if (!goal) {
@@ -539,28 +669,47 @@ function walkCiccio(scene: Scene, rng: Rng): void {
     const away = goal.x - ciccio.x;
     ciccio.dir = away >= 0 ? 1 : -1;
     ciccio.facing += clamp(ciccio.dir - ciccio.facing, -TURN_EASE, TURN_EASE);
-    if (Math.abs(away) <= RUN_SPEED) {
+    const pace = goal.then === 'dance' ? RUN_SPEED : WALK_SPEED;
+    if (Math.abs(away) <= pace) {
       // Snapped on arrival. A step that overshoots leaves him oscillating
       // either side of the plate at running speed, for ever.
       ciccio.x = goal.x;
-      ciccio.goal = null;
-      ciccio.after = 'eating';
-      startWobble(ciccio);
+      if (goal.then === 'dance') {
+        ciccio.goal = null;
+        ciccio.after = 'eating';
+        startWobble(ciccio);
+      } else {
+        ciccio.phase = 'mounting';
+        ciccio.timer = CLIMB_FRAMES;
+      }
       return;
     }
-    ciccio.x += ciccio.dir * RUN_SPEED;
+    ciccio.x += ciccio.dir * pace;
     return;
   }
 
-  // Food beats wandering and beats a dance he started himself, and it is set as
-  // a *goal* rather than as a phase, so everything that has to happen on the
-  // way happens in one place.
-  if (scene.gratin && !ciccio.goal) {
+  // Food beats wandering, and beats an errand to the sofa or the bed — but not
+  // the run it is already making for food, which would re-set the same goal
+  // every frame and hide a bug behind idempotence. It is set as a *goal* rather
+  // than as a phase, so everything that has to happen on the way happens once.
+  if (scene.gratin && ciccio.goal?.then !== 'dance') {
     ciccio.goal = { x: scene.gratin.x, then: 'dance' };
     ciccio.phase = 'heading';
     // Said on the frame he spots it. Keyed on the goal *holding*, he would
     // shout it every frame of the run across the room.
     say(ciccio, CICCIO_GRATIN);
+    return;
+  }
+
+  if (scene.tv.on && !ciccio.goal) {
+    ciccio.goal = { x: scene.layout.loungeX, then: 'sit' };
+    ciccio.phase = 'heading';
+    return;
+  }
+
+  if (rng() < SLEEP_CHANCE && !ciccio.goal) {
+    ciccio.goal = { x: scene.layout.bedX, then: 'sleep' };
+    ciccio.phase = 'heading';
     return;
   }
 
@@ -604,6 +753,14 @@ function walkCiccio(scene: Scene, rng: Rng): void {
  */
 function followSquirrels(scene: Scene): void {
   for (const squirrel of scene.squirrels) {
+    // They go where he is, seat included — and take the same frames over the
+    // climb, so a sofa does not gain two squirrels in one frame either.
+    if (squirrel.timer > 0) {
+      if (--squirrel.timer <= 0) squirrel.at = squirrelWants(scene);
+    } else if (squirrel.at !== squirrelWants(scene)) {
+      squirrel.timer = CLIMB_FRAMES;
+    }
+
     const target = flankX(scene, squirrel.side);
     const away = target - squirrel.x;
     if (Math.abs(away) > FLANK_SETTLED) {
@@ -623,6 +780,17 @@ function followSquirrels(scene: Scene): void {
         ? Math.min(squirrel.x, scene.ciccio.x - MIN_FLANK)
         : Math.max(squirrel.x, scene.ciccio.x + MIN_FLANK);
   }
+}
+
+/**
+ * Off whatever he is on, taking the frames to do it.
+ *
+ * The single way down, so nothing anywhere else can write `at` back to the
+ * floor and skip the climb.
+ */
+function startDismount(ciccio: Ciccio): void {
+  ciccio.phase = 'dismounting';
+  ciccio.timer = CLIMB_FRAMES;
 }
 
 /** Starts one, or leaves the one in progress alone. */
@@ -659,6 +827,26 @@ export function serveGratin(scene: Scene): void {
   };
 }
 
+/**
+ * The programme runs down whether or not anybody is watching it.
+ *
+ * Ticked only while he is seated, a television he never reaches never expires,
+ * and from then on the sofa is where he lives.
+ */
+function runTv(scene: Scene, rng: Rng): void {
+  if (scene.tv.on) {
+    if (--scene.tv.showLeft <= 0) {
+      scene.tv.on = false;
+      scene.tv.showLeft = 0;
+    }
+    return;
+  }
+  if (scene.ciccio.at === 'floor' && rng() < TV_CHANCE) {
+    scene.tv.on = true;
+    scene.tv.showLeft = SHOW_FRAMES;
+  }
+}
+
 function runOven(scene: Scene): void {
   // Only counts down while there is no gratin out. Left running, it empties
   // during a long meal and puts a second one out the frame the first is
@@ -692,9 +880,22 @@ function runSteam(scene: Scene, rng: Rng): void {
   }
 }
 
+/**
+ * Which spot a squirrel belongs on: the one he is settled on, and the floor
+ * while he is between two.
+ *
+ * Read off him rather than stored, because unlike his own `at` there is nothing
+ * to recover — a squirrel has no reason of its own to be on a sofa.
+ */
+function squirrelWants(scene: Scene): Spot {
+  const { phase, at } = scene.ciccio;
+  return phase === 'sitting' || phase === 'sleeping' ? at : 'floor';
+}
+
 /** One frame. Everything mutates `scene`; nothing here reads a clock. */
 export function step(scene: Scene, rng: Rng): void {
   scene.frame++;
+  runTv(scene, rng);
   runOven(scene);
   walkCiccio(scene, rng);
   runSteam(scene, rng);
@@ -750,6 +951,11 @@ export const hitsCiccio = (scene: Scene, x: number, y: number) =>
 export const hitsSquirrel = (scene: Scene, squirrel: Squirrel, x: number, y: number) =>
   hits(x, y, squirrel.x, scene.ground, 26);
 
+export const hitsTv = (scene: Scene, x: number, y: number) =>
+  Math.abs(x - scene.layout.loungeX) <= TV_WIDTH / 2 + 4 &&
+  y >= scene.ground - TV_HANGS_AT - TV_PANEL - 4 &&
+  y <= scene.ground - TV_HANGS_AT + 4;
+
 export const hitsOven = (scene: Scene, x: number, y: number) =>
   Math.abs(x - scene.layout.ovenX) <= OVEN_WIDTH / 2 + 6 &&
   y >= scene.ground - OVEN_HOOD_TOP &&
@@ -768,6 +974,11 @@ export const hitsOven = (scene: Scene, x: number, y: number) =>
 export function clickScene(scene: Scene, x: number, y: number): void {
   if (hitsOven(scene, x, y)) {
     serveGratin(scene);
+    return;
+  }
+  if (hitsTv(scene, x, y)) {
+    scene.tv.on = true;
+    scene.tv.showLeft = SHOW_FRAMES;
     return;
   }
   for (const squirrel of scene.squirrels) {

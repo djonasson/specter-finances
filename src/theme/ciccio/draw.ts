@@ -31,6 +31,8 @@ import {
   SEAT_HEIGHT,
   ciccioFacing,
   ciccioBob,
+  ciccioY,
+  squirrelY,
 } from './scene';
 import type { Say } from './scene';
 
@@ -81,6 +83,10 @@ const LIGHT = {
   tvStandTop: '#8a7a6a',
   tvBody: '#26262a',
   tvScreenOff: '#3a3a41',
+  tvScreenOn: '#0b0b0d',
+  tvMark: '#e50914',
+  tvGlow: 'rgba(255, 236, 200, 0.30)',
+  tvGlowFade: 'rgba(255, 236, 200, 0)',
   tvSheen: 'rgba(255,255,255,0.07)',
   picture: '#b9a68d',
   pictureArt: '#8fa8a0',
@@ -154,6 +160,10 @@ const DARK: Palette = {
   tvStandTop: '#4e453b',
   tvBody: '#141416',
   tvScreenOff: '#212125',
+  tvScreenOn: '#0b0b0d',
+  tvMark: '#e50914',
+  tvGlow: 'rgba(255, 232, 190, 0.22)',
+  tvGlowFade: 'rgba(255, 232, 190, 0)',
   tvSheen: 'rgba(255,255,255,0.05)',
   picture: '#5a4d3e',
   pictureArt: '#4a5f58',
@@ -448,32 +458,73 @@ function drawSofa(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette): void
   }
 }
 
-/** The television: wide, thin, and hung on the wall over the sofa. */
+/**
+ * The television: wide, thin, and hung on the wall over the sofa.
+ *
+ * Switched on it is a black screen with a red letter on it, and the glow it
+ * throws is *derived* from `tv.on` rather than stored beside it — a lit room
+ * with a dark set is not a state the scene can reach. `tv.on` itself has to be
+ * stored, because "on while he is still walking over" is real; everything
+ * downstream of it does not.
+ */
 function drawTv(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette): void {
   const { loungeX } = scene.layout;
   const g = scene.ground;
   const top = g - TV_HANGS_AT - TV_PANEL;
+  const left = loungeX - TV_WIDTH / 2;
+  const on = scene.tv.on;
 
   // A bare panel: the bezel is a hairline, which is what makes it read as a
   // set somebody bought recently rather than a box.
   ctx.fillStyle = p.tvBody;
   ctx.beginPath();
-  ctx.roundRect(loungeX - TV_WIDTH / 2, top, TV_WIDTH, TV_PANEL, 3);
+  ctx.roundRect(left, top, TV_WIDTH, TV_PANEL, 3);
   ctx.fill();
 
-  ctx.fillStyle = p.tvScreenOff;
+  ctx.fillStyle = on ? p.tvScreenOn : p.tvScreenOff;
   ctx.beginPath();
-  ctx.roundRect(loungeX - TV_WIDTH / 2 + 1.6, top + 1.6, TV_WIDTH - 3.2, TV_PANEL - 5, 1.5);
+  ctx.roundRect(left + 1.6, top + 1.6, TV_WIDTH - 3.2, TV_PANEL - 5, 1.5);
   ctx.fill();
 
-  // A sheen across the dark glass, so it reads as a screen that is off rather
+  if (on) {
+    // The letter, drawn as three strokes rather than as text: a font that is
+    // not on the machine would silently substitute something else, and the
+    // whole point of it is the shape.
+    const h = TV_PANEL - 18;
+    const w = h * 0.62;
+    const x = loungeX - w / 2;
+    const y = top + 8;
+    const bar = w * 0.3;
+    ctx.fillStyle = p.tvMark;
+    ctx.fillRect(x, y, bar, h);
+    ctx.fillRect(x + w - bar, y, bar, h);
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + bar, y);
+    ctx.lineTo(x + w, y + h);
+    ctx.lineTo(x + w - bar, y + h);
+    ctx.closePath();
+    ctx.fill();
+
+    // The light it throws on the room below it.
+    const glow = ctx.createRadialGradient(loungeX, top + TV_PANEL, 2, loungeX, top + TV_PANEL, 90);
+    glow.addColorStop(0, p.tvGlow);
+    glow.addColorStop(1, p.tvGlowFade);
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.ellipse(loungeX, top + TV_PANEL + 26, 84, 46, 0, 0, Math.PI * 2);
+    ctx.fill();
+    return;
+  }
+
+  // A sheen across the dark glass, so an unlit set reads as a screen rather
   // than as a hole in the wall.
   ctx.fillStyle = p.tvSheen;
   ctx.beginPath();
-  ctx.moveTo(loungeX - TV_WIDTH / 2 + 4, top + TV_PANEL - 6);
-  ctx.lineTo(loungeX - TV_WIDTH / 2 + 22, top + 2);
-  ctx.lineTo(loungeX - TV_WIDTH / 2 + 36, top + 2);
-  ctx.lineTo(loungeX - TV_WIDTH / 2 + 18, top + TV_PANEL - 6);
+  ctx.moveTo(left + 4, top + TV_PANEL - 6);
+  ctx.lineTo(left + 22, top + 2);
+  ctx.lineTo(left + 36, top + 2);
+  ctx.lineTo(left + 18, top + TV_PANEL - 6);
   ctx.closePath();
   ctx.fill();
 }
@@ -496,7 +547,10 @@ function drawTv(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette): void {
  */
 function drawCiccio(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette): void {
   const { ciccio } = scene;
-  const y = scene.ground - SEAT_HEIGHT[ciccio.at];
+  // Off the scene, so a climb on or off is drawn part way up rather than at
+  // whichever end of it `at` currently names.
+  const y = ciccioY(scene);
+  const asleep = ciccio.phase === 'sleeping';
 
   const LONG = 23; // half his length, nose excluded
   const TALL = 15; // how high the dome stands
@@ -575,16 +629,41 @@ function drawCiccio(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette): vo
   ctx.beginPath();
   ctx.ellipse(32.5, -8, 3.4, 3.1, 0, 0, Math.PI * 2);
   ctx.fill();
-  ctx.fillStyle = p.eye;
-  ctx.beginPath();
-  ctx.arc(19, -13, 2, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = p.fur;
-  ctx.beginPath();
-  ctx.arc(19.7, -13.8, 0.7, 0, Math.PI * 2);
-  ctx.fill();
+  if (asleep) {
+    // A closed eye is a line, not a dot.
+    ctx.strokeStyle = p.eye;
+    ctx.lineWidth = 1.4;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(16.6, -13);
+    ctx.lineTo(21.4, -13);
+    ctx.stroke();
+  } else {
+    ctx.fillStyle = p.eye;
+    ctx.beginPath();
+    ctx.arc(19, -13, 2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = p.fur;
+    ctx.beginPath();
+    ctx.arc(19.7, -13.8, 0.7, 0, Math.PI * 2);
+    ctx.fill();
+  }
 
   ctx.restore();
+
+  if (asleep) {
+    // Off the frame count, so they drift rather than sitting still — and drawn
+    // outside the flip, or they would be mirrored along with him.
+    ctx.fillStyle = p.eye;
+    ctx.font = '600 9px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    for (let i = 0; i < 2; i++) {
+      const t = (scene.frame / 70 + i * 0.5) % 1;
+      ctx.globalAlpha = 0.55 * (1 - t);
+      ctx.fillText('z', ciccio.x + 16 + t * 9, y - 26 - t * 20);
+    }
+    ctx.globalAlpha = 1;
+  }
 }
 
 /** A squirrel: upright, cream-bellied, mostly tail. */
@@ -594,7 +673,7 @@ function drawSquirrel(
   squirrel: Squirrel,
   p: Palette,
 ): void {
-  const y = scene.ground - SEAT_HEIGHT[squirrel.at];
+  const y = squirrelY(scene, squirrel);
 
   ctx.save();
   ctx.translate(squirrel.x, y);
@@ -802,7 +881,7 @@ export function drawScene(
   // Bubbles last, over everything, so one is never half behind a sofa.
   for (const squirrel of scene.squirrels) {
     if (squirrel.say) {
-      drawSaying(ctx, squirrel.say, squirrel.x, scene.ground - SEAT_HEIGHT[squirrel.at] - 46, p);
+      drawSaying(ctx, squirrel.say, squirrel.x, squirrelY(scene, squirrel) - 46, p);
     }
   }
   if (scene.ciccio.say) {

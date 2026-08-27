@@ -10,6 +10,7 @@ import {
   CICCIO_GRATIN,
   MAX_STEAM,
   SQUIRREL_SPEED,
+  MAX_CLIMB,
   SQUIRREL_CALL,
   step,
   flankX,
@@ -254,9 +255,26 @@ function runUntil(
   throw new Error(`never happened within ${limit} frames`);
 }
 
+/** A small deterministic PRNG, for behaviour that only shows over a long run. */
+function seeded(seed: number) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
 const steady = () => 0.5;
 /** Rolls every chance offered, so a turn is taken wherever one is available. */
 const eager = () => 0;
+/**
+ * Rolls the chance he goes to bed but not the one the television comes on by
+ * itself. With `eager` the set switches on every frame it is off, so he is
+ * always on his way to the sofa and the bed is unreachable.
+ */
+const sleepy = () => 0.0005;
 
 describe('a hedgehog wandering his own floor', () => {
   it('never walks out of the room, however long it is left running', () => {
@@ -366,20 +384,11 @@ describe('two squirrels who love him', () => {
     for (let i = 0; i < 4000; i++) {
       step(s, eager);
       const now = s.squirrels.map((q) => q.x);
-      now.forEach((x, j) => expect(Math.abs(x - previous[j])).toBeLessThanOrEqual(SQUIRREL_SPEED));
+      // A hair of slack: these are sums of floats, not exact steps.
+      now.forEach((x, j) =>
+        expect(Math.abs(x - previous[j])).toBeLessThanOrEqual(SQUIRREL_SPEED + 1e-9),
+      );
       previous = now;
-    }
-  });
-
-  // Nobody has climbed on anything yet, but the height an animal is drawn at is
-  // owned by its spot from the first frame — so the day a sofa is added, a
-  // hedgehog cannot arrive on it a whole cushion's height in one frame.
-  it('moves nobody vertically while everyone is on the floor', () => {
-    const s = sceneAt(900);
-    for (let i = 0; i < 1500; i++) {
-      step(s, eager);
-      expect(ciccioY(s)).toBe(s.ground);
-      for (const q of s.squirrels) expect(squirrelY(s, q)).toBe(s.ground);
     }
   });
 
@@ -672,5 +681,179 @@ describe('a potato gratin', () => {
       if (s.gratin) expect(s.gratin.steam.length).toBeLessThanOrEqual(MAX_STEAM);
       else clickScene(s, s.layout.ovenX, s.ground - 30);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+
+/** Runs until he is settled on the named spot, or says it never happened. */
+function settleOn(s: ReturnType<typeof sceneAt>, at: 'sofa' | 'bed', limit = 60000) {
+  const rng = at === 'bed' ? sleepy : eager;
+  runUntil(s, (x) => x.ciccio.at === at && x.ciccio.phase !== 'mounting', limit, rng);
+}
+
+describe('watching television', () => {
+  it('comes on when it is clicked, and calls him over', () => {
+    const s = sceneAt(1280);
+    clickScene(s, s.layout.loungeX, s.ground - TV_HANGS_AT - 10);
+    expect(s.tv.on).toBe(true);
+
+    settleOn(s, 'sofa');
+    expect(s.ciccio.phase).toBe('sitting');
+  });
+
+  it('sits him down between the two of them, not on the end', () => {
+    const s = sceneAt(1280);
+    clickScene(s, s.layout.loungeX, s.ground - TV_HANGS_AT - 10);
+    settleOn(s, 'sofa');
+    runUntil(s, (x) => x.squirrels.every((q) => q.at === 'sofa'), 4000, eager);
+
+    const [left, right] = s.squirrels;
+    expect(left.x).toBeLessThan(s.ciccio.x);
+    expect(right.x).toBeGreaterThan(s.ciccio.x);
+    expect(squirrelY(s, left)).toBe(s.ground - SEAT_HEIGHT.sofa);
+  });
+
+  // Ticked only while he is seated, a television he never reaches never expires
+  // and the sofa is where he lives from then on.
+  it('turns itself off again even if he never gets there', () => {
+    const s = sceneAt(1280);
+    s.ciccio.x = s.layout.wanderLeft;
+    clickScene(s, s.layout.loungeX, s.ground - TV_HANGS_AT - 10);
+    s.ciccio.goal = null;
+    s.ciccio.phase = 'wandering';
+    runUntil(s, (x) => !x.tv.on, 60000, steady);
+  });
+
+  it('gets him back off the sofa once the programme has finished', () => {
+    const s = sceneAt(1280);
+    clickScene(s, s.layout.loungeX, s.ground - TV_HANGS_AT - 10);
+    settleOn(s, 'sofa');
+    runUntil(s, (x) => x.ciccio.at === 'floor', 60000, steady);
+    expect(s.ciccio.phase).toBe('wandering');
+  });
+
+  // A stored `on` can outlive the thing it is about; a derived one could not.
+  // That is the price of storing it, and it is paid here.
+  it('is never left on for a television the room no longer has room for', () => {
+    const s = sceneAt(1280);
+    clickScene(s, s.layout.loungeX, s.ground - TV_HANGS_AT - 10);
+    settleOn(s, 'sofa');
+    resizeScene(s, stageOf(320));
+    // The room still has a lounge at every width, so it stays on — what is
+    // pinned is that the two can never disagree.
+    expect(s.tv.on).toBe(s.layout.loungeX > 0);
+  });
+});
+
+describe('going to bed', () => {
+  it('takes himself off to bed now and then, and gets up again', () => {
+    const s = sceneAt(1280);
+    settleOn(s, 'bed');
+    expect(s.ciccio.phase).toBe('sleeping');
+    runUntil(s, (x) => x.ciccio.at === 'floor', 60000, sleepy);
+  });
+
+  it('has them lie down either side of him', () => {
+    const s = sceneAt(1280);
+    settleOn(s, 'bed');
+    runUntil(s, (x) => x.squirrels.every((q) => q.at === 'bed'), 6000, sleepy);
+
+    const [left, right] = s.squirrels;
+    expect(left.x).toBeLessThan(s.ciccio.x);
+    expect(right.x).toBeGreaterThan(s.ciccio.x);
+    expect(squirrelY(s, right)).toBe(s.ground - SEAT_HEIGHT.bed);
+  });
+});
+
+describe('getting on and off the furniture', () => {
+  // The bird-teleport, in a room. Without frames that own the change of height,
+  // he is on the rug the frame after he was on a cushion — and three animals
+  // snap at once, on a food interrupt, which is the least predictable moment.
+  it('never moves anybody vertically faster than they can climb', () => {
+    const s = sceneAt(1280);
+    let previous = [ciccioY(s), ...s.squirrels.map((q) => squirrelY(s, q))];
+    for (let i = 0; i < 30000; i++) {
+      step(s, eager);
+      if (i % 400 === 0) clickScene(s, s.layout.ovenX, s.ground - 30);
+      const now = [ciccioY(s), ...s.squirrels.map((q) => squirrelY(s, q))];
+      now.forEach((y, j) =>
+        expect(Math.abs(y - previous[j])).toBeLessThanOrEqual(MAX_CLIMB + 1e-9),
+      );
+      previous = now;
+    }
+  });
+
+  // `wandering | wobbling | heading` implies he is on the floor. The only way
+  // off a seat is `dismounting`, which owns the frames the height is given up
+  // in, and the only way on is `mounting`.
+  it('is only ever on furniture in a phase that means it', () => {
+    const s = sceneAt(1280);
+    for (let i = 0; i < 30000; i++) {
+      step(s, eager);
+      if (['wandering', 'wobbling', 'heading', 'eating'].includes(s.ciccio.phase)) {
+        expect(s.ciccio.at).toBe('floor');
+      }
+    }
+  });
+
+  it('keeps him between them on the furniture as well as on the floor', () => {
+    const s = sceneAt(1280);
+    for (let i = 0; i < 30000; i++) {
+      step(s, eager);
+      const [left, right] = s.squirrels;
+      expect(left.x).toBeLessThan(s.ciccio.x);
+      expect(right.x).toBeGreaterThan(s.ciccio.x);
+    }
+  });
+
+  it('never leaves anybody on a spot the room does not have', () => {
+    const s = sceneAt(1280);
+    for (let i = 0; i < 4000; i++) {
+      step(s, eager);
+      if (i % 700 === 0) resizeScene(s, stageOf([320, 414, 900, 1440][(i / 700) % 4]));
+      for (const at of [s.ciccio.at, ...s.squirrels.map((q) => q.at)]) {
+        expect(['floor', 'sofa', 'bed']).toContain(at);
+      }
+    }
+  });
+});
+
+describe('how his day divides', () => {
+  // Measured over seeded days rather than asserted from the constants: the
+  // split is set by half a dozen chances pulling against each other and no one
+  // of them states it. This is also the only thing that would catch "he never
+  // sleeps any more" after somebody tunes the oven.
+  function day(seed: number) {
+    const rng = seeded(seed);
+    const s = createScene(stageOf(1280), rng);
+    const tally = { about: 0, eating: 0, watching: 0, sleeping: 0 };
+    const FRAMES = 90000;
+    for (let i = 0; i < FRAMES; i++) {
+      step(s, rng);
+      if (s.ciccio.at === 'bed') tally.sleeping++;
+      else if (s.ciccio.at === 'sofa') tally.watching++;
+      else if (s.ciccio.phase === 'eating') tally.eating++;
+      else tally.about++;
+    }
+    return Object.fromEntries(
+      Object.entries(tally).map(([k, v]) => [k, Math.round((v / FRAMES) * 100)]),
+    ) as Record<keyof typeof tally, number>;
+  }
+
+  // Bands, not numbers, and measured rather than chosen: over three seeded days
+  // this comes out around 63-75% about the room, 2% with his head in a dish,
+  // 16-25% in front of the television and 3-14% asleep. What the bands protect
+  // is that none of the four ever goes to nothing — which is exactly what
+  // happened when the oven was tuned to bake every 1400 frames and he spent the
+  // whole day walking towards food he kept being interrupted for.
+  it.each([1, 7, 99])('spends it about the room, eating, watching and asleep (seed %i)', (seed) => {
+    const share = day(seed);
+    expect(share.about).toBeGreaterThan(45);
+    expect(share.about).toBeLessThan(88);
+    expect(share.eating).toBeGreaterThanOrEqual(1);
+    expect(share.watching).toBeGreaterThan(8);
+    expect(share.watching).toBeLessThan(40);
+    expect(share.sleeping).toBeGreaterThanOrEqual(2);
   });
 });
