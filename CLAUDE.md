@@ -56,7 +56,8 @@ list.
   grows. Worth doing behind a fake, not yet done.
 - `InstallButton.tsx` — hangs off the `beforeinstallprompt` event.
 - `ThemeToggle.tsx` — a control over `ThemeContext`, which is itself covered.
-- `theme/*Background.tsx` (what they _draw_) and `theme/cello/draw.ts` — canvas
+- `theme/*Background.tsx` (what they _draw_), `theme/cello/draw.ts` and
+  `theme/ciccio/draw.ts` — canvas
   drawing, which has no assertable output. What each background does with the
   page **is** covered: `SquirrelBackground.test.tsx` and
   `MatrixBackground.test.tsx` record the drawing calls through a stubbed
@@ -262,6 +263,16 @@ BrowserRouter → AuthProvider → ExpensesProvider → ThemeProvider → App
 
 Mantine v8 component library with Tabler icons. Five routes: `/` (Dashboard with charts via chart.js), `/add` (tabbed Expense/Transfer/Gift/Recurring form), `/list` (`ExpensesPage`: Expenses | Recurring), `/transfers`, `/gifts`. Bottom nav bar for mobile. Theme system with customizable backgrounds in `theme/` (gradient, matrix, squirrel, cello). Date filtering (`filterByDate`/`FilterMode` in `utils.ts`) is shared across the dashboard and lists.
 
+**Every canvas scene shares one component.** `useSceneCanvas` in
+`theme/sceneCanvas.ts` is the buffer, the frame loop, the two-decision resize and
+the clicks, once — a scene hands it `createScene`/`resizeScene`/`step`/`drawScene`
+and an optional `clickScene`, and owns nothing else about the browser. Copied per
+scene, as the cello's and Ciccio's were at first, the next scene inherits today's
+version and one of the copies goes quietly stale; it also meant duplicating five
+hundred lines of wiring tests to cover the second copy. The cello's whole
+component suite passes against it unchanged, which is the evidence the extraction
+moved nothing.
+
 **Backgrounds are listed once, in `theme/registry.tsx`, and that is the only place any of them is named.** The `BackgroundName` union is derived from the list, so a background cannot be half-added, and `loadSettings` validates a stored name against it with `isBackgroundName` — storage outlives releases, and an unrecognised name used to render nothing at all. (The union is `BackgroundName`, not `BackgroundEffect`: that name belongs to the component in `backgrounds.tsx` that renders one.)
 
 **"Random" is a choice, not a background.** It has nothing to render and no
@@ -313,6 +324,102 @@ A background that draws _over_ the app rather than behind it (canvas at z-index 
 The `floor` belongs to the scene, and Cello's is **derived, not chosen**: `SCENE_REACH` is the taller of its chimney cap and its bird at the top of his hover, and `celloFloor` is `sceneFloor(SCENE_REACH)` — the scene contributes its reach and nothing else, while `theme/stage.ts` owns the clearance, the scaling and the rounding, so two scenes cannot answer differently how much of the user's list gets covered. The clearance stays in **screen** pixels, since the ground is worked out in screen pixels before dividing by the scale. Rounded **up**, so a band can never be half a pixel shorter than the scenery standing in it. Anything above the floor is painted over the user's own list, so a hand-picked number goes stale the moment the scenery grows — but what is _thrown_ is deliberately outside it. A pizza sailing up over the app, like the squirrel's falling acorns, is the point.
 
 Cello's left is a park, a school and a light beige Fiat 500 — which she drives, see below — mirroring the oven on the right. One thing there moves on its own: she lets herself into the school now and then, the window lights while she is inside, and the bird — having no shoulder to sit on — waits in the nearest tree. That last part is **a substituted target, not a new phase**: `perchX`/`perchY` return her shoulder or the treetop, and `perched`, `escorting` and even a dive for a passing pizza go on working without knowing she is gone. Two things follow from `perched` holding him _at_ his perch by setting his position every frame, and both were jerks worth naming: he must fly the last of the way down (`landing`) rather than entering `perched` from a hover and covering the whole hover height in one frame, and when the perch itself becomes a different perch — she goes in, she comes out — he notices for himself: `bird.perchedOn` remembers which perch he took, and `perched` puts him back in the air when it no longer matches `currentPerch`. **Identity, not distance, and not the caller's memory**: keying it on the two girl transitions that cause it today would leave the next cause to reintroduce the jump, while a geometry check would make `perched` doubt its own invariant and break every deliberate placement. The lit window and the swinging door are **derived from her phase** rather than stored, so a lit window with nobody in it is not a state the scene can reach, and `treeSway` is pure so the wind is something a test can hold. The chimney stands on the right-hand slope with its foot **cut to the pitch** — drawn square it had one corner buried in the roof and the other hanging over air — and smokes only while she is in there, through the same puff machinery the oven uses. Her silhouette at the window is gated on the same `schoolLit`, so the light, the smoke and the shadow cannot disagree about whether anybody is home. Sizes live in `scene.ts` beside `SCENE_REACH`, which counts the chimney rather than the ridge (it stands part way down a slope, so it is the taller) and is otherwise derived from one list of **perch heights** (`PERCH_HEIGHT`) plus how far above one he gets — the same list `perchY` places him with, so a perch added there cannot be forgotten here. He sits _in_ the crown rather than on top of it, which is both what a bird does and the difference between reserving 198px of the user's list and 171px: the band is measured from wherever he settles highest, so where he sits in a tree, not the park itself, is what costs screen. It grew 158px → 171px.
+
+**Ciccio is a plush hedgehog in one room with two plush squirrels who love him**
+(`theme/ciccio/`), and the room is **bed, then kitchen, then living room**, all
+standing against a back wall with the strip of floor in front of it as his walk.
+That layout is why the room has **no nullable furniture**: nothing competes with
+his floor, so at 320px — 444 scene units, the narrowest window the app is opened
+at — everything fits with a gap between each and 340 units of walk against the
+110 that would make it worth walking. A `bed: Bed | null` whose null arm cannot
+be taken is dead weight in `resizeScene`, in the drawing and in every reader for
+ever; the width sweep in `scene.test.ts` is what keeps that true. The kitchen is
+placed as a **share** of the span between the two ends rather than at a fixed
+offset from the bed, or a wide room is a bedsit with a cooker in it and a
+thousand units of empty floor beyond.
+
+**The room paints its own wall**, and that is the whole difference between a room
+and furniture floating on a page. The reserved band is opaque down to the footer,
+so the strip above the ground was always the scene's to paint. It fades out at
+the top with the wall's own colour at **zero alpha** — fading from
+`rgba(0,0,0,0)` interpolates through transparent _black_ and paints a dirty band
+right across the room. `WALL_HEIGHT` is the tallest thing here by construction,
+so it **is** the reach, and `CLIMB_MAX` is what is left of it once a squirrel and
+its tail are subtracted: pick that number instead and the first time either moves
+a squirrel climbs out through the ceiling and over the user's own list.
+
+**He is between them, and that converges rather than being held down.** Each
+squirrel's `side` is fixed when it is made — assigned by whichever is nearer, one
+hurry or one resize swaps them and the pair is silently inverted, which is the
+cello's colony straddle again. Their target is always his correct flank, so they
+get to the right side of him under their own steam. There _was_ a hard clamp
+holding them there and it had to go: he overtakes one running for a gratin, and
+the frame the dash ended that squirrel was **placed** back beside him from
+wherever it had got to — a hundred units in one frame. Correcting it at walking
+pace instead spent a second move on top of the first, so a squirrel could cover
+twice its own top speed and the max-step invariant went with it.
+
+**Running for a gratin he is out in front of both of them**, which is a
+deliberate hole in the invariant the scene is about: he likes to be between them
+_where he feels comfortable_, and this is not that. What makes it visible is that
+their top speed on a dash sits **between** their walking pace and his running
+one — below him so the gap grows the whole way across the room, but well above
+what keeping up with a stroll costs them, or they amble after him and only break
+into a run once he has stopped, which is precisely backwards. A running stride is
+shorter as well as quicker, so `RUN_STRIDE` moves the legs about four times as
+fast as a walk; twice the step rate alone still read as walking briskly.
+
+**Height belongs to `mounting` and `dismounting`, and is interpolated across
+them.** `wandering | wobbling | heading | eating` implies `at === 'floor'`; the
+only way onto a seat is `mounting` and the only way off is `dismounting`, which
+writes `at` back to `'floor'` on its last frame and is the only thing that ever
+does. Giving those phases their frames and _then_ changing `at` at the end is not
+enough — that still moves a whole cushion's height in one frame, with three
+animals doing it at once. `ciccioY`/`squirrelY` interpolate, and a per-frame
+ceiling on everybody's vertical movement is asserted rather than described.
+
+**`tv.on` is stored where the cello's lit window is derived**, and deliberately:
+"on while he is still walking over" is a state somebody reaches by clicking it.
+The price is that it can outlive the room it belongs to, and `resizeScene` is
+where that is paid. Everything downstream stays derived — the letter, the glow,
+who is on the sofa, and the **zebra** that fills the screen for the closing five
+seconds. `bedExpectsHim` works the other way round and is derived, so a bed made
+up for nobody is not a state the scene can reach; what is stored there is only
+how far through the easing it has got.
+
+**A tap on a thing is an interrupt.** The oven, the television and the bed each
+drop whatever he was doing and send him at a trot — he still climbs down off
+furniture rather than appearing on the floor, because the one thing an interrupt
+may not do is skip frames a change of height is owed. The room is hit-tested
+**before** the animals: his box is forty units either side of an animal a few
+units across, so testing him first makes the oven unclickable exactly while he is
+standing in front of it, which is when somebody is most likely reaching past him
+for it.
+
+**What happens on its own is a rota, not three chances**: potter, eat, potter,
+watch something, potter, sleep. Rolled separately they came out in any order and
+sometimes not at all — a whole seeded day could pass with the television never
+once on. Taps interrupt; they do not shuffle the order.
+
+**"Sometimes" and "faster" are measured, never described.** Three of these were
+quietly wrong by a factor of three and only a count found them: the cat's first
+visit took 174 seconds before it was timed, every single wall-climb ran the full
+rescue before the two endings were counted (they now split 52/48), and with the
+oven baking every 1400 frames he set off for the sofa twenty-three thousand
+frames in a day and actually sat for thirteen — with every individual behaviour
+test green. `scene.test.ts` measures the day over seeded runs, counts the cat's
+visits over fifty simulated minutes, and counts both endings of the climb.
+
+**The drawing owns no facts.** `spin`, the turn it means (`ciccioAngle`), the bob,
+`showingZebra`, `scoldingAt` and the seat heights all come off the scene, because
+two owners of one fact is what the cello's peel and pizza were. `draw.ts` owns
+only what needs a canvas: how wide a speech bubble has to be, and the stripes,
+which are **clipped** by the zebra's silhouette rather than laid over it. Two
+things the drawing did learn the hard way: a figure drawn about a horizontal
+scale passes through _nothing_ twice a turn and blinks out, so the turn's
+magnitude has a floor; and the gait comes from **how far somebody has walked**,
+not from the frame count, so anybody standing still is standing still — all three
+of them on a sofa included, without a case written for it.
 
 **Canvas backgrounds are sized in device pixels, and that is separate from the
 scene's own scale.** `fitCanvas` in `theme/chrome.ts` is the single place it

@@ -12,6 +12,7 @@ import {
   SQUIRREL_SPEED,
   MAX_CLIMB,
   dashingForFood,
+  serveGratin,
   CAT_CALL,
   CLIMB_MAX,
   SQUIRREL_SCOLD,
@@ -47,7 +48,7 @@ import {
   TV_HANGS_AT,
   WALL_HEIGHT,
 } from './scene';
-import { sceneScale } from '../stage';
+import { sceneScale, GROUND_ABOVE_FOOTER } from '../stage';
 import { stageFloorHeight } from '../registry';
 
 /** The widths the app is actually opened at, narrowest phone to desktop. */
@@ -181,6 +182,18 @@ describe('the band the room asks the app to reserve', () => {
     expect(ciccioFloor(1440)).toBeLessThanOrEqual(171);
   });
 
+  // Dropping the wall from the reach leaves the band covering the furniture but
+  // not the room it stands in — the top of the wall is then painted over the
+  // user's own list, which is the one thing the band exists to prevent.
+  it('reserves enough for the room itself, not only for what is in it', () => {
+    expect(SCENE_REACH).toBeGreaterThanOrEqual(WALL_HEIGHT);
+    for (const width of WIDTHS) {
+      expect(ciccioFloor(width)).toBeGreaterThanOrEqual(
+        GROUND_ABOVE_FOOTER + WALL_HEIGHT * sceneScale(width),
+      );
+    }
+  });
+
   it('takes its reach from the furniture, so a piece that grows is counted', () => {
     // Every piece, and anybody sitting on anything, is inside the reach. This
     // is the assertion that goes red when a new piece is added to the room and
@@ -214,6 +227,21 @@ describe('who stands where', () => {
     expect(ciccioY(s)).toBe(s.ground - SEAT_HEIGHT.sofa);
     s.ciccio.at = 'bed';
     expect(ciccioY(s)).toBe(s.ground - SEAT_HEIGHT.bed);
+  });
+
+  // And the seats are seats. Asserted as a height off the floor rather than
+  // against the constant, which is the same number on both sides and passes
+  // just as happily for a cushion lying flat on the ground.
+  it('has both seats stand somebody clear of the floor', () => {
+    const s = sceneAt(900);
+    for (const at of ['sofa', 'bed'] as const) {
+      s.ciccio.at = at;
+      expect(s.ground - ciccioY(s)).toBeGreaterThan(10);
+      for (const q of s.squirrels) {
+        q.at = at;
+        expect(s.ground - squirrelY(s, q)).toBeGreaterThan(10);
+      }
+    }
   });
 
   it('starts him inside his own walk, not wherever the middle happens to be', () => {
@@ -751,8 +779,12 @@ describe('a potato gratin', () => {
     // gives a dash too short to measure anything over.
     s.ciccio.x = s.layout.wanderRight;
     run(s, 700, steady);
-    clickScene(s, s.layout.ovenX, s.ground - 30);
+    // Served rather than tapped: a tap sends him at the summoning pace, which
+    // is faster again, and the gap then grows whatever the squirrels' own top
+    // speed is. It is the ordinary dash this is about.
+    serveGratin(s);
     runUntil(s, (x) => x.ciccio.phase === 'heading', 200);
+    expect(s.ciccio.goal!.urgent).toBe(false);
 
     run(s, 20, steady);
     expect(dashingForFood(s)).toBe(true);

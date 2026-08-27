@@ -263,5 +263,67 @@ export const MUTATIONS = [
   // Deliberately not here: the bound on a banana leaf's `across`. Measured over
   // forty plants it never once binds, so removing it changes nothing — an
   // unkillable survivor rather than a finding. `scene.test.ts` pins the property
-  // it protects instead.
+  // it protects instead.,
+  // -- Ciccio's room (src/theme/ciccio/scene.ts) -----------------------------
+  // The scene draws over the user's own list, and several of these decide how
+  // much of it gets covered. The rest are the guards that keep the three of
+  // them from teleporting.
+  {
+    name: 'a squirrel may climb higher than the room is tall',
+    file: 'src/theme/ciccio/scene.ts',
+    find: 'export const CLIMB_MAX = WALL_HEIGHT - SEAT_HEIGHT.sofa - SQUIRREL_REACH;',
+    // Not 48, which is what the expression already comes to — an equivalent
+    // mutation is a pass that tests nothing.
+    replace: 'export const CLIMB_MAX = 70;',
+    tests: ['src/theme/ciccio/scene.test.ts'],
+  },
+  {
+    name: 'the band is measured off the furniture rather than the room',
+    file: 'src/theme/ciccio/scene.ts',
+    find: '  WALL_HEIGHT,\n  OVEN_TOP,',
+    replace: '  OVEN_TOP,',
+    tests: ['src/theme/ciccio/scene.test.ts'],
+  },
+  {
+    name: 'a sofa cushion is at floor level, so nobody is lifted onto it',
+    file: 'src/theme/ciccio/scene.ts',
+    find: '  sofa: SOFA_SEAT,',
+    replace: '  sofa: 0,',
+    tests: ['src/theme/ciccio/scene.test.ts'],
+  },
+  {
+    name: 'the oven puts a second gratin out on top of the first',
+    file: 'src/theme/ciccio/scene.ts',
+    find: '  if (scene.gratin) return;\n  const { ovenX, wanderLeft, wanderRight } = scene.layout;',
+    replace: '  const { ovenX, wanderLeft, wanderRight } = scene.layout;',
+    tests: ['src/theme/ciccio/scene.test.ts'],
+  },
+  {
+    name: 'he steps over the gratin instead of stopping on it',
+    file: 'src/theme/ciccio/scene.ts',
+    find: '      ciccio.x = goal.x;',
+    replace: '',
+    tests: ['src/theme/ciccio/scene.test.ts'],
+  },
+  {
+    name: 'his walk runs to the wall, leaving a squirrel nowhere to stand',
+    file: 'src/theme/ciccio/scene.ts',
+    find: '  const wanderLeft = EDGE + FLANK_GAP;',
+    replace: '  const wanderLeft = EDGE;',
+    tests: ['src/theme/ciccio/scene.test.ts'],
+  },
+  {
+    name: 'they keep up with him on a dash, so the gap never opens',
+    file: 'src/theme/ciccio/scene.ts',
+    find: 'export const DASH_FOLLOW_SPEED = 1.7;',
+    replace: 'export const DASH_FOLLOW_SPEED = 2.4;',
+    tests: ['src/theme/ciccio/scene.test.ts'],
+  },
+  {
+    name: 'the bed is turned down whether or not anybody is coming',
+    file: 'src/theme/ciccio/scene.ts',
+    find: '  const target = bedExpectsHim(scene) ? 1 : 0;',
+    replace: '  const target = 1;',
+    tests: ['src/theme/ciccio/scene.test.ts'],
+  },
 ];
