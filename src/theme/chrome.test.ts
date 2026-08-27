@@ -15,6 +15,8 @@ import {
 
 afterEach(() => {
   document.body.replaceChildren();
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 function mountFooter(height: number | null) {

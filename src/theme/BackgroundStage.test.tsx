@@ -4,12 +4,18 @@ import { cleanup } from '@testing-library/react';
 import { renderWithTheme, resizeTo, rolling, shufflingBetween } from '../test-utils';
 import { STAGED_BACKGROUNDS, stageFloorHeight } from './registry';
 import { BackgroundFloor, BackgroundSpacer, SceneLayer } from './BackgroundStage';
-import { FOOTER_HEIGHT } from './chrome';
+import { FOOTER_HEIGHT, viewportSize } from './chrome';
 
 beforeEach(() => localStorage.clear());
 afterEach(() => {
   cleanup();
   localStorage.clear();
+  // Whatever a test stubbed or spied, put back. Leaving a `clientWidth` spy
+  // behind made the very next test measure a window that was not there — which
+  // under a shuffled order is any test in the file, and showed up as roughly a
+  // one-in-ten flake rather than as anything reproducible.
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 /**
@@ -63,7 +69,7 @@ describe('the floor a scene stands on', () => {
     const height = parseInt(
       renderStage(<BackgroundFloor />, { backgroundEffect: effect })!.style.height,
     );
-    expect(height).toBe(stageFloorHeight(effect, window.innerWidth));
+    expect(height).toBe(stageFloorHeight(effect, viewportSize().width));
   });
 });
 
@@ -83,23 +89,21 @@ describe('the room left below the content', () => {
     const spacer = parseInt(
       renderStage(<BackgroundSpacer />, { backgroundEffect: effect })!.style.height,
     );
-    expect(spacer).toBeGreaterThan(stageFloorHeight(effect, window.innerWidth));
+    expect(spacer).toBeGreaterThan(stageFloorHeight(effect, viewportSize().width));
   });
 });
 
 // The band belongs to the scene on screen, not to the setting: a shuffle that
 // landed on Cello needs Cello's floor and Cello's scroll room.
 describe('the band a shuffled scene stands in', () => {
-  afterEach(() => vi.restoreAllMocks());
-
   it('is as tall as the background the shuffle landed on asked for', () => {
     const floor = renderShuffled(<BackgroundFloor />, ['cello']);
-    expect(parseInt(floor!.style.height)).toBe(stageFloorHeight('cello', window.innerWidth));
+    expect(parseInt(floor!.style.height)).toBe(stageFloorHeight('cello', viewportSize().width));
   });
 
   it('reserves scroll room that clears the floor the scene stands in', () => {
     const spacer = parseInt(renderShuffled(<BackgroundSpacer />, ['cello'])!.style.height);
-    expect(spacer).toBeGreaterThan(stageFloorHeight('cello', window.innerWidth));
+    expect(spacer).toBeGreaterThan(stageFloorHeight('cello', viewportSize().width));
   });
 
   it('stays away when the shuffle landed on a background drawn behind the app', () => {
