@@ -33,10 +33,11 @@ import type { SceneSize } from '../stage';
 
 export const OVEN_WIDTH = 74;
 export const OVEN_HEIGHT = 64;
-export const OVEN_HOOD_TOP = 104;
+/** The worktop over it, which is the tallest the kitchen gets. */
+export const OVEN_TOP = OVEN_HEIGHT + 5;
 
 export const BED_WIDTH = 104;
-export const BED_HEAD = 46;
+export const BED_HEAD = 60;
 const BED_MATTRESS = 20;
 
 /** Three seats of cream leather. */
@@ -72,8 +73,14 @@ export const DEPTH = 13;
 // well under the oven's hood, which is what sets the reach.
 const CICCIO_HEIGHT = 30;
 const SQUIRREL_HEIGHT = 32;
-/** How far a squirrel's tail stands above the rest of it. */
-const SQUIRREL_TAIL_RISE = 16;
+/**
+ * How far a squirrel's tail stands above the rest of it.
+ *
+ * It stands straight up rather than curling over, so it is the tallest thing
+ * about a squirrel by some way — and `OCCUPANT_REACH` is measured off the
+ * taller of the two animals for exactly this reason.
+ */
+const SQUIRREL_TAIL_RISE = 32;
 
 // -- the room ----------------------------------------------------------------
 
@@ -81,6 +88,14 @@ const SQUIRREL_TAIL_RISE = 16;
 const EDGE = 10;
 /** Between one piece of furniture and the next. */
 const GAP = 14;
+/**
+ * How far along the span between the bed and the sofa the kitchen stands.
+ *
+ * A share rather than a distance, for the reason the cello's home end is one: a
+ * fixed offset from the bed puts the cooker beside the pillow on every window,
+ * and the room grows entirely into one empty middle.
+ */
+const KITCHEN_ALONG = 0.36;
 
 /**
  * How far to either side of him a squirrel stands.
@@ -105,6 +120,21 @@ export const MIN_WANDER = 110;
  */
 export const MIN_FLANK = 26;
 
+/**
+ * How far behind him they trail while he is dashing for a gratin.
+ *
+ * Big enough to actually see. Kept small it was invisible, because being
+ * between them is otherwise held by a clamp that will not let him past — so
+ * the clamp is lifted for the length of a dash and both of them fall in behind.
+ *
+ * That is a real, deliberate hole in the scene's main invariant, and it is the
+ * right one: he likes to be between them *where he feels comfortable*, and a
+ * hedgehog who has just seen a potato gratin is not feeling comfortable. He
+ * surges out in front, they scamper after him, and the moment he stops to eat
+ * they close back up and it holds again.
+ */
+export const EXCITED_TRAIL = 52;
+
 /** Scene units a frame, at the ~40fps the background loop is throttled to. */
 const WALK_SPEED = 0.55;
 /**
@@ -112,10 +142,13 @@ const WALK_SPEED = 0.55;
  *
  * Set between the two, a squirrel could keep up with a stroll but not with a
  * dash for a gratin — so the clamp that keeps him between them dragged it along
- * instead, which is a teleport wearing a squirrel suit. It is the fastest
- * anybody in this room moves, and the max-step test is asserted against it.
+ * instead, which is a teleport wearing a squirrel suit. It has to beat
+ * `SUMMON_SPEED` too, which is faster again: at anything less, the one he runs
+ * *away* from on a summons trails behind and arrives after the other. It is the
+ * fastest anybody in this room moves, and the max-step test is asserted
+ * against it.
  */
-export const SQUIRREL_SPEED = 1.7;
+export const SQUIRREL_SPEED = 3.4;
 /** Near enough is near enough: without it they shuffle a fraction for ever. */
 const FLANK_SETTLED = 1.2;
 /** How much of a turn `facing` takes in one frame. */
@@ -155,9 +188,14 @@ export const GRATIN_BITES = 150;
 const BITE_REACH = 26;
 /** Scene units a frame. Faster than a walk: it is a gratin. */
 const RUN_SPEED = 1.35;
+/** And faster again when somebody has just asked for it by tapping. */
+const SUMMON_SPEED = 3.1;
 export const MAX_STEAM = 14;
 
 // -- getting on and off things -----------------------------------------------
+
+/** How much of the turning-down happens in one frame. */
+const BED_TURN_SPEED = 0.045;
 
 /** Frames a climb on or off takes. */
 const CLIMB_FRAMES = 14;
@@ -201,10 +239,10 @@ export const SQUIRREL_CALL = 'Susin!';
 
 /** Frames a line stays up: long enough to read, short enough not to nag. */
 const SAY_FRAMES = 110;
-/** Chance a frame that he says his own name for no reason. */
-const CICCIO_CALL_CHANCE = 0.0009;
-/** And that one of them answers. */
-const SQUIRREL_CALL_CHANCE = 0.0007;
+/** Chance a frame that one of them starts the round off. */
+const CHATTER_CHANCE = 0.0012;
+/** Frames between one of them speaking and the next taking their turn. */
+const CHATTER_GAP = 36;
 
 /**
  * Give somebody a line, replacing whatever they were saying.
@@ -258,7 +296,7 @@ const OCCUPANT_REACH = Math.max(CICCIO_HEIGHT, SQUIRREL_HEIGHT + SQUIRREL_TAIL_R
  */
 export const SCENE_REACH = Math.max(
   WALL_HEIGHT,
-  OVEN_HOOD_TOP,
+  OVEN_TOP,
   TV_HANGS_AT + TV_PANEL,
   SOFA_BACK,
   BED_HEAD,
@@ -307,15 +345,30 @@ export interface Layout {
  */
 export function layoutFor(width: number): Layout {
   const bedX = EDGE + BED_WIDTH / 2;
-  const ovenX = bedX + BED_WIDTH / 2 + GAP + OVEN_WIDTH / 2;
 
   // The living room is anchored to the right-hand edge and pushed back off the
-  // kitchen if the two would meet — which they only do on a window narrower
-  // than the app is designed for. Capped rather than merely placed, the way the
+  // bed if the two would meet — which they only do on a window narrower than
+  // the app is designed for. Capped rather than merely placed, the way the
   // cello's school is: a piece placed without a cap goes wrong only on a phone,
   // where nobody looks until it ships.
+  const loungeX = Math.max(
+    bedX + BED_WIDTH / 2 + GAP * 2 + OVEN_WIDTH + SOFA_WIDTH / 2,
+    width - EDGE - SOFA_WIDTH / 2,
+  );
+
+  // The kitchen goes *between* the two rather than up against the bed. Anchored
+  // to the bed it stood a gap's width from the pillow at every window size, so
+  // a wide room read as a bedsit with a cooker in it and a thousand units of
+  // empty floor beyond — not as three places. Placed along the span, the three
+  // areas grow apart as the room does.
+  const bedRight = bedX + BED_WIDTH / 2;
+  const loungeLeft = loungeX - SOFA_WIDTH / 2;
+  const ovenX = clamp(
+    bedRight + (loungeLeft - bedRight) * KITCHEN_ALONG,
+    bedRight + GAP + OVEN_WIDTH / 2,
+    loungeLeft - GAP - OVEN_WIDTH / 2,
+  );
   const kitchenRight = ovenX + OVEN_WIDTH / 2;
-  const loungeX = Math.max(kitchenRight + GAP + SOFA_WIDTH / 2, width - EDGE - SOFA_WIDTH / 2);
 
   // His whole floor, inset by a flank at each end so a squirrel beside him is
   // still in the room. There is no clamp on how short this may get, because at
@@ -388,7 +441,13 @@ export interface Ciccio {
    */
   after: 'wandering' | 'eating';
   /** Where he is going and why, or nothing. */
-  goal: { x: number; then: 'dance' | 'sit' | 'sleep' } | null;
+  /**
+   * Where he is going and why. `urgent` marks a goal somebody asked for by
+   * tapping the thing itself, which he goes to at a trot rather than a stroll —
+   * a click nobody sees answered for twenty seconds reads as a click that did
+   * nothing.
+   */
+  goal: { x: number; then: 'dance' | 'sit' | 'sleep'; urgent: boolean } | null;
   /** Frames left of the climb on or off, or of the sit or the sleep. */
   timer: number;
   bites: number;
@@ -462,6 +521,18 @@ export interface Scene {
    * paid.
    */
   tv: { on: boolean; showLeft: number };
+  /** Whose turn it is in the round of "Susin! Ciccio Ciccio! Susin!". */
+  chatter: { next: number; wait: number } | null;
+  /**
+   * How far the bed is turned down, 0 to 1 — pillow plumped, cover pulled back.
+   *
+   * Stored because it *eases*, but what it eases towards is derived
+   * (`bedExpectsHim`), so a bed made up for nobody is not a state the scene can
+   * reach. That is the cello's lit window, and the reason the television needed
+   * the opposite treatment: "on while he walks over" is real, "turned down with
+   * nobody coming" is not.
+   */
+  bed: { turned: number };
   /**
    * One at a time, by construction — there is only ever this one slot, and the
    * timer below only runs while it is empty.
@@ -514,8 +585,23 @@ export function squirrelY(scene: Scene, squirrel: Squirrel): number {
  */
 export function flankX(scene: Scene, side: -1 | 1): number {
   const { wanderLeft, wanderRight } = scene.layout;
+  // Running for a gratin he is beside himself, and it shows: both of them are
+  // wanted a little further back, so he surges out in front and they scamper
+  // after him. Deliberate rather than incidental — with a top speed above his
+  // they would otherwise stay pinned to his flanks at any pace, and the dash
+  // would read exactly like the walk.
+  if (dashingForFood(scene)) {
+    // Both behind him, spread a little so they are two squirrels rather than
+    // one. They are chasing, not flanking.
+    const behind = scene.ciccio.x - scene.ciccio.dir * EXCITED_TRAIL + side * 18;
+    return clamp(behind, wanderLeft - FLANK_GAP, wanderRight + FLANK_GAP);
+  }
   return clamp(scene.ciccio.x + side * FLANK_GAP, wanderLeft - FLANK_GAP, wanderRight + FLANK_GAP);
 }
+
+/** Whether he is in the middle of a run for food. */
+export const dashingForFood = (scene: Scene) =>
+  scene.ciccio.phase === 'heading' && scene.ciccio.goal?.then === 'dance';
 
 export function createScene(size: SceneSize, rng: Rng): Scene {
   const layout = layoutFor(size.width);
@@ -540,6 +626,8 @@ export function createScene(size: SceneSize, rng: Rng): Scene {
     squirrels: [],
     gratin: null,
     tv: { on: false, showLeft: 0 },
+    chatter: null,
+    bed: { turned: 0 },
     oven: { nextIn: OVEN_INTERVAL },
     frame: 0,
   };
@@ -669,7 +757,7 @@ function walkCiccio(scene: Scene, rng: Rng): void {
     const away = goal.x - ciccio.x;
     ciccio.dir = away >= 0 ? 1 : -1;
     ciccio.facing += clamp(ciccio.dir - ciccio.facing, -TURN_EASE, TURN_EASE);
-    const pace = goal.then === 'dance' ? RUN_SPEED : WALK_SPEED;
+    const pace = goal.urgent ? SUMMON_SPEED : goal.then === 'dance' ? RUN_SPEED : WALK_SPEED;
     if (Math.abs(away) <= pace) {
       // Snapped on arrival. A step that overshoots leaves him oscillating
       // either side of the plate at running speed, for ever.
@@ -693,22 +781,18 @@ function walkCiccio(scene: Scene, rng: Rng): void {
   // every frame and hide a bug behind idempotence. It is set as a *goal* rather
   // than as a phase, so everything that has to happen on the way happens once.
   if (scene.gratin && ciccio.goal?.then !== 'dance') {
-    ciccio.goal = { x: scene.gratin.x, then: 'dance' };
-    ciccio.phase = 'heading';
-    // Said on the frame he spots it. Keyed on the goal *holding*, he would
-    // shout it every frame of the run across the room.
-    say(ciccio, CICCIO_GRATIN);
+    headForGratin(scene, ciccio.goal?.urgent ?? false);
     return;
   }
 
   if (scene.tv.on && !ciccio.goal) {
-    ciccio.goal = { x: scene.layout.loungeX, then: 'sit' };
+    ciccio.goal = { x: scene.layout.loungeX, then: 'sit', urgent: false };
     ciccio.phase = 'heading';
     return;
   }
 
   if (rng() < SLEEP_CHANCE && !ciccio.goal) {
-    ciccio.goal = { x: scene.layout.bedX, then: 'sleep' };
+    ciccio.goal = { x: scene.layout.bedX, then: 'sleep', urgent: false };
     ciccio.phase = 'heading';
     return;
   }
@@ -775,10 +859,21 @@ function followSquirrels(scene: Scene): void {
       squirrel.facing = move > 0 ? 1 : -1;
     }
 
-    squirrel.x =
-      squirrel.side === -1
-        ? Math.min(squirrel.x, scene.ciccio.x - MIN_FLANK)
-        : Math.max(squirrel.x, scene.ciccio.x + MIN_FLANK);
+    // Held on their own sides of him — except mid-dash, when he is meant to be
+    // out in front of both and the clamp is exactly what would stop him.
+    if (!dashingForFood(scene)) {
+      squirrel.x =
+        squirrel.side === -1
+          ? Math.min(squirrel.x, scene.ciccio.x - MIN_FLANK)
+          : Math.max(squirrel.x, scene.ciccio.x + MIN_FLANK);
+    }
+
+    // In front of the television they watch it rather than the room: the set is
+    // on the wall above the middle of the sofa, so looking at it means looking
+    // inwards. Everywhere else `facing` is held from the last time they moved.
+    if (scene.ciccio.phase === 'sitting') {
+      squirrel.facing = squirrel.x <= scene.layout.loungeX ? 1 : -1;
+    }
   }
 }
 
@@ -793,6 +888,49 @@ function startDismount(ciccio: Ciccio): void {
   ciccio.timer = CLIMB_FRAMES;
 }
 
+/**
+ * Off after a gratin, said once on the way.
+ *
+ * The one place a gratin becomes a goal, so the frame he spots it for himself
+ * and the frame somebody taps the oven produce the same thing — including the
+ * line, which was said only on the path he found it by himself until a tap
+ * started sending him directly.
+ */
+function headForGratin(scene: Scene, urgent: boolean): void {
+  const { ciccio } = scene;
+  if (!scene.gratin) return;
+  ciccio.goal = { x: scene.gratin.x, then: 'dance', urgent };
+  ciccio.phase = ciccio.at === 'floor' ? 'heading' : 'dismounting';
+  if (ciccio.phase === 'dismounting') ciccio.timer = CLIMB_FRAMES;
+  ciccio.spin = 0;
+  ciccio.after = 'wandering';
+  // Said on the frame he spots it. Keyed on the goal *holding*, he would shout
+  // it every frame of the run across the room.
+  say(ciccio, CICCIO_GRATIN);
+}
+
+/**
+ * Drop whatever he was doing and go there now.
+ *
+ * Everything a tap on a *thing* does goes through here, so an interrupted
+ * dance, an interrupted meal and an interrupted nap all end the same way. He
+ * still climbs down off whatever he is on rather than appearing on the floor —
+ * the one thing an interrupt may not do is skip the frames a change of height
+ * is owed.
+ */
+function summon(scene: Scene, x: number, then: 'dance' | 'sit' | 'sleep'): void {
+  const { ciccio } = scene;
+  ciccio.goal = { x, then, urgent: true };
+  ciccio.spin = 0;
+  ciccio.after = 'wandering';
+  if (ciccio.at === 'floor') {
+    ciccio.phase = 'heading';
+  } else {
+    ciccio.phase = 'dismounting';
+    ciccio.timer = CLIMB_FRAMES;
+  }
+}
+
 /** Starts one, or leaves the one in progress alone. */
 function startWobble(ciccio: Ciccio): void {
   if (ciccio.phase === 'wobbling') return;
@@ -800,15 +938,34 @@ function startWobble(ciccio: Ciccio): void {
   ciccio.spin = 0;
 }
 
-/** Now and then, somebody says something. */
-function runTalking(scene: Scene, rng: Rng): void {
+/**
+ * They speak in turn, and always in the same order: the squirrel on his left,
+ * then him, then the squirrel on his right — "Susin! Ciccio Ciccio! Susin!".
+ *
+ * A round, not three independent chances. Rolled separately they talked over
+ * each other and the three lines never came out as the one phrase they are.
+ * The gratin is the exception and stays his alone: it is a thing he says about
+ * something he has seen, not a greeting anybody is answering.
+ */
+function startChatter(scene: Scene): void {
+  if (!scene.chatter) scene.chatter = { next: 0, wait: 0 };
+}
+
+function runChatter(scene: Scene, rng: Rng): void {
   runSaying(scene.ciccio);
   for (const squirrel of scene.squirrels) runSaying(squirrel);
 
-  if (!scene.ciccio.say && rng() < CICCIO_CALL_CHANCE) say(scene.ciccio, CICCIO_CALL);
-  for (const squirrel of scene.squirrels) {
-    if (!squirrel.say && rng() < SQUIRREL_CALL_CHANCE) say(squirrel, SQUIRREL_CALL);
+  if (!scene.chatter) {
+    if (rng() < CHATTER_CHANCE) startChatter(scene);
+    return;
   }
+
+  if (--scene.chatter.wait > 0) return;
+  const turn = scene.chatter.next;
+  if (turn === 1) say(scene.ciccio, CICCIO_CALL);
+  else say(scene.squirrels[turn === 0 ? 0 : 1], SQUIRREL_CALL);
+
+  scene.chatter = turn >= 2 ? null : { next: turn + 1, wait: CHATTER_GAP };
 }
 
 /**
@@ -845,6 +1002,26 @@ function runTv(scene: Scene, rng: Rng): void {
     scene.tv.on = true;
     scene.tv.showLeft = SHOW_FRAMES;
   }
+}
+
+/**
+ * Whether the bed is expecting him: he is on his way to it, climbing into it,
+ * or in it.
+ *
+ * This is also what makes a tap on the bed visible. Without it the only thing a
+ * click on the bed did was start three animals walking, which on a wide room is
+ * a second and a half of nothing happening where the tap was.
+ */
+export const bedExpectsHim = (scene: Scene) =>
+  scene.ciccio.at === 'bed' || scene.ciccio.goal?.then === 'sleep';
+
+function runBed(scene: Scene): void {
+  const target = bedExpectsHim(scene) ? 1 : 0;
+  scene.bed.turned = clamp(
+    scene.bed.turned + clamp(target - scene.bed.turned, -BED_TURN_SPEED, BED_TURN_SPEED),
+    0,
+    1,
+  );
 }
 
 function runOven(scene: Scene): void {
@@ -897,10 +1074,11 @@ export function step(scene: Scene, rng: Rng): void {
   scene.frame++;
   runTv(scene, rng);
   runOven(scene);
+  runBed(scene);
   walkCiccio(scene, rng);
   runSteam(scene, rng);
   followSquirrels(scene);
-  runTalking(scene, rng);
+  runChatter(scene, rng);
 }
 
 /**
@@ -913,10 +1091,7 @@ export function step(scene: Scene, rng: Rng): void {
  * free to disagree — which is exactly what the cello's peel and pizza were.
  */
 export function ciccioFacing(scene: Scene): number {
-  const { ciccio } = scene;
-  if (ciccio.phase !== 'wobbling') return ciccio.facing;
-
-  const turn = Math.cos(ciccio.spin) * ciccio.facing;
+  const turn = Math.cos(ciccioAngle(scene));
   // Never all the way to nothing. A figure drawn about a horizontal scale
   // vanishes to a one-pixel sliver as it passes edge-on, which reads as him
   // blinking out twice a turn — where a hedgehog seen end-on is a round blob.
@@ -924,6 +1099,36 @@ export function ciccioFacing(scene: Scene): number {
   const narrowest = Math.max(Math.abs(turn), CICCIO_NARROWEST);
   return turn < 0 ? -narrowest : narrowest;
 }
+
+/**
+ * Which way round he is, as an angle: 0 is nose to the right, π/2 is nose
+ * towards you, π is nose to the left, 3π/2 is his back to you.
+ *
+ * Scaling the whole figure by `cos` and leaving it there is a card turning on
+ * the spot — flat, because every part of him is squashed by the same amount at
+ * the same time and nothing ever passes in front of anything else. An angle
+ * lets the drawing put his nose *round* the body: it swings across, shortens as
+ * it comes towards you, and goes behind him on the far half of the turn. That
+ * occlusion is the whole of the depth, and it needs to be a fact of the scene
+ * rather than something the drawing invents, or the two go out of step.
+ */
+export function ciccioAngle(scene: Scene): number {
+  const { ciccio } = scene;
+  // The television is on the back wall, so watching it means having your back
+  // to whoever is looking at the room. Three quarters round is exactly that:
+  // nose pointing away, and the drawing puts his face behind his own back.
+  if (ciccio.phase === 'sitting') return Math.PI * 1.5;
+  // `facing` eases between −1 and 1 and *is* the cosine of the resting angle,
+  // so the walk and the dance are the same quantity all the way through.
+  const base = Math.acos(clamp(ciccio.facing, -1, 1));
+  return ciccio.phase === 'wobbling' ? base + ciccio.spin : base;
+}
+
+/** Whether the three of them have their backs to the room, watching the set. */
+export const watchingTelevision = (scene: Scene) => scene.ciccio.phase === 'sitting';
+
+/** Whether we are looking at his front half, and so whether his nose is in front. */
+export const ciccioNoseInFront = (scene: Scene) => Math.sin(ciccioAngle(scene)) >= 0;
 
 /** The bob that makes it a wobble rather than a turntable. */
 export function ciccioBob(scene: Scene): number {
@@ -956,9 +1161,14 @@ export const hitsTv = (scene: Scene, x: number, y: number) =>
   y >= scene.ground - TV_HANGS_AT - TV_PANEL - 4 &&
   y <= scene.ground - TV_HANGS_AT + 4;
 
+export const hitsBed = (scene: Scene, x: number, y: number) =>
+  Math.abs(x - scene.layout.bedX) <= BED_WIDTH / 2 + 4 &&
+  y >= scene.ground - BED_HEAD - 4 &&
+  y <= scene.ground + 6;
+
 export const hitsOven = (scene: Scene, x: number, y: number) =>
   Math.abs(x - scene.layout.ovenX) <= OVEN_WIDTH / 2 + 6 &&
-  y >= scene.ground - OVEN_HOOD_TOP &&
+  y >= scene.ground - OVEN_TOP - 8 &&
   y <= scene.ground + 6;
 
 /**
@@ -974,21 +1184,29 @@ export const hitsOven = (scene: Scene, x: number, y: number) =>
 export function clickScene(scene: Scene, x: number, y: number): void {
   if (hitsOven(scene, x, y)) {
     serveGratin(scene);
+    // Sent, not merely offered. Leaving him to notice it on his own turn means
+    // a tap answered in twenty seconds, which is a tap that did nothing.
+    headForGratin(scene, true);
     return;
   }
   if (hitsTv(scene, x, y)) {
     scene.tv.on = true;
     scene.tv.showLeft = SHOW_FRAMES;
+    summon(scene, scene.layout.loungeX, 'sit');
+    return;
+  }
+  if (hitsBed(scene, x, y)) {
+    summon(scene, scene.layout.bedX, 'sleep');
     return;
   }
   for (const squirrel of scene.squirrels) {
     if (hitsSquirrel(scene, squirrel, x, y)) {
-      say(squirrel, SQUIRREL_CALL);
+      startChatter(scene);
       return;
     }
   }
   if (hitsCiccio(scene, x, y)) {
     startWobble(scene.ciccio);
-    say(scene.ciccio, CICCIO_CALL);
+    startChatter(scene);
   }
 }

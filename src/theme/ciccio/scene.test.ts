@@ -11,6 +11,8 @@ import {
   MAX_STEAM,
   SQUIRREL_SPEED,
   MAX_CLIMB,
+  EXCITED_TRAIL,
+  dashingForFood,
   SQUIRREL_CALL,
   step,
   flankX,
@@ -24,7 +26,7 @@ import {
   MIN_WANDER,
   FLANK_GAP,
   OVEN_WIDTH,
-  OVEN_HOOD_TOP,
+  OVEN_TOP,
   BED_WIDTH,
   BED_HEAD,
   SOFA_WIDTH,
@@ -85,7 +87,7 @@ describe('the room, laid out', () => {
     void width;
     // Everything in the room stands against the wall, and the wall is the
     // reach. A piece taller than the room would be drawn over the user's list.
-    for (const height of [OVEN_HOOD_TOP, BED_HEAD, SOFA_BACK, TV_HANGS_AT + TV_PANEL]) {
+    for (const height of [OVEN_TOP, BED_HEAD, SOFA_BACK, TV_HANGS_AT + TV_PANEL]) {
       expect(height).toBeLessThanOrEqual(WALL_HEIGHT);
     }
   });
@@ -120,10 +122,13 @@ describe('the room, laid out', () => {
     expect(wide.wanderRight - wide.wanderLeft).toBeGreaterThan(
       narrow.wanderRight - narrow.wanderLeft,
     );
-    // The bed and the kitchen are the same size in scene units at both: the
-    // scene is drawn smaller on a phone, never laid out differently.
+    // The bed is anchored to its own wall and does not move; the kitchen is
+    // placed *along* the span, so it moves away from the bed as the room grows.
+    // That is the difference between three areas and a bedsit with a cooker in
+    // it — at 1280 the gap between the two is 337 units, at 320 it is 37.
     expect(wide.bedX).toBe(narrow.bedX);
-    expect(wide.ovenX).toBe(narrow.ovenX);
+    expect(wide.ovenX).toBeGreaterThan(narrow.ovenX);
+    expect(wide.ovenX - wide.bedX).toBeGreaterThan((narrow.ovenX - narrow.bedX) * 2);
   });
 });
 
@@ -340,6 +345,9 @@ describe('two squirrels who love him', () => {
       const s = sceneAt(width);
       for (let i = 0; i < 3000; i++) {
         step(s, eager);
+        // Except mid-dash, which is the one time he is meant to be in front of
+        // both of them — see "he surges out in front" below.
+        if (dashingForFood(s)) continue;
         const [left, right] = s.squirrels;
         expect(left.x).toBeLessThanOrEqual(s.ciccio.x - MIN_FLANK);
         expect(right.x).toBeGreaterThanOrEqual(s.ciccio.x + MIN_FLANK);
@@ -607,13 +615,22 @@ describe('a potato gratin', () => {
 
   it('sends him running for it, and he says so on the way', () => {
     const s = sceneAt(900);
-    s.ciccio.x = s.layout.wanderLeft;
+    s.ciccio.x = s.layout.wanderRight;
     clickScene(s, s.layout.ovenX, s.ground - 30);
-    s.gratin!.x = s.layout.wanderRight;
 
+    // The tap sends him at once rather than leaving him to notice on his own
+    // turn, and the line is said on whichever path found the food.
+    expect(s.ciccio.phase).toBe('heading');
+    expect(s.ciccio.say!.line).toBe(CICCIO_GRATIN);
+    step(s, steady);
+    expect(s.ciccio.dir).toBe(-1);
+  });
+
+  it('says it on the path he finds it by himself too, not only when tapped', () => {
+    const s = sceneAt(900);
+    runUntil(s, (x) => x.gratin !== null, 60000, eager);
     runUntil(s, (x) => x.ciccio.phase === 'heading', 400);
     expect(s.ciccio.say!.line).toBe(CICCIO_GRATIN);
-    expect(s.ciccio.dir).toBe(1);
   });
 
   // Keyed on the goal *holding* rather than on the frame it was set, he shouts
@@ -671,6 +688,35 @@ describe('a potato gratin', () => {
     expect(s.gratin).not.toBeNull();
     expect(s.gratin!.x).toBeLessThanOrEqual(s.layout.wanderRight);
     expect(s.gratin!.x).toBeGreaterThanOrEqual(s.layout.wanderLeft);
+  });
+
+  it('has him surge out in front of both of them, and them catch him up after', () => {
+    const s = sceneAt(1440);
+    // Let them settle at his sides first: created, they are placed beside
+    // wherever he was dropped, and a dash begun before they have caught up
+    // measures the catching up rather than the dash.
+    run(s, 600, steady);
+    clickScene(s, s.layout.ovenX, s.ground - 30);
+    runUntil(s, (x) => x.ciccio.phase === 'heading', 200);
+    run(s, 90, steady);
+
+    // Genuinely in front of *both*, not merely a little further from one. Being
+    // between them is held by a clamp the rest of the time, and lifting it for
+    // the length of a dash is what lets this be true at all.
+    expect(dashingForFood(s)).toBe(true);
+    for (const q of s.squirrels) {
+      expect((s.ciccio.x - q.x) * s.ciccio.dir).toBeGreaterThan(EXCITED_TRAIL / 2);
+    }
+
+    // And the moment he stops to eat they close back up, either side of him.
+    runUntil(s, (x) => x.ciccio.phase === 'eating', 8000);
+    run(s, 120, steady);
+    const [left, right] = s.squirrels;
+    expect(left.x).toBeLessThan(s.ciccio.x);
+    expect(right.x).toBeGreaterThan(s.ciccio.x);
+    for (const q of s.squirrels) {
+      expect(Math.abs(q.x - s.ciccio.x)).toBeCloseTo(FLANK_GAP, 0);
+    }
   });
 
   it('caps the steam rather than growing it for as long as the app is open', () => {
@@ -801,6 +847,9 @@ describe('getting on and off the furniture', () => {
     const s = sceneAt(1280);
     for (let i = 0; i < 30000; i++) {
       step(s, eager);
+      // The one exception, and it is deliberate: running for a gratin he is out
+      // in front of both of them.
+      if (dashingForFood(s)) continue;
       const [left, right] = s.squirrels;
       expect(left.x).toBeLessThan(s.ciccio.x);
       expect(right.x).toBeGreaterThan(s.ciccio.x);
@@ -855,5 +904,131 @@ describe('how his day divides', () => {
     expect(share.watching).toBeGreaterThan(8);
     expect(share.watching).toBeLessThan(40);
     expect(share.sleeping).toBeGreaterThanOrEqual(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+
+describe('answering a tap on a thing', () => {
+  // A tap that starts three animals walking across a wide room is a tap with a
+  // second and a half of nothing happening where the finger was.
+  it('starts turning the bed down the moment it is clicked', () => {
+    const s = sceneAt(1440);
+    expect(s.bed.turned).toBe(0);
+
+    clickScene(s, s.layout.bedX, s.ground - 20);
+    step(s, steady);
+    expect(s.bed.turned).toBeGreaterThan(0);
+
+    runUntil(s, (x) => x.bed.turned >= 0.99, 200, steady);
+  });
+
+  // Derived, not stored: a bed made up for nobody is not a state to reach.
+  it('makes it up again once nobody is coming', () => {
+    const s = sceneAt(1440);
+    clickScene(s, s.layout.bedX, s.ground - 20);
+    runUntil(s, (x) => x.bed.turned >= 0.99, 200, steady);
+
+    s.ciccio.goal = null;
+    s.ciccio.phase = 'wandering';
+    s.ciccio.at = 'floor';
+    runUntil(s, (x) => x.bed.turned <= 0.01, 200, steady);
+  });
+
+  it.each([
+    ['the oven', (s: ReturnType<typeof sceneAt>) => [s.layout.ovenX, s.ground - 30] as const],
+    ['the bed', (s: ReturnType<typeof sceneAt>) => [s.layout.bedX, s.ground - 20] as const],
+    [
+      'the television',
+      (s: ReturnType<typeof sceneAt>) => [s.layout.loungeX, s.ground - TV_HANGS_AT - 10] as const,
+    ],
+  ])('drops whatever he was doing and sets off for %s', (_name, where) => {
+    const s = sceneAt(1440);
+    // Mid-dance, which is the phase least likely to give way on its own.
+    clickScene(s, s.ciccio.x, s.ground - 10);
+    expect(s.ciccio.phase).toBe('wobbling');
+
+    const [x, y] = where(s);
+    clickScene(s, x, y);
+
+    expect(s.ciccio.phase).toBe('heading');
+    expect(s.ciccio.goal!.urgent).toBe(true);
+    expect(s.ciccio.spin).toBe(0);
+  });
+
+  it('gets him off the furniture first rather than teleporting him down', () => {
+    const s = sceneAt(1440);
+    clickScene(s, s.layout.loungeX, s.ground - TV_HANGS_AT - 10);
+    runUntil(s, (x) => x.ciccio.at === 'sofa' && x.ciccio.phase === 'sitting', 60000, eager);
+
+    clickScene(s, s.layout.bedX, s.ground - 20);
+    expect(s.ciccio.phase).toBe('dismounting');
+    expect(s.ciccio.at).toBe('sofa');
+  });
+
+  it('answers a tap far faster than he would have got there on his own', () => {
+    const summoned = sceneAt(1440);
+    summoned.ciccio.x = summoned.layout.wanderLeft;
+    clickScene(summoned, summoned.layout.loungeX, summoned.ground - TV_HANGS_AT - 10);
+    const quick = runUntil(summoned, (x) => x.ciccio.at === 'sofa', 60000, steady);
+
+    const strolled = sceneAt(1440);
+    strolled.ciccio.x = strolled.layout.wanderLeft;
+    strolled.tv.on = true;
+    strolled.tv.showLeft = 100000;
+    const slow = runUntil(strolled, (x) => x.ciccio.at === 'sofa', 60000, steady);
+
+    expect(quick * 2).toBeLessThan(slow);
+  });
+});
+
+describe('the round they speak in', () => {
+  // "Susin! Ciccio Ciccio! Susin!" — one phrase in three voices, in that order.
+  // Rolled as three independent chances they talked over each other and it was
+  // never the phrase it is meant to be.
+  it('goes left squirrel, then him, then right squirrel', () => {
+    const s = sceneAt(1280);
+    clickScene(s, s.ciccio.x, s.ground - 10);
+
+    // Recorded as each one *starts* speaking, so the order is the order they
+    // took their turns rather than whoever happens to still have a bubble up.
+    const heard: string[] = [];
+    const speaking = [false, false, false];
+    for (let i = 0; i < 400; i++) {
+      step(s, steady);
+      [s.squirrels[0], s.ciccio, s.squirrels[1]].forEach((who, j) => {
+        const up = who.say !== null;
+        if (up && !speaking[j]) heard.push(who.say!.line);
+        speaking[j] = up;
+      });
+      if (heard.length === 3) break;
+    }
+    expect(heard).toEqual([SQUIRREL_CALL, CICCIO_CALL, SQUIRREL_CALL]);
+  });
+
+  it('leaves a gap between the three, rather than saying them at once', () => {
+    const s = sceneAt(1280);
+    clickScene(s, s.ciccio.x, s.ground - 10);
+    step(s, steady);
+    expect(s.squirrels[0].say).not.toBeNull();
+    expect(s.ciccio.say).toBeNull();
+    expect(s.squirrels[1].say).toBeNull();
+  });
+
+  it('does not start a second round on top of the one going on', () => {
+    const s = sceneAt(1280);
+    clickScene(s, s.ciccio.x, s.ground - 10);
+    step(s, steady);
+    const round = s.chatter;
+    clickScene(s, s.squirrels[0].x, s.ground - 10);
+    expect(s.chatter).toBe(round);
+  });
+
+  // His own, about something he has seen — not a greeting anybody answers.
+  it('keeps the gratin line his alone', () => {
+    const s = sceneAt(1280);
+    clickScene(s, s.layout.ovenX, s.ground - 30);
+    expect(s.ciccio.say!.line).toBe(CICCIO_GRATIN);
+    expect(s.squirrels.map((q) => q.say)).toEqual([null, null]);
   });
 });

@@ -17,7 +17,6 @@ import type { Scene, Squirrel } from './scene';
 import {
   OVEN_WIDTH,
   OVEN_HEIGHT,
-  OVEN_HOOD_TOP,
   BED_WIDTH,
   BED_HEAD,
   SOFA_WIDTH,
@@ -29,8 +28,11 @@ import {
   WALL_HEIGHT,
   DEPTH,
   SEAT_HEIGHT,
-  ciccioFacing,
+  ciccioAngle,
+  ciccioNoseInFront,
+  watchingTelevision,
   ciccioBob,
+  CICCIO_NARROWEST,
   ciccioY,
   squirrelY,
 } from './scene';
@@ -214,12 +216,33 @@ function box(
   edge?: string,
 ): void {
   const left = x - w / 2;
+  const topY = ground - h;
+  const dx = DEPTH * 0.75;
+  const dy = -DEPTH * 0.5;
+
+  // The right-hand side, which is what was missing: a top face on its own reads
+  // as a flap stuck to a flat card, because the solid it belongs to has no
+  // thickness anywhere else. With the side in, the same two lines describe a box.
   ctx.fillStyle = top;
   ctx.beginPath();
-  ctx.moveTo(left, ground - h);
-  ctx.lineTo(left + DEPTH * 0.75, ground - h - DEPTH * 0.5);
-  ctx.lineTo(left + w + DEPTH * 0.75, ground - h - DEPTH * 0.5);
-  ctx.lineTo(left + w, ground - h);
+  ctx.moveTo(left + w, topY);
+  ctx.lineTo(left + w + dx, topY + dy);
+  ctx.lineTo(left + w + dx, ground + dy);
+  ctx.lineTo(left + w, ground);
+  ctx.closePath();
+  ctx.fill();
+  if (edge) {
+    ctx.strokeStyle = edge;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+
+  ctx.fillStyle = top;
+  ctx.beginPath();
+  ctx.moveTo(left, topY);
+  ctx.lineTo(left + dx, topY + dy);
+  ctx.lineTo(left + w + dx, topY + dy);
+  ctx.lineTo(left + w, topY);
   ctx.closePath();
   ctx.fill();
   if (edge) {
@@ -230,7 +253,7 @@ function box(
 
   ctx.fillStyle = front;
   ctx.beginPath();
-  ctx.roundRect(left, ground - h, w, h, radius);
+  ctx.roundRect(left, topY, w, h, radius);
   ctx.fill();
   // The room is drawn small — at a phone's scale a cream sofa on a cream wall
   // is one shape. A hairline in the piece's own darker tone is what keeps the
@@ -241,6 +264,18 @@ function box(
     ctx.stroke();
   }
 }
+
+/**
+ * Where a foot is in its stride, for somebody standing at this x.
+ *
+ * Taken from **how far they have walked**, not from the frame count. Off a
+ * clock, feet paddle away under an animal standing still and the whole thing
+ * reads as a treadmill; off the position, a stride is a stride whatever the
+ * pace, and anybody who has stopped has stopped — including all three of them
+ * on the sofa, without a single case written for it.
+ */
+const STRIDE = 11;
+const gait = (x: number, foot: number) => Math.sin((x / STRIDE) * Math.PI + foot * Math.PI);
 
 /** What sits under a thing standing on the floor, so it is standing on it. */
 function contactShadow(
@@ -315,46 +350,71 @@ function drawBed(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette): void 
 
   contactShadow(ctx, bedX, g, w + 6, p);
 
-  // Headboard at the left, tall enough to read as the head of the bed.
-  ctx.fillStyle = p.bedFrame;
+  // Cream leather, like the sofa: one room, one suite. The headboard stands
+  // well clear of the mattress and there is no footboard at all — a bed with a
+  // board at both ends reads as a cot, and this one is meant to be got into.
+  ctx.fillStyle = p.sofa;
   ctx.beginPath();
-  ctx.roundRect(left - 3, g - BED_HEAD, 12, BED_HEAD, 3);
+  ctx.roundRect(left - 3, g - BED_HEAD, 13, BED_HEAD, 5);
   ctx.fill();
-  ctx.strokeStyle = p.bedEdge;
+  ctx.strokeStyle = p.sofaEdge;
   ctx.lineWidth = 1;
   ctx.stroke();
-  // A footboard, lower than the head, so the bed reads as a bed from either end.
-  ctx.fillStyle = p.bedFrame;
-  ctx.beginPath();
-  ctx.roundRect(left + w - 9, g - 26, 11, 26, 3);
-  ctx.fill();
-  ctx.stroke();
+  // Buttoning down the headboard, which is what says leather rather than paint.
+  ctx.fillStyle = p.sofaSeam;
+  for (let i = 0; i < 3; i++) {
+    ctx.beginPath();
+    ctx.arc(left + 3.5, g - BED_HEAD + 12 + i * 13, 1.2, 0, Math.PI * 2);
+    ctx.fill();
+  }
 
-  // Base, then the mattress on top of it with its own visible surface.
-  box(ctx, bedX, g, w, 13, p.bedFrame, p.bedFrameTop, 2, p.bedEdge);
-  box(ctx, bedX, g - 13, w - 4, mattress + 2, p.mattress, p.mattressTop, 3, p.bedEdge);
+  box(ctx, bedX, g, w, 13, p.sofaDark, p.sofaLight, 3, p.sofaEdge);
+  box(ctx, bedX, g - 13, w - 4, mattress + 2, p.mattress, p.mattressTop, 3, p.sofaEdge);
 
-  // Duvet over the foot end, with a fold turned back.
+  // The cover, drawn back towards the foot as the bed is turned down — which is
+  // the whole of the answer to a tap on it. `turned` eases, so the click has
+  // something to show for itself on the very next frame.
+  const turned = scene.bed.turned;
+  const coverFrom = left + w * (0.4 + turned * 0.22);
+  const coverWidth = w - 4 - (coverFrom - left);
   ctx.fillStyle = p.blanketTop;
   ctx.beginPath();
-  ctx.moveTo(left + w * 0.4, g - mattress - 8);
-  ctx.lineTo(left + w * 0.4 + DEPTH * 0.75, g - mattress - 8 - DEPTH * 0.5);
+  ctx.moveTo(coverFrom, g - mattress - 8);
+  ctx.lineTo(coverFrom + DEPTH * 0.75, g - mattress - 8 - DEPTH * 0.5);
   ctx.lineTo(left + w - 4 + DEPTH * 0.75, g - mattress - 8 - DEPTH * 0.5);
   ctx.lineTo(left + w - 4, g - mattress - 8);
   ctx.closePath();
   ctx.fill();
   ctx.fillStyle = p.blanket;
   ctx.beginPath();
-  ctx.roundRect(left + w * 0.4, g - mattress - 8, w * 0.6 - 4, 12, 3);
+  ctx.roundRect(coverFrom, g - mattress - 8, coverWidth, 12 + turned * 3, 3);
   ctx.fill();
+  // The turned-back fold, which grows as the cover is pulled down.
   ctx.fillStyle = p.blanketDark;
-  ctx.fillRect(left + w * 0.4, g - mattress - 8, 3.5, 12);
+  ctx.beginPath();
+  ctx.roundRect(
+    coverFrom - turned * 4,
+    g - mattress - 9 - turned * 2,
+    4 + turned * 5,
+    13 + turned * 4,
+    2,
+  );
+  ctx.fill();
 
-  // Pillow, propped against the headboard.
+  // Pillow, propped against the headboard, plumped as the bed is made ready.
   ctx.fillStyle = p.pillow;
   ctx.beginPath();
-  ctx.roundRect(left + 7, g - mattress - 12, 30, 10, 5);
+  ctx.roundRect(
+    left + 10 - turned * 2,
+    g - mattress - 13 - turned * 4,
+    30 + turned * 5,
+    11 + turned * 4,
+    6,
+  );
   ctx.fill();
+  ctx.strokeStyle = p.sofaEdge;
+  ctx.lineWidth = 1;
+  ctx.stroke();
 }
 
 function drawKitchen(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette): void {
@@ -392,25 +452,6 @@ function drawKitchen(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette): v
     ctx.arc(left + 15 + i * 12, g - 58, 2.4, 0, Math.PI * 2);
     ctx.fill();
   }
-
-  // Extractor hood over it, hung off the wall.
-  const hoodBottom = g - OVEN_HOOD_TOP + 22;
-  ctx.fillStyle = p.hoodTop;
-  ctx.beginPath();
-  ctx.moveTo(left - 4, g - OVEN_HOOD_TOP);
-  ctx.lineTo(left - 4 + DEPTH * 0.75, g - OVEN_HOOD_TOP - DEPTH * 0.5);
-  ctx.lineTo(left + w + 4 + DEPTH * 0.75, g - OVEN_HOOD_TOP - DEPTH * 0.5);
-  ctx.lineTo(left + w + 4, g - OVEN_HOOD_TOP);
-  ctx.closePath();
-  ctx.fill();
-  ctx.fillStyle = p.hood;
-  ctx.beginPath();
-  ctx.moveTo(left - 4, g - OVEN_HOOD_TOP);
-  ctx.lineTo(left + w + 4, g - OVEN_HOOD_TOP);
-  ctx.lineTo(left + w - 10, hoodBottom);
-  ctx.lineTo(left + 10, hoodBottom);
-  ctx.closePath();
-  ctx.fill();
 }
 
 /**
@@ -555,98 +596,137 @@ function drawCiccio(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette): vo
   const LONG = 23; // half his length, nose excluded
   const TALL = 15; // how high the dome stands
 
+  const angle = ciccioAngle(scene);
+  const turn = Math.cos(angle);
+  const noseInFront = ciccioNoseInFront(scene);
+
   ctx.save();
-  // Both come off the scene: the dance's turn and its bob are what `spin`
-  // means, and working them out again here would be a second copy of it.
+  // The bob comes off the scene: it is what `spin` means, and a drawing that
+  // worked it out again would be a second copy free to disagree.
   ctx.translate(ciccio.x, y - ciccioBob(scene));
-  ctx.scale(ciccioFacing(scene) || 0.001, 1);
 
-  // Feet, tucked well under: he is a cushion on legs.
-  ctx.fillStyle = p.furShade;
-  for (const fx of [-11, 8]) {
-    ctx.beginPath();
-    ctx.ellipse(fx, -2.5, 5, 3, 0, 0, Math.PI * 2);
-    ctx.fill();
-  }
+  /**
+   * Everything from the shoulders forward — muzzle, ear, nose, eye — drawn at
+   * an offset along the body and squashed by how far round he has turned.
+   *
+   * Called either before or after the dome depending on which half of the turn
+   * he is in, which is where the depth comes from: on the near half his face is
+   * in front of his own back, on the far half it is hidden behind it. Scaling
+   * the whole figure at once, as this used to, can never do that — which is
+   * exactly why it read as a card.
+   */
+  function drawFace() {
+    ctx.save();
+    ctx.translate(0, 0);
+    ctx.scale(turn >= 0 ? 1 : -1, 1);
+    // Shortens towards nothing as he comes end-on, but never to nothing: the
+    // floor keeps a muzzle there to see.
+    ctx.scale(Math.max(Math.abs(turn), CICCIO_NARROWEST), 1);
 
-  // The dome, and a fuzzed edge over the top of it.
-  ctx.fillStyle = p.quillLight;
-  ctx.beginPath();
-  ctx.ellipse(-2, -2, LONG, TALL, 0, Math.PI, Math.PI * 2);
-  ctx.fill();
-  ctx.fillRect(-2 - LONG, -3, LONG * 2, 3);
-  for (let i = 0; i <= 22; i++) {
-    const t = i / 22;
-    const angle = Math.PI + t * Math.PI;
-    const bx = -2 + Math.cos(angle) * LONG;
-    const by = -2 + Math.sin(angle) * TALL;
-    ctx.beginPath();
-    ctx.arc(bx, by, 2.1, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  // Flecks: short strokes lying along the coat, darker towards the back.
-  ctx.strokeStyle = p.quillDark;
-  ctx.lineWidth = 1.6;
-  ctx.lineCap = 'round';
-  for (let i = 0; i < 26; i++) {
-    // A cheap fixed hash, so the same fleck is in the same place every frame.
-    const a = (i * 2.399) % (Math.PI * 2);
-    const r = 0.42 + ((i * 7) % 11) / 22;
-    const fx = -2 + Math.cos(a) * LONG * r;
-    const fy = -3 - Math.abs(Math.sin(a)) * TALL * r;
-    if (fy > -4) continue;
-    ctx.beginPath();
-    ctx.moveTo(fx, fy);
-    ctx.lineTo(fx + 2.2, fy - 2.6);
-    ctx.stroke();
-  }
-
-  // The face: a cream muzzle running out from under the dome to the nose, with
-  // the join hidden beneath the bristles rather than butted against them.
-  ctx.fillStyle = p.fur;
-  ctx.beginPath();
-  ctx.moveTo(4, -20);
-  ctx.quadraticCurveTo(24, -19, 33, -8);
-  ctx.quadraticCurveTo(28, -1.5, 14, -1.5);
-  ctx.quadraticCurveTo(5, -2, 4, -20);
-  ctx.fill();
-
-  // Ear: small and round, set back *into* the bristles rather than beside the
-  // muzzle, which is where the toy's is and which stops it reading as a disc
-  // stuck on the side of his head.
-  ctx.fillStyle = p.fur;
-  ctx.beginPath();
-  ctx.ellipse(1, -22.5, 4.6, 5, 0.25, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = p.furShade;
-  ctx.beginPath();
-  ctx.ellipse(1.4, -22, 2.3, 2.7, 0.25, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Nose and eye.
-  ctx.fillStyle = p.nose;
-  ctx.beginPath();
-  ctx.ellipse(32.5, -8, 3.4, 3.1, 0, 0, Math.PI * 2);
-  ctx.fill();
-  if (asleep) {
-    // A closed eye is a line, not a dot.
-    ctx.strokeStyle = p.eye;
-    ctx.lineWidth = 1.4;
-    ctx.lineCap = 'round';
-    ctx.beginPath();
-    ctx.moveTo(16.6, -13);
-    ctx.lineTo(21.4, -13);
-    ctx.stroke();
-  } else {
-    ctx.fillStyle = p.eye;
-    ctx.beginPath();
-    ctx.arc(19, -13, 2, 0, Math.PI * 2);
-    ctx.fill();
     ctx.fillStyle = p.fur;
     ctx.beginPath();
-    ctx.arc(19.7, -13.8, 0.7, 0, Math.PI * 2);
+    ctx.moveTo(4, -20);
+    ctx.quadraticCurveTo(24, -19, 33, -8);
+    ctx.quadraticCurveTo(28, -1.5, 14, -1.5);
+    ctx.quadraticCurveTo(5, -2, 4, -20);
     ctx.fill();
+
+    ctx.fillStyle = p.fur;
+    ctx.beginPath();
+    ctx.ellipse(1, -22.5, 4.6, 5, 0.25, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = p.furShade;
+    ctx.beginPath();
+    ctx.ellipse(1.4, -22, 2.3, 2.7, 0.25, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = p.nose;
+    ctx.beginPath();
+    ctx.ellipse(32.5, -8, 3.4, 3.1, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    if (asleep) {
+      // A closed eye is a line, not a dot.
+      ctx.strokeStyle = p.eye;
+      ctx.lineWidth = 1.4;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(16.6, -13);
+      ctx.lineTo(21.4, -13);
+      ctx.stroke();
+    } else {
+      ctx.fillStyle = p.eye;
+      ctx.beginPath();
+      ctx.arc(19, -13, 2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = p.fur;
+      ctx.beginPath();
+      ctx.arc(19.7, -13.8, 0.7, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  /** The bristled back: wide side-on, round end-on, never flat. */
+  function drawDome() {
+    ctx.save();
+    // Seen end-on he is not a sliver but a round dome, so the body keeps a
+    // width of its own however far round he is.
+    const half = LONG * Math.max(Math.abs(turn), 0.62);
+
+    ctx.fillStyle = p.furShade;
+    [-11, 8].forEach((fx, foot) => {
+      const swing = gait(ciccio.x, foot);
+      ctx.beginPath();
+      ctx.ellipse(
+        fx * turn + swing * 3.2,
+        -2.5 - Math.max(0, swing) * 1.8,
+        5,
+        3,
+        0,
+        0,
+        Math.PI * 2,
+      );
+      ctx.fill();
+    });
+
+    ctx.fillStyle = p.quillLight;
+    ctx.beginPath();
+    ctx.ellipse(-2 * turn, -2, half, TALL, 0, Math.PI, Math.PI * 2);
+    ctx.fill();
+    ctx.fillRect(-2 * turn - half, -3, half * 2, 3);
+    for (let i = 0; i <= 22; i++) {
+      const t = i / 22;
+      const a = Math.PI + t * Math.PI;
+      ctx.beginPath();
+      ctx.arc(-2 * turn + Math.cos(a) * half, -2 + Math.sin(a) * TALL, 2.1, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.strokeStyle = p.quillDark;
+    ctx.lineWidth = 1.6;
+    ctx.lineCap = 'round';
+    for (let i = 0; i < 26; i++) {
+      const a = (i * 2.399) % (Math.PI * 2);
+      const r = 0.42 + ((i * 7) % 11) / 22;
+      const fx = -2 * turn + Math.cos(a) * half * r;
+      const fy = -3 - Math.abs(Math.sin(a)) * TALL * r;
+      if (fy > -4) continue;
+      ctx.beginPath();
+      ctx.moveTo(fx, fy);
+      ctx.lineTo(fx + 2.2, fy - 2.6);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // The order *is* the depth.
+  if (noseInFront) {
+    drawDome();
+    drawFace();
+  } else {
+    drawFace();
+    drawDome();
   }
 
   ctx.restore();
@@ -675,36 +755,88 @@ function drawSquirrel(
 ): void {
   const y = squirrelY(scene, squirrel);
 
+  if (watchingTelevision(scene)) {
+    drawSquirrelFromBehind(ctx, squirrel.x, y, p);
+    return;
+  }
+
   ctx.save();
   ctx.translate(squirrel.x, y);
   ctx.scale(squirrel.facing || 0.001, 1);
 
   // The tail first, so it sits behind the body — a great question mark curling
   // up and over.
-  // Built out of overlapping lobes along a curve rather than as one crescent:
-  // a smooth outline read as a moon stuck behind the squirrel, and the whole
-  // point of these two is that they are fluffy.
-  const TAIL = [
-    { x: -6, y: -5, r: 6.5 },
-    { x: -12, y: -12, r: 7.5 },
-    { x: -16, y: -21, r: 8 },
-    { x: -16, y: -30, r: 8 },
-    { x: -12, y: -38, r: 7.5 },
-    { x: -5, y: -42, r: 6.5 },
-    { x: 1, y: -40, r: 5 },
+  // The tail is the biggest thing about a squirrel and the hardest to fake.
+  //
+  // As one crescent it read as a moon stuck on behind; as a row of overlapping
+  // lobes it read as a chain of balls. What it actually is, is fur: a dense
+  // plume taller than the animal, every strand radiating out from a curved
+  // spine. So it is drawn as strands — a soft core to close the gaps, then
+  // sixty tapered hairs standing out from it, longest across the middle.
+  //
+  // Every strand comes off a fixed hash of its own index rather than off `rng`.
+  // A coat that reshuffles each frame does not shimmer prettily, it boils.
+  // Nearly upright, and fat the whole way. Curved up and over it came out a
+  // half moon lying behind the squirrel; the real one stands straight up behind
+  // it, leaning back a little, as wide at the top as in the middle and rounded
+  // off at the tip.
+  const SPINE = [
+    { x: -5, y: -4, r: 8 },
+    { x: -8, y: -16, r: 12 },
+    { x: -10, y: -29, r: 14 },
+    { x: -11, y: -42, r: 13.5 },
+    { x: -11, y: -53, r: 10.5 },
   ];
+
+  /** A point along the spine, and which way is out from it. */
+  function along(t: number) {
+    const at = t * (SPINE.length - 1);
+    const i = Math.min(SPINE.length - 2, Math.floor(at));
+    const f = at - i;
+    const a = SPINE[i];
+    const b = SPINE[i + 1];
+    const x = a.x + (b.x - a.x) * f;
+    const y = a.y + (b.y - a.y) * f;
+    const r = a.r + (b.r - a.r) * f;
+    // Perpendicular to the spine, pointing away from the body.
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const len = Math.hypot(dx, dy) || 1;
+    return { x, y, r, nx: -dy / len, ny: dx / len };
+  }
+
+  // A soft core, so the strands have something to stand out of and no gap
+  // shows through the middle of the plume.
   ctx.fillStyle = p.squirrelTail;
-  for (const lobe of TAIL) {
+  for (let i = 0; i <= 40; i++) {
+    const at = along(i / 40);
     ctx.beginPath();
-    ctx.arc(lobe.x, lobe.y, lobe.r, 0, Math.PI * 2);
+    ctx.arc(at.x, at.y, at.r * 0.88, 0, Math.PI * 2);
     ctx.fill();
   }
-  // A lighter core down the middle, the way the toy's tail is two-toned.
-  ctx.fillStyle = p.squirrelTailLight;
-  for (const lobe of TAIL.slice(1, 6)) {
+
+  ctx.lineCap = 'round';
+  for (let i = 0; i < 130; i++) {
+    // A cheap fixed hash: the same hair in the same place every frame.
+    const h1 = ((i * 2654435761) % 1000) / 1000;
+    const h2 = ((i * 40503) % 997) / 997;
+    const t = (i % 44) / 43;
+    const at = along(t);
+    // Fanned either side of straight out, so the plume has a soft edge rather
+    // than a bristle line.
+    const spread = (h1 - 0.5) * 1.5;
+    const ax = at.nx * Math.cos(spread) - at.ny * Math.sin(spread);
+    const ay = at.nx * Math.sin(spread) + at.ny * Math.cos(spread);
+    // Short and many, not long and few: hairs standing a whole radius proud of
+    // the core read as a thistle. They only have to break the outline.
+    const reach = at.r * (0.92 + h2 * 0.22);
+
+    ctx.strokeStyle = i % 3 === 0 ? p.squirrelTailLight : p.squirrelTail;
+    ctx.lineWidth = 3.2 - h2 * 1.1;
     ctx.beginPath();
-    ctx.arc(lobe.x + 2.4, lobe.y + 1, lobe.r * 0.5, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.moveTo(at.x + ax * at.r * 0.35, at.y + ay * at.r * 0.35);
+    ctx.lineTo(at.x + ax * reach, at.y + ay * reach);
+    ctx.stroke();
   }
 
   // Body.
@@ -745,11 +877,92 @@ function drawSquirrel(
   ctx.ellipse(7.5, -15, 3.2, 2.5, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  // Feet.
+  // Feet, taking turns. Two of them rather than one, or there is nothing for a
+  // stride to alternate between.
   ctx.fillStyle = p.squirrelDark;
+  [0, 1].forEach((foot) => {
+    const swing = gait(squirrel.x, foot);
+    ctx.beginPath();
+    ctx.ellipse(1.5 + swing * 3, -1.8 - Math.max(0, swing) * 1.6, 4.4, 2.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  ctx.restore();
+}
+
+/**
+ * A squirrel with its back to the room, which is what watching a television on
+ * the far wall looks like.
+ *
+ * Not the side view mirrored: from behind, the tail is between us and the
+ * animal and fills most of it, the head is a shape above it with ears and no
+ * face, and there is nothing to face left or right. Turning the side view round
+ * cannot express that, which is why "they still are not facing the television"
+ * was true however the facing was set.
+ */
+function drawSquirrelFromBehind(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  p: Palette,
+): void {
+  ctx.save();
+  ctx.translate(x, y);
+
+  // Feet either side, just showing past the tail.
+  ctx.fillStyle = p.squirrelDark;
+  for (const fx of [-6, 6]) {
+    ctx.beginPath();
+    ctx.ellipse(fx, -1.8, 4, 2.4, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // The tail first, filling most of the view — it is between us and the animal.
+  // Built with an uneven edge rather than as a disc with spokes: a circle with
+  // evenly radiating hairs is a sunflower, not a tail.
+  const lump = (a: number) => 1 + Math.sin(a * 3 + 0.7) * 0.07 + Math.sin(a * 5 + 2.1) * 0.05;
+
+  ctx.fillStyle = p.squirrelTail;
   ctx.beginPath();
-  ctx.ellipse(2.5, -1.8, 5, 2.6, 0, 0, Math.PI * 2);
+  for (let i = 0; i <= 40; i++) {
+    const a = (i / 40) * Math.PI * 2;
+    const r = lump(a);
+    const px = Math.cos(a) * 13 * r;
+    const py = -17 + Math.sin(a) * 16.5 * r;
+    if (i === 0) ctx.moveTo(px, py);
+    else ctx.lineTo(px, py);
+  }
+  ctx.closePath();
   ctx.fill();
+
+  ctx.lineCap = 'round';
+  for (let i = 0; i < 66; i++) {
+    const h1 = ((i * 2654435761) % 1000) / 1000;
+    const h2 = ((i * 40503) % 997) / 997;
+    // Jittered off the even spacing, or the hairs comb themselves into spokes.
+    const a = ((i + h1 * 0.8) / 66) * Math.PI * 2;
+    const r = lump(a);
+    const out = 0.94 + h2 * 0.16;
+    ctx.strokeStyle = i % 3 === 0 ? p.squirrelTailLight : p.squirrelTail;
+    ctx.lineWidth = 3.4 - h1 * 1.2;
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(a) * 13 * r * 0.62, -17 + Math.sin(a) * 16.5 * r * 0.62);
+    ctx.lineTo(Math.cos(a) * 13 * r * out, -17 + Math.sin(a) * 16.5 * r * out);
+    ctx.stroke();
+  }
+
+  // The back of the head, over the tail rather than behind it — from here the
+  // head is the one part of the animal the tail does not hide.
+  ctx.fillStyle = p.squirrel;
+  ctx.beginPath();
+  ctx.arc(0, -34, 8.5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = p.squirrelDark;
+  for (const ex of [-6, 6]) {
+    ctx.beginPath();
+    ctx.ellipse(ex, -41, 3, 4.2, ex < 0 ? 0.3 : -0.3, 0, Math.PI * 2);
+    ctx.fill();
+  }
 
   ctx.restore();
 }
