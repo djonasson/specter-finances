@@ -93,6 +93,14 @@ export const MUTATIONS = [
     tests: ['src/services/sheets.test.ts'],
   },
 
+  {
+    name: 'a blocked download leaves its link in the page',
+    file: 'src/services/backup.ts',
+    find: '    link.remove();\n    setTimeout(() => URL.revokeObjectURL(url), 0);',
+    replace: '    setTimeout(() => URL.revokeObjectURL(url), 0);',
+    tests: ['src/services/backup.test.ts'],
+  },
+
   // --- Recurring. A generated expense is a snapshot; nothing may read a marker
   // and write back into the row it names.
   {

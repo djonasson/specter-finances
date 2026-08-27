@@ -67,14 +67,21 @@ export function backupFileName(spreadsheetTitle: string, todayIso: string): stri
  */
 export function downloadBlob(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
   try {
-    const link = document.createElement('a');
     link.href = url;
     link.download = filename;
     document.body.appendChild(link);
     link.click();
-    link.remove();
   } finally {
+    // Both on the way out, however it goes. The link only ever went into the
+    // page to be clicked, and a click that throws — an extension, a policy, a
+    // browser that refuses a synthetic one — used to leave it there: one stray
+    // anchor per press of the backup button, accumulating for the life of the
+    // tab. The revoke is deferred a task because Chromium starts the download
+    // during `click()` and Firefox and WebKit have both torn the blob down
+    // first when it was revoked in the same one.
+    link.remove();
     setTimeout(() => URL.revokeObjectURL(url), 0);
   }
 }

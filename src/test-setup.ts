@@ -1,3 +1,4 @@
+import { beforeEach } from 'vitest';
 import '@testing-library/jest-dom/vitest';
 
 // Runs for every suite, including the node-environment service tests — so
@@ -24,6 +25,17 @@ if (typeof window !== 'undefined') {
   if (!Element.prototype.scrollIntoView) {
     Element.prototype.scrollIntoView = () => {};
   }
+
+  // jsdom keeps whatever a test last assigned to these, for the whole file, so
+  // a test that sets a phone's width leaves every test after it on a phone —
+  // and one that resizes *to* the size a previous test left is not a resize at
+  // all, which is how "moves the scene into a window that really did change
+  // size" passed in file order and failed in a shuffled one.
+  const { innerWidth: wideAsMade, innerHeight: tallAsMade } = window;
+  beforeEach(() => {
+    window.innerWidth = wideAsMade;
+    window.innerHeight = tallAsMade;
+  });
 
   // jsdom lays nothing out, so `documentElement.clientWidth` is 0 — and
   // `viewportSize` falls back to `innerWidth` on exactly that. Left alone, every

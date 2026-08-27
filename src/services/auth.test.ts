@@ -21,11 +21,20 @@ afterEach(() => {
 });
 
 describe('getProjectNumber', () => {
-  it('works before initAuth has run', () => {
+  it('works before initAuth has run', async () => {
     // The gate renders on the first pass when a stored token exists, which is
     // before AuthProvider's effect calls initAuth.
+    //
+    // Asked of a module nobody has called `initAuth` on: the client id is
+    // captured in module scope and outlives a test, so any other test in this
+    // file having run first makes "before initAuth" untrue and the fallback
+    // this covers is never reached. Ordered by luck, it passed; shuffled, it
+    // failed about one run in three.
+    vi.resetModules();
     vi.stubEnv('VITE_GOOGLE_CLIENT_ID', '89909641639-abc.apps.googleusercontent.com');
-    expect(getProjectNumber()).toBe('89909641639');
+    const fresh = await import('./auth');
+
+    expect(fresh.getProjectNumber()).toBe('89909641639');
     vi.unstubAllEnvs();
   });
 
