@@ -12,6 +12,7 @@ import {
   toEveryMonths,
   describeInterval,
   datedInOwnMonth,
+  MAX_CATCH_UP_OCCURRENCES,
 } from './recurring';
 import type { Expense, ExpenseRow } from '../types/expense';
 import type { RecurringRule, RecurringRow } from '../types/recurring';
@@ -264,6 +265,19 @@ describe('pendingRecurring', () => {
 
   it('proposes nothing at all when today is not a real date', () => {
     expect(pendingRecurring([makeRule()], [], 'not-a-date')).toEqual([]);
+  });
+
+  // The default, which every test above overrides and none of them exercised:
+  // the constant could be raised to a hundred thousand with the whole suite
+  // green. What it prevents is a rule dormant for years offering every month of
+  // its history the first time the app is opened on a new device.
+  it('holds a decade-old rule to the catch-up window with no cap passed in', () => {
+    const pending = pendingRecurring([makeRule({ start: '2015-01-10' })], [], '2026-07-31');
+
+    expect(pending).toHaveLength(MAX_CATCH_UP_OCCURRENCES);
+    // And ending at the present, not the distant past: the window counts back
+    // from the latest occurrence rather than forward from the rule's start.
+    expect(pending.at(-1)!.month).toBe('2026-07');
   });
 
   it('caps a long-dormant rule at the catch-up window instead of proposing years of rows', () => {

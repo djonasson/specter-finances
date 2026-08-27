@@ -177,8 +177,8 @@ export const MUTATIONS = [
   {
     name: 'the reserved band is measured from the park rather than the tallest tree',
     file: 'src/theme/cello/scene.ts',
-    find: '  Math.max(PERCH_TREE_TOP, ...BANANA_TRUNKS) + CROSS_ARC * CROSS_ARC_MAX;',
-    replace: '  PERCH_TREE_TOP + CROSS_ARC * CROSS_ARC_MAX;',
+    find: '  Math.max(PERCH_HEIGHT.tree, ...BANANA_TRUNKS) + CROSS_ARC * CROSS_ARC_MAX;',
+    replace: '  PERCH_HEIGHT.tree + CROSS_ARC * CROSS_ARC_MAX;',
     tests: ['src/theme/cello/scene.test.ts'],
   },
 ];
