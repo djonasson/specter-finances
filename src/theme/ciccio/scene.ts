@@ -96,11 +96,14 @@ const GAP = 14;
 /**
  * How far along the span between the bed and the sofa the kitchen stands.
  *
+ * Half way, so the kitchen sits in the middle of the room with the bed at one
+ * end and the living room at the other, rather than leaning towards either.
+ *
  * A share rather than a distance, for the reason the cello's home end is one: a
  * fixed offset from the bed puts the cooker beside the pillow on every window,
  * and the room grows entirely into one empty middle.
  */
-const KITCHEN_ALONG = 0.36;
+const KITCHEN_ALONG = 0.5;
 
 /**
  * How far to either side of him a squirrel stands.
@@ -399,6 +402,27 @@ const STUCK_FRAMES = 150;
 const SCOLD_FRAMES = 130;
 /** Chance a frame, while they are watching something, that one goes up. */
 const RESCUE_CHANCE = 0.0022;
+/**
+ * Chance a frame, while one is on its way up, that the other calls it down.
+ *
+ * A climb takes about ninety frames, so this comes out at roughly half of them
+ * ending in a telling-off part way up and the other half going all the way to
+ * the top and needing fetching. Without it every single climb ran the whole
+ * drama, which is a lot of ceremony for something meant to happen "sometimes" —
+ * and the scene only has the one version of it to show.
+ */
+const CALL_DOWN_CHANCE = 0.0165;
+/**
+ * The stretch of the climb over which it may be called back.
+ *
+ * Bounded at both ends. Above the top of it there is no point — it may as well
+ * finish, and being called back from there reads as the other one changing its
+ * mind. Below the bottom of it there is nothing to see: told off on the first
+ * frame it has not left the sofa yet, and the whole thing plays out as a
+ * squirrel twitching.
+ */
+const CALL_DOWN_FROM = 0.28;
+const CALL_DOWN_UNTIL = 0.78;
 
 export interface Layout {
   /** Left to right, the way the room reads: sleep, then cook, then sit. */
@@ -668,7 +692,7 @@ export interface Scene {
    */
   rescue: {
     climber: 0 | 1;
-    phase: 'climbing' | 'stuck' | 'fetching' | 'descending' | 'scolding';
+    phase: 'climbing' | 'recalled' | 'stuck' | 'fetching' | 'descending' | 'scolding';
     timer: number;
   } | null;
   /** Rising off a kiss. Thrown, so they go above the reserved band on purpose. */
@@ -1319,7 +1343,24 @@ function runRescue(scene: Scene, rng: Rng): void {
       climber.headDown = true;
       rescue.phase = 'stuck';
       rescue.timer = STUCK_FRAMES;
+      return;
     }
+    // Or it gets told off before it can get itself stuck, and comes back down
+    // under its own steam. Only while it is still low enough for that to read
+    // as being called back rather than as the other one changing its mind.
+    const up = climber.climb / CLIMB_MAX;
+    if (up > CALL_DOWN_FROM && up < CALL_DOWN_UNTIL && rng() < CALL_DOWN_CHANCE) {
+      rescue.phase = 'recalled';
+      say(other, SQUIRREL_SCOLD);
+    }
+    return;
+  }
+
+  if (rescue.phase === 'recalled') {
+    // Down on its own: nobody had to come and get it, so there is nothing to
+    // tell it off for afterwards — it has already been told.
+    climber.climb = Math.max(0, climber.climb - CLIMB_SPEED * 1.4);
+    if (climber.climb === 0) scene.rescue = null;
     return;
   }
 
