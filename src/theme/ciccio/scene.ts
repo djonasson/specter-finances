@@ -264,8 +264,14 @@ const ROUTINE_GAP = 1500;
  * do not shuffle the order.
  */
 const ROTA = ['eat', 'watch', 'sleep'] as const;
-/** Scene units a frame. A cat is in no hurry. */
-const CAT_SPEED = 1.05;
+/**
+ * Scene units a frame.
+ *
+ * A cat is in no hurry, but at a stroll it spent the better part of fifteen
+ * seconds crossing a wide room before anything happened — which is a long time
+ * to watch something approach. It trots.
+ */
+const CAT_SPEED = 2.3;
 /** How close it comes before speaking kindly to him. */
 export const CAT_NEAR = 48;
 const MEOW_FRAMES = 110;
