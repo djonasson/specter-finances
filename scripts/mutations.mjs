@@ -219,7 +219,7 @@ export const MUTATIONS = [
     find: 'export const BANANA_TRUNK = 62;',
     replace: 'export const BANANA_TRUNK = 200;',
     tests: ['src/theme/cello/scene.test.ts'],
-  },,
+  },
   // -- how a window becomes a stage (src/theme/stage.ts) ---------------------
   // Every scene reads its band from here, so a wrong number here covers a strip
   // of the user's list in every theme at once, and nothing renders an error.
