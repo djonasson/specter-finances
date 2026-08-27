@@ -4,6 +4,8 @@ import { GradientBackground } from './GradientBackground';
 import { SquirrelBackground } from './SquirrelBackground';
 import { CelloBackground } from './cello/CelloBackground';
 import { celloFloor } from './cello/scene';
+import { CiccioBackground } from './ciccio/CiccioBackground';
+import { ciccioFloor } from './ciccio/scene';
 import type { GradientSettings } from './ThemeContext';
 
 /**
@@ -76,6 +78,15 @@ export const BACKGROUNDS = [
     // turns that into a band, so the clearance, the scaling on a narrow window
     // and the rounding come out the same for every scene.
     floor: celloFloor,
+  },
+  {
+    value: 'ciccio',
+    label: 'Ciccio',
+    render: () => <CiccioBackground />,
+    // Shorter than the cello's: one room of low furniture, where the tallest
+    // thing is the oven's hood. Same rule though — the scene contributes how
+    // tall its own scenery is and `sceneFloor` turns that into a band.
+    floor: ciccioFloor,
   },
 ] as const satisfies readonly BackgroundDescriptor[];
 

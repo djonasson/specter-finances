@@ -25,6 +25,10 @@ vi.mock('./cello/CelloBackground', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./cello/CelloBackground')>()),
   CelloBackground: () => <div data-scene="cello" />,
 }));
+vi.mock('./ciccio/CiccioBackground', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./ciccio/CiccioBackground')>()),
+  CiccioBackground: () => <div data-scene="ciccio" />,
+}));
 
 import { BackgroundEffect } from './backgrounds';
 import { BACKGROUNDS, STAGED_BACKGROUNDS, drawsOverTheApp } from './registry';
@@ -58,6 +62,7 @@ describe('choosing the background', () => {
     ['gradient', 'gradient'],
     ['squirrel', 'squirrel'],
     ['cello', 'cello'],
+    ['ciccio', 'ciccio'],
   ])('renders the %s background when that is what is stored', (stored, scene) => {
     expect(render({ backgroundEffect: stored }).scene).toBe(scene);
   });
@@ -76,9 +81,12 @@ describe('choosing the background', () => {
 });
 
 describe('the floor that comes with a scene', () => {
-  it.each(['squirrel', 'cello'])('comes with the %s scene, which draws over the app', (stored) => {
-    expect(render({ backgroundEffect: stored }).floor).not.toBeNull();
-  });
+  it.each(['squirrel', 'cello', 'ciccio'])(
+    'comes with the %s scene, which draws over the app',
+    (stored) => {
+      expect(render({ backgroundEffect: stored }).floor).not.toBeNull();
+    },
+  );
 
   it.each(['none', 'matrix', 'gradient'])(
     'does not come with %s, which draws behind it',

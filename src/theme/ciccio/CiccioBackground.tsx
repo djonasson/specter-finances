@@ -2,18 +2,18 @@ import { useRef } from 'react';
 import { useComputedColorScheme } from '@mantine/core';
 import { watchPixelRatio } from '../chrome';
 import { useSceneCanvas } from '../sceneCanvas';
-import { createScene, resizeScene, step, clickScene } from './scene';
+import { createScene, resizeScene, step } from './scene';
 import { drawScene } from './draw';
 
 /**
- * The cello's street. The scene is in `scene.ts` and the drawing in `draw.ts`;
- * the wiring is `useSceneCanvas`, shared with every other canvas scene.
+ * Ciccio's room. The scene is in `scene.ts` and the drawing in `draw.ts`; the
+ * wiring is `useSceneCanvas`, shared with every other canvas scene so that a
+ * new one cannot get the buffer, the stage or the frame loop subtly wrong.
  *
- * `isDark` is passed as a function rather than a value so a colour-scheme flip
- * does not restart the scene — losing a pizza in mid-air and putting the bird
- * back on his own — which under "auto" happens by itself at sunset.
+ * Nothing is clickable yet, so no `clickScene` is handed over and the hook adds
+ * no listener — the dance and the four click targets come with the next change.
  */
-export function CelloBackground() {
+export function CiccioBackground() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const isDark = useComputedColorScheme('light') === 'dark';
 
@@ -22,7 +22,6 @@ export function CelloBackground() {
     resizeScene,
     step,
     drawScene,
-    clickScene,
     isDark: () => isDark,
     watchPixelRatio,
   });

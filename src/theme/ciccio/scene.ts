@@ -47,10 +47,13 @@ export const TV_WIDTH = 54;
 const TV_STAND = 24;
 const TV_SET = 46;
 
-const CICCIO_HEIGHT = 24;
-const SQUIRREL_HEIGHT = 26;
+// The three of them are what the scene is about, so they are drawn a good deal
+// larger than a real hedgehog is next to a real oven. Room to grow: they are
+// well under the oven's hood, which is what sets the reach.
+const CICCIO_HEIGHT = 30;
+const SQUIRREL_HEIGHT = 32;
 /** How far a squirrel's tail stands above the rest of it. */
-const SQUIRREL_TAIL_RISE = 12;
+const SQUIRREL_TAIL_RISE = 16;
 
 // -- the room ----------------------------------------------------------------
 
@@ -70,10 +73,34 @@ const TV_GAP = 12;
  * every frame. Without the inset, he walks to the wall and the squirrel that
  * belongs beside him has nowhere to be but on top of him.
  */
-export const FLANK_GAP = 26;
+export const FLANK_GAP = 42;
 
 /** A walk shorter than this is a hedgehog pacing, not a hedgehog wandering. */
 export const MIN_WANDER = 110;
+
+/**
+ * How close a squirrel may be squeezed to his side before the invariant bites.
+ *
+ * Smaller than `FLANK_GAP`: the gap is where one *wants* to stand, this is the
+ * nearest it may be pushed while he walks past it. Between the two there is
+ * room to lag without ever changing sides — and it is still clear of him,
+ * since he is drawn about 46 units long and they would otherwise stand on him.
+ */
+export const MIN_FLANK = 26;
+
+/** Scene units a frame, at the ~40fps the background loop is throttled to. */
+const WALK_SPEED = 0.55;
+/**
+ * Faster than he walks, or a squirrel he turns towards can never close the gap
+ * and spends the rest of the session pinned against `MIN_FLANK`.
+ */
+const SQUIRREL_SPEED = 0.9;
+/** Near enough is near enough: without it they shuffle a fraction for ever. */
+const FLANK_SETTLED = 1.2;
+/** How much of a turn `facing` takes in one frame. */
+const TURN_EASE = 0.08;
+/** Chance a frame that he turns round for no reason at all. */
+const TURN_CHANCE = 0.0016;
 
 /**
  * Where each spot's surface is, measured up from the ground.
@@ -181,7 +208,11 @@ export function layoutFor(width: number): Layout {
 
 // -- the cast ----------------------------------------------------------------
 
+/** What he is doing. One entry today; the scene grows into it. */
+export type CiccioPhase = 'wandering';
+
 export interface Ciccio {
+  phase: CiccioPhase;
   x: number;
   /** Snaps. Which way he is going. */
   dir: -1 | 1;
@@ -255,6 +286,7 @@ export function createScene(size: SceneSize, rng: Rng): Scene {
     ground: size.ground,
     layout,
     ciccio: {
+      phase: 'wandering',
       x: layout.wanderLeft + (layout.wanderRight - layout.wanderLeft) * rng(),
       dir: rng() < 0.5 ? -1 : 1,
       facing: 1,
@@ -292,4 +324,69 @@ export function resizeScene(scene: Scene, size: SceneSize): void {
   else scene.ciccio.x = clamp(scene.ciccio.x, wanderLeft, wanderRight);
 
   for (const squirrel of scene.squirrels) squirrel.x = flankX(scene, squirrel.side);
+}
+
+// -- one frame ---------------------------------------------------------------
+
+/**
+ * He walks his floor, turning at the ends and now and then for no reason.
+ *
+ * `x` is snapped to the bound it reached rather than left a fraction past it:
+ * left to drift, a walk at a speed the range is not a multiple of creeps
+ * further out of the room every lap.
+ */
+function walkCiccio(scene: Scene, rng: Rng): void {
+  const { ciccio } = scene;
+  const { wanderLeft, wanderRight } = scene.layout;
+
+  ciccio.x += ciccio.dir * WALK_SPEED;
+  if (ciccio.x <= wanderLeft) {
+    ciccio.x = wanderLeft;
+    ciccio.dir = 1;
+  } else if (ciccio.x >= wanderRight) {
+    ciccio.x = wanderRight;
+    ciccio.dir = -1;
+  } else if (rng() < TURN_CHANCE) {
+    ciccio.dir = ciccio.dir === 1 ? -1 : 1;
+  }
+
+  // The nose follows the feet, over about a dozen frames.
+  ciccio.facing += clamp(ciccio.dir - ciccio.facing, -TURN_EASE, TURN_EASE);
+}
+
+/**
+ * They keep to his side, with a lag and a dead zone — and then are held there.
+ *
+ * Two mechanisms, and both are load-bearing. The layout insets his range by a
+ * flank at each end, so there is always somewhere legal for a squirrel to
+ * stand; the clamp below is what makes it true on the frames in between, when
+ * he has walked past one that has not caught up yet. Lag alone inverts the pair
+ * the first time he outruns it, and from then on the left squirrel is on the
+ * right — with nothing failing, and the one thing the scene is about quietly
+ * gone.
+ */
+function followSquirrels(scene: Scene): void {
+  for (const squirrel of scene.squirrels) {
+    const target = flankX(scene, squirrel.side);
+    const away = target - squirrel.x;
+    if (Math.abs(away) > FLANK_SETTLED) {
+      squirrel.x += clamp(away, -SQUIRREL_SPEED, SQUIRREL_SPEED);
+      squirrel.facing = away > 0 ? 1 : -1;
+    } else {
+      // Settled: turn and look at him rather than staring down the room.
+      squirrel.facing = -squirrel.side as -1 | 1;
+    }
+
+    squirrel.x =
+      squirrel.side === -1
+        ? Math.min(squirrel.x, scene.ciccio.x - MIN_FLANK)
+        : Math.max(squirrel.x, scene.ciccio.x + MIN_FLANK);
+  }
+}
+
+/** One frame. Everything mutates `scene`; nothing here reads a clock. */
+export function step(scene: Scene, rng: Rng): void {
+  scene.frame++;
+  walkCiccio(scene, rng);
+  followSquirrels(scene);
 }
