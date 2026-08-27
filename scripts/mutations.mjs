@@ -96,10 +96,25 @@ export const MUTATIONS = [
   // --- Recurring. A generated expense is a snapshot; nothing may read a marker
   // and write back into the row it names.
   {
-    name: 'a month already generated is offered again',
+    name: 'catching up has no bound, so a fresh install writes every month ever',
     file: 'src/services/recurring.ts',
-    find: 'MAX_CATCH_UP_OCCURRENCES',
-    replace: '1000',
+    find: 'export const MAX_CATCH_UP_OCCURRENCES = 24;',
+    replace: 'export const MAX_CATCH_UP_OCCURRENCES = 100000;',
+    tests: ['src/services/recurring.test.ts'],
+  },
+  {
+    name: 'a month falls due a day late, so today never counts',
+    file: 'src/services/recurring.ts',
+    find: 'if (date > todayIso) break;',
+    replace: 'if (date >= todayIso) break;',
+    tests: ['src/services/recurring.test.ts'],
+  },
+
+  {
+    name: 'a month the user deleted is written again',
+    file: 'src/services/recurring.ts',
+    find: 'const resumeFrom = last ? monthIndex(last) + 1 : anchor;',
+    replace: 'const resumeFrom = anchor;',
     tests: ['src/services/recurring.test.ts'],
   },
 
