@@ -8,6 +8,8 @@ import {
   CICCIO_NARROWEST,
   CICCIO_CALL,
   CICCIO_GRATIN,
+  MAX_STEAM,
+  SQUIRREL_SPEED,
   SQUIRREL_CALL,
   step,
   flankX,
@@ -355,15 +357,16 @@ describe('two squirrels who love him', () => {
   });
 
   // The max-step invariant, and the assertion that will still be here when
-  // there is furniture to climb: nobody in this scene may cover ground in one
-  // frame that they should have taken several to cover.
-  it('moves nobody further in a frame than they can walk', () => {
+  // there is furniture to climb: nobody in this room may cover ground in one
+  // frame that they should have taken several to cover. Asserted against the
+  // fastest anybody moves, which is a squirrel keeping up with a dash for food.
+  it('moves nobody further in a frame than they can travel', () => {
     const s = sceneAt(1440);
     let previous = s.squirrels.map((q) => q.x);
     for (let i = 0; i < 4000; i++) {
       step(s, eager);
       const now = s.squirrels.map((q) => q.x);
-      now.forEach((x, j) => expect(Math.abs(x - previous[j])).toBeLessThanOrEqual(1));
+      now.forEach((x, j) => expect(Math.abs(x - previous[j])).toBeLessThanOrEqual(SQUIRREL_SPEED));
       previous = now;
     }
   });
@@ -559,5 +562,115 @@ describe('what the three of them say', () => {
     say(s.squirrels[0], SQUIRREL_CALL);
     say(s.squirrels[1], SQUIRREL_CALL);
     expect(s.squirrels.map((q) => q.say?.line)).toEqual([SQUIRREL_CALL, SQUIRREL_CALL]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+
+describe('a potato gratin', () => {
+  it('puts one out on its own, without anybody asking', () => {
+    const s = sceneAt(900);
+    runUntil(s, (x) => x.gratin !== null, 60000, eager);
+    expect(s.gratin!.x).toBeGreaterThanOrEqual(s.layout.wanderLeft);
+    expect(s.gratin!.x).toBeLessThanOrEqual(s.layout.wanderRight);
+  });
+
+  it('serves one at once when the oven is clicked', () => {
+    const s = sceneAt(900);
+    clickScene(s, s.layout.ovenX, s.ground - 30);
+    expect(s.gratin).not.toBeNull();
+  });
+
+  // One slot, by construction. The timer must also stop while one is out, or it
+  // runs down during a long meal and a second appears the frame the first is
+  // finished — one gratin per meal, for ever after.
+  it('never puts a second one out, however fast the oven is clicked', () => {
+    const s = sceneAt(900);
+    clickScene(s, s.layout.ovenX, s.ground - 30);
+    const first = s.gratin;
+    for (let i = 0; i < 6000; i++) {
+      clickScene(s, s.layout.ovenX, s.ground - 30);
+      step(s, eager);
+      if (s.gratin) expect(s.gratin).toBe(first);
+      else break;
+    }
+  });
+
+  it('sends him running for it, and he says so on the way', () => {
+    const s = sceneAt(900);
+    s.ciccio.x = s.layout.wanderLeft;
+    clickScene(s, s.layout.ovenX, s.ground - 30);
+    s.gratin!.x = s.layout.wanderRight;
+
+    runUntil(s, (x) => x.ciccio.phase === 'heading', 400);
+    expect(s.ciccio.say!.line).toBe(CICCIO_GRATIN);
+    expect(s.ciccio.dir).toBe(1);
+  });
+
+  // Keyed on the goal *holding* rather than on the frame it was set, he shouts
+  // it every frame of the run.
+  it('says it once when he spots it, not all the way across the room', () => {
+    const s = sceneAt(900);
+    s.ciccio.x = s.layout.wanderLeft;
+    clickScene(s, s.layout.ovenX, s.ground - 30);
+    s.gratin!.x = s.layout.wanderRight;
+    runUntil(s, (x) => x.ciccio.phase === 'heading', 400);
+
+    runUntil(s, (x) => x.ciccio.say === null, 4000, steady);
+    // Still running for it, and no longer saying anything.
+    expect(s.ciccio.phase).toBe('heading');
+    expect(s.ciccio.say).toBeNull();
+  });
+
+  it('does a happy dance when he gets there, and then eats it', () => {
+    const s = sceneAt(900);
+    clickScene(s, s.layout.ovenX, s.ground - 30);
+    runUntil(s, (x) => x.ciccio.phase === 'wobbling', 6000);
+    // The same wobble, told to hand off to eating rather than to wandering.
+    expect(s.ciccio.after).toBe('eating');
+    runUntil(s, (x) => x.ciccio.phase === 'eating', 6000);
+    runUntil(s, (x) => x.gratin === null, 6000);
+    expect(s.ciccio.phase).toBe('wandering');
+  });
+
+  it('arrives on the spot rather than stepping over it and back', () => {
+    const s = sceneAt(1440);
+    s.ciccio.x = s.layout.wanderRight;
+    clickScene(s, s.layout.ovenX, s.ground - 30);
+    const where = s.gratin!.x;
+
+    runUntil(s, (x) => x.ciccio.phase === 'heading', 400);
+    runUntil(s, (x) => x.ciccio.phase !== 'heading', 8000);
+    expect(s.ciccio.x).toBe(where);
+  });
+
+  // A stale `after` from a click-dance far from any food would have him eating
+  // the carpet. The entry is guarded rather than trusted.
+  it('does not eat thin air when the dance was not about food', () => {
+    const s = sceneAt(900);
+    s.ciccio.after = 'eating';
+    clickScene(s, s.ciccio.x, s.ground - 10);
+    runUntil(s, (x) => x.ciccio.phase === 'wandering', 4000);
+    expect(s.ciccio.phase).toBe('wandering');
+  });
+
+  it('keeps it inside his walk when the window changes, so it stays reachable', () => {
+    const s = sceneAt(1440);
+    clickScene(s, s.layout.ovenX, s.ground - 30);
+    s.gratin!.x = s.layout.wanderRight;
+    resizeScene(s, stageOf(320));
+    expect(s.gratin).not.toBeNull();
+    expect(s.gratin!.x).toBeLessThanOrEqual(s.layout.wanderRight);
+    expect(s.gratin!.x).toBeGreaterThanOrEqual(s.layout.wanderLeft);
+  });
+
+  it('caps the steam rather than growing it for as long as the app is open', () => {
+    const s = sceneAt(900);
+    clickScene(s, s.layout.ovenX, s.ground - 30);
+    for (let i = 0; i < 4000; i++) {
+      step(s, eager);
+      if (s.gratin) expect(s.gratin.steam.length).toBeLessThanOrEqual(MAX_STEAM);
+      else clickScene(s, s.layout.ovenX, s.ground - 30);
+    }
   });
 });

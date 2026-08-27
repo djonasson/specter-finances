@@ -25,6 +25,7 @@ import {
   TV_WIDTH,
   TV_PANEL,
   TV_HANGS_AT,
+  GRATIN_BITES,
   WALL_HEIGHT,
   DEPTH,
   SEAT_HEIGHT,
@@ -97,6 +98,11 @@ const LIGHT = {
   squirrelTail: '#d98a4a',
   squirrelTailLight: '#eaa66a',
 
+  dish: '#e4e0d8',
+  gratin: '#e8c98a',
+  gratinTop: '#c98a3f',
+  steam: '#ffffff',
+
   bubble: '#ffffff',
   bubbleEdge: '#c8bda9',
   bubbleText: '#3d332a',
@@ -164,6 +170,11 @@ const DARK: Palette = {
   squirrelBelly: '#cbbda6',
   squirrelTail: '#b4713a',
   squirrelTailLight: '#c98a52',
+
+  dish: '#5a544b',
+  gratin: '#b89a63',
+  gratinTop: '#a06e30',
+  steam: '#cfc8bd',
 
   bubble: '#e8e2d8',
   bubbleEdge: '#7a7167',
@@ -665,6 +676,52 @@ function drawSquirrel(
 }
 
 /**
+ * A dish of potato gratin, and the steam coming off it.
+ *
+ * The steam is thrown, so it goes above the reserved band on purpose — the band
+ * covers what the room *stands* in, the same rule that lets the cello's pizza
+ * sail over the app.
+ */
+function drawGratin(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette): void {
+  const gratin = scene.gratin;
+  if (!gratin) return;
+  const g = scene.ground;
+
+  // How much is left, so it goes down as he eats it.
+  const left = Math.max(0.25, gratin.bites / GRATIN_BITES);
+
+  contactShadow(ctx, gratin.x, g, 22, p);
+
+  // The dish.
+  ctx.fillStyle = p.dish;
+  ctx.beginPath();
+  ctx.ellipse(gratin.x, g - 3, 12, 4.5, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.roundRect(gratin.x - 12, g - 8, 24, 6, 2);
+  ctx.fill();
+
+  // The gratin itself, browned on top.
+  ctx.fillStyle = p.gratin;
+  ctx.beginPath();
+  ctx.ellipse(gratin.x, g - 9, 10 * left, 4 * left, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = p.gratinTop;
+  ctx.beginPath();
+  ctx.ellipse(gratin.x - 1, g - 10.5, 7.5 * left, 2.6 * left, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = p.steam;
+  for (const puff of gratin.steam) {
+    ctx.globalAlpha = Math.min(0.5, puff.life / 110);
+    ctx.beginPath();
+    ctx.arc(puff.x, g + puff.y, puff.size, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+/**
  * What somebody is saying, in a bubble over their head.
  *
  * The scene owns the words and how long they stay up; the width is worked out
@@ -738,6 +795,7 @@ export function drawScene(
   drawTv(ctx, scene, p);
   drawSofa(ctx, scene, p);
 
+  drawGratin(ctx, scene, p);
   for (const squirrel of scene.squirrels) drawSquirrel(ctx, scene, squirrel, p);
   drawCiccio(ctx, scene, p);
 

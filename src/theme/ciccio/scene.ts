@@ -108,10 +108,14 @@ export const MIN_FLANK = 26;
 /** Scene units a frame, at the ~40fps the background loop is throttled to. */
 const WALK_SPEED = 0.55;
 /**
- * Faster than he walks, or a squirrel he turns towards can never close the gap
- * and spends the rest of the session pinned against `MIN_FLANK`.
+ * Faster than he *runs*, not merely faster than he walks.
+ *
+ * Set between the two, a squirrel could keep up with a stroll but not with a
+ * dash for a gratin — so the clamp that keeps him between them dragged it along
+ * instead, which is a teleport wearing a squirrel suit. It is the fastest
+ * anybody in this room moves, and the max-step test is asserted against it.
  */
-const SQUIRREL_SPEED = 0.9;
+export const SQUIRREL_SPEED = 1.7;
 /** Near enough is near enough: without it they shuffle a fraction for ever. */
 const FLANK_SETTLED = 1.2;
 /** How much of a turn `facing` takes in one frame. */
@@ -132,6 +136,19 @@ const WOBBLE_CHANCE = 0.0011;
 export const CICCIO_NARROWEST = 0.3;
 
 // -- what they say -----------------------------------------------------------
+
+// -- the oven ----------------------------------------------------------------
+
+/** Frames between one gratin and the next, once the last has been eaten. */
+const OVEN_INTERVAL = 1400;
+/** How many mouthfuls a gratin is. */
+export const GRATIN_BITES = 150;
+/** How close he has to be to it to be eating it rather than near it. */
+const BITE_REACH = 26;
+/** Scene units a frame. Faster than a walk: it is a gratin. */
+const RUN_SPEED = 1.35;
+export const MAX_STEAM = 14;
+const STEAM_EVERY = 16;
 
 export const CICCIO_CALL = 'Ciccio Ciccio!';
 export const CICCIO_GRATIN = 'Ciccio pasticcio!';
@@ -281,7 +298,7 @@ export function layoutFor(width: number): Layout {
 // -- the cast ----------------------------------------------------------------
 
 /** What he is doing. */
-export type CiccioPhase = 'wandering' | 'wobbling';
+export type CiccioPhase = 'wandering' | 'wobbling' | 'heading' | 'eating';
 
 /**
  * What somebody is saying, and for how long.
@@ -307,6 +324,19 @@ export interface Ciccio {
    * walk resumes from wherever the spin last left it and he flips.
    */
   spin: number;
+  /**
+   * What the dance hands off to when it finishes.
+   *
+   * One wobble, two callers: the one he does for no reason and the happy one
+   * before a meal are the same machinery, and two copies would drift apart the
+   * first time either was tuned. `eating` is *guarded* on entry rather than
+   * trusted — a stale value from a click-dance far from any food would have him
+   * eating the carpet.
+   */
+  after: 'wandering' | 'eating';
+  /** Where he is going and why, or nothing. */
+  goal: { x: number; then: 'dance' } | null;
+  bites: number;
   say: Say | null;
   x: number;
   /** Snaps. Which way he is going. */
@@ -343,6 +373,21 @@ export interface Squirrel {
   say: Say | null;
 }
 
+/** A puff of steam coming off something hot. */
+export interface Puff {
+  x: number;
+  y: number;
+  rise: number;
+  size: number;
+  life: number;
+}
+
+export interface Gratin {
+  x: number;
+  bites: number;
+  steam: Puff[];
+}
+
 export interface Scene {
   width: number;
   height: number;
@@ -352,6 +397,12 @@ export interface Scene {
   ciccio: Ciccio;
   /** Exactly two, one either side. */
   squirrels: Squirrel[];
+  /**
+   * One at a time, by construction — there is only ever this one slot, and the
+   * timer below only runs while it is empty.
+   */
+  gratin: Gratin | null;
+  oven: { nextIn: number };
   frame: number;
 }
 
@@ -385,6 +436,9 @@ export function createScene(size: SceneSize, rng: Rng): Scene {
     ciccio: {
       phase: 'wandering',
       spin: 0,
+      after: 'wandering',
+      goal: null,
+      bites: 0,
       say: null,
       x: layout.wanderLeft + (layout.wanderRight - layout.wanderLeft) * rng(),
       dir: rng() < 0.5 ? -1 : 1,
@@ -392,6 +446,8 @@ export function createScene(size: SceneSize, rng: Rng): Scene {
       at: 'floor',
     },
     squirrels: [],
+    gratin: null,
+    oven: { nextIn: OVEN_INTERVAL },
     frame: 0,
   };
   scene.squirrels = ([-1, 1] as const).map((side) => ({
@@ -423,6 +479,13 @@ export function resizeScene(scene: Scene, size: SceneSize): void {
   else if (scene.ciccio.at === 'bed') scene.ciccio.x = bedX;
   else scene.ciccio.x = clamp(scene.ciccio.x, wanderLeft, wanderRight);
 
+  // Clamped into *his* range, never deleted: a gratin left where the room used
+  // to be wider is a gratin he can never reach, and `heading` never arrives.
+  if (scene.gratin) {
+    scene.gratin.x = clamp(scene.gratin.x, wanderLeft, wanderRight);
+    if (scene.ciccio.goal) scene.ciccio.goal = { ...scene.ciccio.goal, x: scene.gratin.x };
+  }
+
   for (const squirrel of scene.squirrels) squirrel.x = flankX(scene, squirrel.side);
 }
 
@@ -439,14 +502,65 @@ function walkCiccio(scene: Scene, rng: Rng): void {
   const { ciccio } = scene;
   const { wanderLeft, wanderRight } = scene.layout;
 
+  if (ciccio.phase === 'eating') {
+    // Nobody but this may clear the gratin, and it is guarded rather than
+    // trusted: a stale `after` from a dance nowhere near food would otherwise
+    // have him eating the carpet.
+    const gratin = scene.gratin;
+    if (!gratin || Math.abs(gratin.x - ciccio.x) > BITE_REACH) {
+      ciccio.phase = 'wandering';
+      return;
+    }
+    if (--gratin.bites <= 0) {
+      scene.gratin = null;
+      ciccio.phase = 'wandering';
+    }
+    return;
+  }
+
   if (ciccio.phase === 'wobbling') {
     ciccio.spin += WOBBLE_SPEED;
     if (ciccio.spin >= WOBBLE_TURNS * TAU) {
       ciccio.spin = 0;
-      ciccio.phase = 'wandering';
+      ciccio.phase = ciccio.after === 'eating' ? 'eating' : 'wandering';
+      ciccio.after = 'wandering';
     }
     // He stays exactly where he is: the dance is on the spot, and `facing` is
     // the walk's and is not touched, so the walk resumes the way it left off.
+    return;
+  }
+
+  if (ciccio.phase === 'heading') {
+    const goal = ciccio.goal;
+    if (!goal) {
+      ciccio.phase = 'wandering';
+      return;
+    }
+    const away = goal.x - ciccio.x;
+    ciccio.dir = away >= 0 ? 1 : -1;
+    ciccio.facing += clamp(ciccio.dir - ciccio.facing, -TURN_EASE, TURN_EASE);
+    if (Math.abs(away) <= RUN_SPEED) {
+      // Snapped on arrival. A step that overshoots leaves him oscillating
+      // either side of the plate at running speed, for ever.
+      ciccio.x = goal.x;
+      ciccio.goal = null;
+      ciccio.after = 'eating';
+      startWobble(ciccio);
+      return;
+    }
+    ciccio.x += ciccio.dir * RUN_SPEED;
+    return;
+  }
+
+  // Food beats wandering and beats a dance he started himself, and it is set as
+  // a *goal* rather than as a phase, so everything that has to happen on the
+  // way happens in one place.
+  if (scene.gratin && !ciccio.goal) {
+    ciccio.goal = { x: scene.gratin.x, then: 'dance' };
+    ciccio.phase = 'heading';
+    // Said on the frame he spots it. Keyed on the goal *holding*, he would
+    // shout it every frame of the run across the room.
+    say(ciccio, CICCIO_GRATIN);
     return;
   }
 
@@ -529,10 +643,61 @@ function runTalking(scene: Scene, rng: Rng): void {
   }
 }
 
+/**
+ * Puts a gratin on the floor in front of the oven, if there is not one already.
+ *
+ * The one way a gratin is ever made: the timer and the click both come through
+ * here, so the two cannot drift into answering differently.
+ */
+export function serveGratin(scene: Scene): void {
+  if (scene.gratin) return;
+  const { ovenX, wanderLeft, wanderRight } = scene.layout;
+  scene.gratin = {
+    x: clamp(ovenX + OVEN_WIDTH / 2 + 18, wanderLeft, wanderRight),
+    bites: GRATIN_BITES,
+    steam: [],
+  };
+}
+
+function runOven(scene: Scene): void {
+  // Only counts down while there is no gratin out. Left running, it empties
+  // during a long meal and puts a second one out the frame the first is
+  // finished — one gratin per meal, for ever after.
+  if (scene.gratin) return;
+  if (--scene.oven.nextIn <= 0) {
+    scene.oven.nextIn = OVEN_INTERVAL;
+    serveGratin(scene);
+  }
+}
+
+function runSteam(scene: Scene, rng: Rng): void {
+  const gratin = scene.gratin;
+  if (!gratin) return;
+
+  for (const puff of gratin.steam) {
+    puff.y -= puff.rise;
+    puff.size += 0.06;
+    puff.life--;
+  }
+  gratin.steam = gratin.steam.filter((puff) => puff.life > 0);
+
+  if (scene.frame % STEAM_EVERY === 0 && gratin.steam.length < MAX_STEAM) {
+    gratin.steam.push({
+      x: gratin.x + (rng() - 0.5) * 6,
+      y: -8,
+      rise: 0.32 + rng() * 0.2,
+      size: 2 + rng() * 1.4,
+      life: 70,
+    });
+  }
+}
+
 /** One frame. Everything mutates `scene`; nothing here reads a clock. */
 export function step(scene: Scene, rng: Rng): void {
   scene.frame++;
+  runOven(scene);
   walkCiccio(scene, rng);
+  runSteam(scene, rng);
   followSquirrels(scene);
   runTalking(scene, rng);
 }
@@ -585,14 +750,26 @@ export const hitsCiccio = (scene: Scene, x: number, y: number) =>
 export const hitsSquirrel = (scene: Scene, squirrel: Squirrel, x: number, y: number) =>
   hits(x, y, squirrel.x, scene.ground, 26);
 
+export const hitsOven = (scene: Scene, x: number, y: number) =>
+  Math.abs(x - scene.layout.ovenX) <= OVEN_WIDTH / 2 + 6 &&
+  y >= scene.ground - OVEN_HOOD_TOP &&
+  y <= scene.ground + 6;
+
 /**
  * A click, in the scene's own units.
  *
- * Order matters where boxes overlap: the animals are tested before the room,
- * because their boxes are the generous ones and a squirrel standing in front of
- * the cooker should answer the tap rather than the cooker behind it.
+ * Order matters where the boxes overlap, and it is the room *first*. The oven
+ * never moves and is what somebody aims at; his box is deliberately enormous —
+ * forty units either side of an animal a few units across — so testing him
+ * first makes the oven unclickable for as long as he happens to be standing in
+ * front of it, which is exactly when somebody is most likely to be reaching
+ * past him for it.
  */
 export function clickScene(scene: Scene, x: number, y: number): void {
+  if (hitsOven(scene, x, y)) {
+    serveGratin(scene);
+    return;
+  }
   for (const squirrel of scene.squirrels) {
     if (hitsSquirrel(scene, squirrel, x, y)) {
       say(squirrel, SQUIRREL_CALL);
