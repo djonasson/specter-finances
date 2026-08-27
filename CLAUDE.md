@@ -142,6 +142,11 @@ Run them in this order, because each one's fixes are the next one's input:
    grants access to a real person's Drive file, so anything touching auth,
    `sheetAccess`, or what gets written to the sheet needs a look.
 
+**Run them on a clean tree, and do not edit while one is running.** They spawn
+a dozen or more subagents that mutate files to see whether the suite notices,
+and restore them afterwards — so uncommitted work is theirs to lose, and twice
+it was. Commit first; the diff they read is the committed one anyway.
+
 They read the **pending diff on the current branch**, so run them before merging
 or squashing, not after — once the change is on `main` there is nothing left for
 them to look at. Work on a branch even for a one-liner, so there is a diff to
@@ -524,8 +529,18 @@ drawn — she is a few pixels across on a screen a thousand wide. `clickScene` k
 `document` listener with the canvas at `pointer-events: none`, so none of this
 costs the app a tap.
 
-**Four squirrels live in two colonies — a pair in the park and a pair in the
-banana trees — and in nothing else.** They climb a **spiral** round a trunk
+**Squirrels live in colonies, one pair to a colony and a colony to a stand of
+trees — `COLONIES` in `scene.ts` says which, and everything else follows from
+it.** Today that is a pair in the park and a pair in the bananas, and in nothing
+else. It used to be three conventions that happened to agree: the seeding split
+the index in half, the kissing walked the list two at a time, and a squirrel's
+stand was recovered from whichever tree it was in. They agreed only at exactly
+two colonies of two — at three, the third squirrel came out identical to the
+first in every seeded field and one pair straddled the two stands, so it shared
+no tree and could never kiss. A squirrel carries its `colony` for the same
+reason `bird.perchedOn` and `car.at` are carried: a fact about the animal that
+can only be recovered by measuring where it stands is a fact the next nudge
+changes. They climb a **spiral** round a trunk
 rather than a straight line up one side — a squirrel on a vertical line reads as
 a lift — which means they pass behind the tree, which is why each colony is
 drawn in **two passes around its own stand**: `squirrelBehind` says which side

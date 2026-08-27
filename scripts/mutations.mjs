@@ -188,6 +188,32 @@ export const MUTATIONS = [
   // asking is whether the band still follows a banana that outgrows the park —
   // the case the derivation exists for and the one nothing covered before.
   {
+    name: 'a colony is seeded as a copy of an earlier one',
+    file: 'src/theme/cello/scene.ts',
+    find: '        side: inPair * SQUIRREL_SIDE + (at * SQUIRREL_SIDE) / colonies.length,',
+    replace: '        side: (at * 2 + inPair) * SQUIRREL_SIDE,',
+    tests: ['src/theme/cello/scene.test.ts'],
+  },
+  {
+    name: 'a pair is seeded across two stands, so it can never meet',
+    file: 'src/theme/cello/scene.ts',
+    find: '      const tree = stand.from + (inPair % stand.count);',
+    replace: '      const tree = inPair % (layout.treeXs.length + layout.bananaXs.length);',
+    tests: ['src/theme/cello/scene.test.ts'],
+  },
+  {
+    name: 'the kiss tilt comes off the stand rather than the colony',
+    file: 'src/theme/cello/scene.ts',
+    find: '  const tilt = one.colony * KISS_TILT;',
+    replace: '  const tilt = inPark(scene, one.tree) ? 0 : KISS_TILT;',
+    tests: ['src/theme/cello/scene.test.ts'],
+  },
+  // Deliberately not here: pairing by adjacency instead of by colony. Seeding
+  // emits each colony's two together, so the two orders agree and the mutation
+  // changes nothing — an unkillable survivor rather than a finding. The code
+  // still groups by colony, because that is what it means and it survives a
+  // reordering; the mutation would only ever be noise.
+  {
     name: 'a banana grows taller than the park and the band does not follow',
     file: 'src/theme/cello/scene.ts',
     find: 'export const BANANA_TRUNK = 62;',

@@ -80,14 +80,20 @@ function leadFrames(steer: { gain: number; drag: number }): number {
 }
 
 /**
- * The squirrels: two in the park and two in the bananas, a pair for each colony
- * so that each has somebody to kiss.
+ * Who lives where: one pair to a colony, and a colony to a stand of trees.
  *
- * `up` is how far along the tree one is, from the foot of the trunk at 0 to the
- * top of the crown at 1, so a squirrel's height is the tree's — it cannot climb
- * out of the band the app reserved by climbing higher than the tree it is in.
+ * Stated once, as data. It used to be three conventions that happened to agree —
+ * the seeding split the index in half, the kissing walked the list two at a
+ * time, and the stand was recovered from whichever tree a squirrel was in — and
+ * they agreed only at exactly four. At six, the third squirrel came out
+ * identical to the first in every seeded field, and the middle pair straddled
+ * the two stands, so it could never share a tree and never kiss. Nothing said
+ * so; it simply would not have happened.
  */
-const SQUIRREL_COUNT = 4;
+export const COLONIES = [{ stand: 'park' }, { stand: 'banana' }] as const;
+
+export type Stand = (typeof COLONIES)[number]['stand'];
+
 const CLIMB_SPEED = 0.012;
 /** Frames spent still, once it has reached one end of its climb. */
 const SQUIRREL_SIT_MIN = 30;
@@ -703,6 +709,15 @@ export interface Squirrel {
   /** The tree it is crossing to, and which side of the trunk it sits on. */
   towards: number;
   side: number;
+  /**
+   * Which colony it was born into — an index into `COLONIES`.
+   *
+   * Held rather than worked out from the tree it happens to be in, for the same
+   * reason `bird.perchedOn` and `car.at` are: a fact about the animal should not
+   * be recoverable only by measuring where it stands, or the first thing that
+   * moves it becomes the thing that changes who it is.
+   */
+  colony: number;
 }
 
 export type BirdPhase =
@@ -1048,6 +1063,13 @@ export function inPark(scene: Scene, at: number): boolean {
   return at < scene.layout.treeXs.length;
 }
 
+/** Where a stand's trees begin in the one list, and how many it has. */
+export function standTrees(layout: Layout, stand: Stand): { from: number; count: number } {
+  return stand === 'park'
+    ? { from: 0, count: layout.treeXs.length }
+    : { from: layout.treeXs.length, count: layout.bananaXs.length };
+}
+
 /**
  * Where one of them stands this frame, swaying with its own wind.
  *
@@ -1268,10 +1290,14 @@ function otherTrees(scene: Scene, tree: number): number[] {
  * time: the squirrels are checked as a pair once the whole park has moved.
  */
 function runSquirrelPairs(scene: Scene, rng: Rng): void {
-  // Two at a time, in the order they were made: the first pair lives in the
-  // park and the second in the bananas, so each colony has somebody to kiss.
-  for (let at = 0; at + 1 < scene.squirrels.length; at += 2) {
-    runSquirrelPair(scene, rng, scene.squirrels[at], scene.squirrels[at + 1]);
+  // By colony, and off the squirrels themselves rather than off `COLONIES` —
+  // whoever is in the scene is who there is to pair. Walking the list two at a
+  // time is the same thing only while every colony holds exactly two; with
+  // three it pairs the second of one colony with the first of the next, who
+  // stand in different trees and so can never meet or kiss.
+  for (const at of new Set(scene.squirrels.map((squirrel) => squirrel.colony))) {
+    const [one, two] = scene.squirrels.filter((squirrel) => squirrel.colony === at);
+    if (one && two) runSquirrelPair(scene, rng, one, two);
   }
 }
 
@@ -1317,11 +1343,10 @@ function runSquirrelPair(scene: Scene, rng: Rng, one: Squirrel, two: Squirrel): 
   // shadow" the seeding spread exists to prevent. A sixth of a turn is enough
   // to separate all four and still leaves them either side of the trunk.
   const climbed = SPIRAL_TURNS * Math.PI * 2;
-  // Off which pair is kissing, the way the birth angle is, rather than off
-  // which stand it is in: keyed on `inPark` a third pair — or a second one in
-  // the park — takes a tilt another pair already has, and the two come out of a
-  // kiss in the lockstep this exists to prevent.
-  const tilt = Math.floor(scene.squirrels.indexOf(one) / 2) * KISS_TILT;
+  // Off the colony it belongs to, the way the birth angle is. Keyed on which
+  // stand it is in, a third colony takes a tilt another already has and the two
+  // come out of a kiss in the lockstep this exists to prevent.
+  const tilt = one.colony * KISS_TILT;
   // Both turned *towards* the front by it, not both rotated the same way round
   // the trunk. At the top of the climb the angle is exactly `±π/2 + tilt`, and
   // `cos(π/2 + tilt)` is negative for any tilt at all — so rotating put one of
@@ -1517,6 +1542,47 @@ export function shoulderY(scene: Scene): number {
  * journey the scene is built to avoid. With no car there are no ends, and she
  * starts anywhere in her range as she always did.
  */
+/**
+ * A pair into each colony's stand.
+ *
+ * Takes the colonies rather than reading `COLONIES`, so a test can ask what
+ * three of them would do without the scene having to have three. Everything a
+ * squirrel is seeded with comes off its colony and its place in the pair — no
+ * part of it is the position in the flat list, which is what used to make a
+ * third colony quietly a copy of the first.
+ */
+export function seedSquirrels(
+  layout: Layout,
+  colonies: readonly { stand: Stand }[] = COLONIES,
+): Squirrel[] {
+  return colonies.flatMap((colony, at) => {
+    const stand = standTrees(layout, colony.stand);
+    return [0, 1].map((inPair) => {
+      const tree = stand.from + (inPair % stand.count);
+      return {
+        tree,
+        // Never created mid-jump: one statement of where it is, used twice.
+        towards: tree,
+        // Spread along their tree, so the two of a pair are never one squirrel
+        // with a shadow: different heights, climbing opposite ways. Within the
+        // tree, not past its top — `0.25 + i * 0.4` over the flat list put the
+        // third and fourth above 1, and their first frame snapped them back
+        // down the trunk.
+        up: 0.25 + inPair * 0.4,
+        dir: (inPair === 0 ? 1 : -1) as 1 | -1,
+        phase: 'climbing' as SquirrelPhase,
+        timer: 0,
+        // Half a turn between the two of a pair, and a fraction of one between
+        // colonies, so no two of them share a phase. `SQUIRREL_SIDE` is pi, so
+        // an offset taken off the flat index gave the third squirrel 2pi —
+        // which `sin` and `cos` cannot tell from the first squirrel's zero.
+        side: inPair * SQUIRREL_SIDE + (at * SQUIRREL_SIDE) / colonies.length,
+        colony: at,
+      };
+    });
+  });
+}
+
 function startingX(layout: Layout, rng: Rng): number {
   const { girlLeft, girlRight, carSchoolX, carHomeX } = layout;
   if (carSchoolX === null || carHomeX === null) {
@@ -1578,38 +1644,7 @@ export function createScene(size: SceneSize, rng: Rng): Scene {
     },
     oven: { nextPizzaIn: pizzaInterval(rng), tossing: 0, recovering: 0, thrown: false, smoke: [] },
     car: parkedNear(layout, girlX),
-    squirrels: Array.from({ length: SQUIRREL_COUNT }, (_, i) => {
-      // A pair per colony, in the order they are made: the first into the park
-      // and the second into the bananas. Stated once — written out again for
-      // `towards`, the two could drift apart and a squirrel would be created
-      // already mid-jump.
-      const inPair = i % 2;
-      // A half turn between the pair and a quarter between the colonies. On the
-      // global index `SQUIRREL_SIDE` being pi made squirrel 2's side of 2pi
-      // identical to squirrel 0's 0 once `sin`/`cos` had it, so the two colonies
-      // climbed in perfect lockstep at opposite ends of the scene — the "one
-      // squirrel with a shadow" the spread exists to prevent, with `up` and
-      // `dir` fixed for it and this left behind.
-      const born = inPair * SQUIRREL_SIDE + (i < SQUIRREL_COUNT / 2 ? 0 : SQUIRREL_SIDE / 2);
-      const tree =
-        i < SQUIRREL_COUNT / 2
-          ? inPair % layout.treeXs.length
-          : layout.treeXs.length + (inPair % layout.bananaXs.length);
-      return {
-        tree,
-        towards: tree,
-        // Spread along their tree, so two of them are never one squirrel with a
-        // shadow: they start at different heights and climbing opposite ways.
-        // Within the tree, not past its top — per pair, since `0.25 + i * 0.4`
-        // put the third and fourth above 1 and their first frame snapped them
-        // back down the trunk.
-        up: 0.25 + inPair * 0.4,
-        dir: (inPair === 0 ? 1 : -1) as 1 | -1,
-        phase: 'climbing' as SquirrelPhase,
-        timer: 0,
-        side: born,
-      };
-    }),
+    squirrels: seedSquirrels(layout),
     schoolSmoke: [],
     pizza: null,
     hearts: [],

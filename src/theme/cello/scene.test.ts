@@ -49,6 +49,8 @@ import {
   homeward,
   BANANA_HEIGHT,
   BANANA_GAP,
+  COLONIES,
+  seedSquirrels,
   BANANA_STEM_TOP,
   KISS_APART,
   ROOF_RUN,
@@ -1960,14 +1962,83 @@ describe('where the bird sits on the car', () => {
 });
 
 describe('the squirrels in the park', () => {
-  // Exactly four, not "at least". Three separate conventions — which stand each
-  // is seeded into, how the pair is spread within it, and which two are checked
-  // together for a kiss — agree only at two colonies of two; at six the middle
-  // pair straddles the stands.
-  it('makes exactly two pairs, one to each stand', () => {
+  it("makes a pair for every colony, in that colony's stand", () => {
     const s = quietScene();
-    expect(s.squirrels).toHaveLength(4);
-    expect(s.squirrels.filter((squirrel) => inPark(s, squirrel.tree))).toHaveLength(2);
+
+    expect(s.squirrels).toHaveLength(COLONIES.length * 2);
+    for (const [at, colony] of COLONIES.entries()) {
+      const pair = s.squirrels.filter((squirrel) => squirrel.colony === at);
+      expect(pair).toHaveLength(2);
+      for (const squirrel of pair) {
+        expect(inPark(s, squirrel.tree)).toBe(colony.stand === 'park');
+      }
+    }
+  });
+
+  // Two colonies in one stand — the case that used to be impossible to have and
+  // silently broken to add. Both are put at the top of their own tree and given
+  // an rng that always kisses, so one step settles it.
+  it('kisses each colony as a pair, and at its own angle, even sharing a stand', () => {
+    const s = quietScene();
+    s.squirrels = seedSquirrels(s.layout, [
+      { stand: 'park' },
+      { stand: 'banana' },
+      { stand: 'park' },
+    ] as const);
+    // Colony 0 up one park tree, colony 2 up another.
+    for (const [at, tree] of [
+      [0, 0],
+      [2, 1],
+    ] as const) {
+      for (const squirrel of s.squirrels.filter((q) => q.colony === at)) {
+        // A sit with frames left on it: run out, the same all-rolling rng sends
+        // them crossing before the pair is ever considered.
+        Object.assign(squirrel, { tree, towards: tree, up: 1, phase: 'sitting', timer: 5 });
+      }
+    }
+
+    step(s, () => 0);
+
+    // Paired within the colony: adjacency would have tried the second of
+    // colony 0 with the first of colony 1, who are in different stands.
+    for (const at of [0, 2]) {
+      const pair = s.squirrels.filter((q) => q.colony === at);
+      expect(pair.every((q) => q.phase === 'kissing')).toBe(true);
+    }
+    // And at different angles, though both colonies are in the park: a tilt
+    // taken off the stand rather than the colony gives them the same two.
+    const angleOf = (at: number) => s.squirrels.find((q) => q.colony === at)!.side;
+    expect(angleOf(0)).not.toBeCloseTo(angleOf(2), 5);
+  });
+
+  // The generalisation the old shape did not have, asked without the scene
+  // needing a third colony. Three conventions used to agree only at two pairs:
+  // the seeding split the flat index in half, the kissing walked the list two
+  // at a time, and the stand was recovered from the tree. At three colonies the
+  // third squirrel was a copy of the first in every seeded field, and the
+  // middle pair straddled two stands — so it shared no tree and could never
+  // kiss, silently.
+  it('seeds a third colony as its own pair rather than a copy of the first', () => {
+    const layout = quietScene().layout;
+    const three = seedSquirrels(layout, [
+      { stand: 'park' },
+      { stand: 'banana' },
+      { stand: 'park' },
+    ] as const);
+
+    expect(three).toHaveLength(6);
+    for (const at of [0, 1, 2]) {
+      const pair = three.filter((squirrel) => squirrel.colony === at);
+      expect(pair).toHaveLength(2);
+      // Both of a pair in one stand, or they can never meet in a tree.
+      expect(pair[0].tree < layout.treeXs.length).toBe(pair[1].tree < layout.treeXs.length);
+    }
+
+    // And no two of the six the same animal: `sin` and `cos` cannot tell a side
+    // of 2pi from a side of 0.
+    const turn = Math.PI * 2;
+    const sides = three.map((s) => Math.round((((s.side % turn) + turn) % turn) * 1000) / 1000);
+    expect(new Set(sides).size).toBe(sides.length);
   });
 
   it('puts them in trees the scene actually has, park and banana alike', () => {
