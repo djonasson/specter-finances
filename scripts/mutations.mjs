@@ -372,8 +372,8 @@ export const MUTATIONS = [
   {
     name: 'a climb may start while one of them is still settling onto the sofa',
     file: 'src/theme/ciccio/scene.ts',
-    find: '    if (watching && settled && rng() < RESCUE_CHANCE) {',
-    replace: '    if (watching && rng() < RESCUE_CHANCE) {',
+    find: '      scene.squirrels.every((squirrel) => squirrel.climb === 0 && squirrel.lift >= 1) &&',
+    replace: '      true &&',
     tests: ['src/theme/ciccio/scene.test.ts'],
   },
   {
