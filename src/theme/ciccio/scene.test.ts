@@ -733,12 +733,13 @@ describe('a potato gratin', () => {
     expect(dashingForFood(s)).toBe(true);
     const early = s.squirrels.map((q) => (s.ciccio.x - q.x) * s.ciccio.dir);
 
-    // They are running too, not ambling: well above what keeping up with his
-    // walk costs them, which is the difference between a chase and a stroll.
+    // They are running too, not ambling. Well over twice what keeping up with
+    // his walk costs them: at a fifth under his own pace neither he nor they
+    // read as running, and the gap crept open a quarter of a unit a frame.
     const before = s.squirrels.map((q) => q.x);
     step(s, steady);
     s.squirrels.forEach((q, i) => {
-      expect(Math.abs(q.x - before[i])).toBeGreaterThan(WALK_SPEED);
+      expect(Math.abs(q.x - before[i])).toBeGreaterThan(WALK_SPEED * 2);
     });
 
     // The gap *grows*. A fixed trailing distance reads as the walk with
@@ -1080,6 +1081,28 @@ describe('the round they speak in', () => {
 // ---------------------------------------------------------------------------
 
 describe('the little blue cat', () => {
+  // Measured, because "now and then" is exactly the sort of thing that is
+  // quietly never: at 6400 frames between visits the first cat took nearly
+  // three minutes to arrive, and the visit is one of the two best things in the
+  // scene. Nobody watches a background for three minutes on the off-chance.
+  it('calls within the first minute, and keeps calling', () => {
+    const rng = seeded(3);
+    const s = createScene(stageOf(1280), rng);
+    let first = -1;
+    let visits = 0;
+    let had = false;
+    // Fifty minutes at the rate the frame loop is throttled to.
+    for (let i = 0; i < 120000; i++) {
+      step(s, rng);
+      if (s.cat && first < 0) first = i;
+      if (s.cat && !had) visits++;
+      had = s.cat !== null;
+    }
+    expect(first).toBeGreaterThan(0);
+    expect(first).toBeLessThan(60 * 40);
+    expect(visits).toBeGreaterThan(10);
+  });
+
   /** Runs until a cat has let itself in. */
   function withCat(width = 1280) {
     const s = sceneAt(width);

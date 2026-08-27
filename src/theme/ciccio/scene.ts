@@ -147,7 +147,7 @@ export const MIN_FLANK = 26;
  * hole in the invariant this scene is about, and it is the right one: he likes
  * to be between them *where he feels comfortable*, and this is not that.
  */
-export const DASH_FOLLOW_SPEED = 1.1;
+export const DASH_FOLLOW_SPEED = 1.7;
 
 /** Scene units a frame, at the ~40fps the background loop is throttled to. */
 export const WALK_SPEED = 0.55;
@@ -200,8 +200,13 @@ const OVEN_INTERVAL = 5200;
 export const GRATIN_BITES = 150;
 /** How close he has to be to it to be eating it rather than near it. */
 const BITE_REACH = 26;
-/** Scene units a frame. Faster than a walk: it is a gratin. */
-const RUN_SPEED = 1.35;
+/**
+ * Scene units a frame. Well over four times a walk: it is a gratin.
+ *
+ * At 1.35 he was only a fifth quicker than the squirrels behind him, so neither
+ * he nor they read as running and the gap crept open at a quarter-unit a frame.
+ */
+const RUN_SPEED = 2.4;
 /** And faster again when somebody has just asked for it by tapping. */
 const SUMMON_SPEED = 3.1;
 export const MAX_STEAM = 14;
@@ -235,8 +240,16 @@ const STEAM_EVERY = 16;
 export const SQUIRREL_SCOLD = 'Pfff!';
 
 export const CAT_CALL = 'Meow!';
-/** Frames between one visit and the next. */
-const CAT_INTERVAL = 6400;
+/**
+ * Frames between one visit and the next — about fifty seconds at the frame rate
+ * the loop is throttled to.
+ *
+ * It was 6400, which measured out at very nearly *three minutes* before the
+ * first cat, and the visit is one of the two best things in the scene. Nobody
+ * watches a background for three minutes to find out whether anything else
+ * happens.
+ */
+const CAT_INTERVAL = 2100;
 
 /** Frames of pottering between one thing on the rota and the next. */
 const ROUTINE_GAP = 1500;
