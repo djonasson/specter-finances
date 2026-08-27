@@ -141,7 +141,7 @@ export const MUTATIONS = [
     file: 'src/theme/chrome.ts',
     find: '    height: window.innerHeight,',
     replace: '    height: document.documentElement.clientHeight || window.innerHeight,',
-    tests: ['src/theme/cello/CelloBackground.test.tsx', 'src/theme/ciccio/CiccioBackground.test.tsx'],
+    tests: ['src/theme/sceneCanvas.test.tsx'],
   },
   {
     name: 'the pixel ratio follows the device with no cap',
@@ -251,14 +251,14 @@ export const MUTATIONS = [
     file: 'src/theme/sceneCanvas.ts',
     find: '      size = next;',
     replace: '',
-    tests: ['src/theme/cello/CelloBackground.test.tsx', 'src/theme/ciccio/CiccioBackground.test.tsx'],
+    tests: ['src/theme/sceneCanvas.test.tsx'],
   },
   {
     name: 'the resize guard ignores the ground, so a moved footer is not noticed',
     file: 'src/theme/sceneCanvas.ts',
     find: ' && next.ground === size.ground',
     replace: '',
-    tests: ['src/theme/cello/CelloBackground.test.tsx', 'src/theme/ciccio/CiccioBackground.test.tsx'],
+    tests: ['src/theme/sceneCanvas.test.tsx'],
   },
   // Deliberately not here: the bound on a banana leaf's `across`. Measured over
   // forty plants it never once binds, so removing it changes nothing — an

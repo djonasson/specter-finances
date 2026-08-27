@@ -19,6 +19,18 @@ import { footerHeight, viewportSize } from './chrome';
 export const clamp = (value: number, min: number, max: number) =>
   Math.min(max, Math.max(min, value));
 
+/**
+ * Move a number towards a target by at most one step.
+ *
+ * The one idea behind every eased value in every scene — a facing that turns
+ * over a dozen frames, a bed being turned down, a hedgehog's spines going up —
+ * and the reason all of them ease rather than snap. Written out at each site it
+ * was five copies of the same two `clamp`s, and the max-step invariant those
+ * scenes assert is precisely that nothing skips this.
+ */
+export const toward = (value: number, target: number, step: number) =>
+  value + clamp(target - value, -step, step);
+
 /** A scene stands this far above the app's footer, in *screen* pixels. */
 export const GROUND_ABOVE_FOOTER = 34;
 

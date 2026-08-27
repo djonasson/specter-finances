@@ -24,7 +24,7 @@
  * carry a kind and an orbit angle that mean nothing in a living room.
  */
 
-import { clamp, sceneFloor } from '../stage';
+import { clamp, sceneFloor, toward } from '../stage';
 import type { SceneSize } from '../stage';
 
 // -- the furniture -----------------------------------------------------------
@@ -182,7 +182,12 @@ const WOBBLE_TURNS = 2;
 const WOBBLE_SPEED = 0.075;
 /** Chance a frame that he starts one himself. */
 const WOBBLE_CHANCE = 0.0011;
-/** How narrow he may be drawn passing edge-on, as a share of full width. */
+/**
+ * How narrow he may be drawn passing edge-on, as a share of full width.
+ *
+ * Exported for the test that pins it — the drawing asks `ciccioFacing`, which
+ * is where it is applied.
+ */
 export const CICCIO_NARROWEST = 0.3;
 
 // -- what they say -----------------------------------------------------------
@@ -256,7 +261,7 @@ const NAP_FRAMES = 2200;
 const MIN_SIT = 400;
 const STEAM_EVERY = 16;
 
-// -- the cat -----------------------------------------------------------------
+// -- what happens, and how often ----------------------------------------------
 
 export const SQUIRREL_SCOLD = 'Pfff!';
 
@@ -474,11 +479,12 @@ export function layoutFor(width: number): Layout {
   // areas grow apart as the room does.
   const bedRight = bedX + BED_WIDTH / 2;
   const loungeLeft = loungeX - SOFA_WIDTH / 2;
-  const ovenX = clamp(
-    bedRight + (loungeLeft - bedRight) * KITCHEN_ALONG,
-    bedRight + GAP + OVEN_WIDTH / 2,
-    loungeLeft - GAP - OVEN_WIDTH / 2,
-  );
+  // No clamp: `loungeX` above already floors the span at `GAP * 2 + OVEN_WIDTH`,
+  // which is exactly what a centred cooker needs, so a clamp here could never
+  // once bind — and a guard that cannot fire is a trap, not a safety net. What
+  // keeps it honest is the width sweep asserting the two gaps, which is also
+  // what would catch `KITCHEN_ALONG` being moved off centre.
+  const ovenX = bedRight + (loungeLeft - bedRight) * KITCHEN_ALONG;
 
   // His whole floor, inset by a flank at each end so a squirrel beside him is
   // still in the room. There is no clamp on how short this may get, because at
@@ -497,6 +503,9 @@ export function layoutFor(width: number): Layout {
 }
 
 // -- the cast ----------------------------------------------------------------
+
+/** Why he is crossing the room. */
+export type Errand = 'eat' | 'sit' | 'sleep';
 
 /** What he is doing. */
 export type CiccioPhase =
@@ -551,7 +560,18 @@ export interface Ciccio {
    * a click nobody sees answered for twenty seconds reads as a click that did
    * nothing.
    */
-  goal: { x: number; then: 'dance' | 'sit' | 'sleep'; urgent: boolean } | null;
+  /**
+   * Where he is going and **why**. `then` is the reason, not the thing he does
+   * on arrival: 'eat' told the pace, the hand-off, the run pose and whether
+   * food may re-target him, all off one value that happened to mean "gratin"
+   * today. Named for the reason, the next errand that ends in a dance does not
+   * silently become a dash for food.
+   *
+   * `urgent` marks a goal somebody asked for by tapping the thing itself, which
+   * he goes to at a trot — a click nobody sees answered for twenty seconds
+   * reads as a click that did nothing.
+   */
+  goal: { x: number; then: Errand; urgent: boolean } | null;
   /** Frames left of the climb on or off, or of the sit or the sleep. */
   timer: number;
   bites: number;
@@ -624,6 +644,15 @@ export interface Puff {
  */
 export interface Cat {
   x: number;
+  /**
+   * Which way it is looking, carried rather than worked out by the drawing.
+   *
+   * Every other figure's facing is the scene's, and for the reason `girl.facing`
+   * is: a side computed from geometry snaps the whole figure the frame two
+   * positions cross. Taken from `sign(ciccio.x - cat.x)` in `draw.ts` it also
+   * needed a tie-break that existed nowhere else.
+   */
+  facing: -1 | 1;
   from: -1 | 1;
   phase: 'arriving' | 'meowing' | 'kissing' | 'leaving';
   timer: number;
@@ -656,9 +685,13 @@ export interface Scene {
   /**
    * Stored, not derived — deliberately unlike the cello's lit school window.
    * "On while he is still walking over" is a state somebody reaches by clicking
-   * it, so it has to be a fact rather than a consequence. The price is that it
-   * can now outlive the room it belongs to, and `resizeScene` is where that is
-   * paid.
+   * it, so it has to be a fact rather than a consequence.
+   *
+   * It cannot outlive the room it belongs to, and that is a property of the
+   * layout rather than of anything done here: the living room has no null case
+   * at any width, so there is no reconciliation for `resizeScene` to do. If a
+   * piece of furniture ever *does* become nullable, this is the field that will
+   * need it.
    */
   tv: { on: boolean; showLeft: number };
   /** Whose turn it is in the round of "Susin! Ciccio Ciccio! Susin!". */
@@ -733,11 +766,13 @@ export function ciccioY(scene: Scene): number {
 }
 
 export function squirrelY(scene: Scene, squirrel: Squirrel): number {
-  if (squirrel.timer > 0) {
-    const wants = squirrelWants(scene);
-    return scene.ground - liftBetween(squirrel.at, wants, 1 - squirrel.timer / CLIMB_FRAMES);
-  }
-  return scene.ground - SEAT_HEIGHT[squirrel.at];
+  // The climb included, which is what makes a squirrel up the wall clickable
+  // where it is drawn rather than at the floor under it.
+  const seat =
+    squirrel.timer > 0
+      ? liftBetween(squirrel.at, squirrelWants(scene), 1 - squirrel.timer / CLIMB_FRAMES)
+      : SEAT_HEIGHT[squirrel.at];
+  return scene.ground - seat - squirrel.climb;
 }
 
 /**
@@ -760,9 +795,15 @@ export function flankX(scene: Scene, side: -1 | 1): number {
   return clamp(scene.ciccio.x + side * FLANK_GAP, wanderLeft - FLANK_GAP, wanderRight + FLANK_GAP);
 }
 
+/**
+ * Which seat an errand ends on. Written out at both the place it is decided and
+ * the place it is drawn, the two drifted the moment a third errand appeared.
+ */
+export const spotFor = (errand: Errand | undefined): Spot => (errand === 'sleep' ? 'bed' : 'sofa');
+
 /** Whether he is in the middle of a run for food. */
 export const dashingForFood = (scene: Scene) =>
-  scene.ciccio.phase === 'heading' && scene.ciccio.goal?.then === 'dance';
+  scene.ciccio.phase === 'heading' && scene.ciccio.goal?.then === 'eat';
 
 export function createScene(size: SceneSize, rng: Rng): Scene {
   const layout = layoutFor(size.width);
@@ -843,15 +884,14 @@ export function resizeScene(scene: Scene, size: SceneSize): void {
 // -- one frame ---------------------------------------------------------------
 
 /**
- * He walks his floor, turning at the ends and now and then for no reason.
+ * What he is doing this frame: one handler per phase, each returning.
  *
- * `x` is snapped to the bound it reached rather than left a fraction past it:
- * left to drift, a walk at a speed the range is not a multiple of creeps
- * further out of the room every lap.
+ * The last of them, pottering, is `wander` below — it is the only one that is
+ * not simply waiting for a timer, and it is the ninth case rather than this
+ * function's afterthought.
  */
 function walkCiccio(scene: Scene, rng: Rng): void {
   const { ciccio } = scene;
-  const { wanderLeft, wanderRight } = scene.layout;
 
   if (ciccio.phase === 'bristling') {
     // Rooted to the spot. Not even a wobble: he has seen a cat.
@@ -890,7 +930,7 @@ function walkCiccio(scene: Scene, rng: Rng): void {
     if (--ciccio.timer <= 0) {
       // `at` changes on the last frame of the climb and nowhere else, which is
       // what keeps "on the floor" and "in a phase that means it" in step.
-      ciccio.at = ciccio.goal?.then === 'sleep' ? 'bed' : 'sofa';
+      ciccio.at = spotFor(ciccio.goal?.then);
       ciccio.phase = ciccio.at === 'bed' ? 'sleeping' : 'sitting';
       ciccio.timer = ciccio.at === 'bed' ? NAP_FRAMES : MIN_SIT;
       ciccio.goal = null;
@@ -930,13 +970,13 @@ function walkCiccio(scene: Scene, rng: Rng): void {
     }
     const away = goal.x - ciccio.x;
     ciccio.dir = away >= 0 ? 1 : -1;
-    ciccio.facing += clamp(ciccio.dir - ciccio.facing, -TURN_EASE, TURN_EASE);
-    const pace = goal.urgent ? SUMMON_SPEED : goal.then === 'dance' ? RUN_SPEED : ERRAND_SPEED;
+    ciccio.facing = toward(ciccio.facing, ciccio.dir, TURN_EASE);
+    const pace = goal.urgent ? SUMMON_SPEED : goal.then === 'eat' ? RUN_SPEED : ERRAND_SPEED;
     if (Math.abs(away) <= pace) {
       // Snapped on arrival. A step that overshoots leaves him oscillating
       // either side of the plate at running speed, for ever.
       ciccio.x = goal.x;
-      if (goal.then === 'dance') {
+      if (goal.then === 'eat') {
         ciccio.goal = null;
         ciccio.after = 'eating';
         startWobble(ciccio);
@@ -950,11 +990,27 @@ function walkCiccio(scene: Scene, rng: Rng): void {
     return;
   }
 
+  wander(scene, rng);
+}
+
+/**
+ * Pottering: the one phase that is not simply waiting for a timer.
+ *
+ * He walks his floor, turning at the ends and now and then for no reason, and
+ * this is also where he notices a gratin, a television that has come on, or
+ * that it is time for bed. `x` is snapped to the bound it reached rather than
+ * left a fraction past it: left to drift, a walk at a speed the range is not a
+ * multiple of creeps further out of the room every lap.
+ */
+function wander(scene: Scene, rng: Rng): void {
+  const { ciccio } = scene;
+  const { wanderLeft, wanderRight } = scene.layout;
+
   // Food beats wandering, and beats an errand to the sofa or the bed — but not
   // the run it is already making for food, which would re-set the same goal
   // every frame and hide a bug behind idempotence. It is set as a *goal* rather
   // than as a phase, so everything that has to happen on the way happens once.
-  if (scene.gratin && ciccio.goal?.then !== 'dance') {
+  if (scene.gratin && ciccio.goal?.then !== 'eat') {
     headForGratin(scene, ciccio.goal?.urgent ?? false);
     return;
   }
@@ -982,7 +1038,7 @@ function walkCiccio(scene: Scene, rng: Rng): void {
   }
 
   // The nose follows the feet, over about a dozen frames.
-  ciccio.facing += clamp(ciccio.dir - ciccio.facing, -TURN_EASE, TURN_EASE);
+  ciccio.facing = toward(ciccio.facing, ciccio.dir, TURN_EASE);
 }
 
 /**
@@ -1072,7 +1128,7 @@ function startDismount(ciccio: Ciccio): void {
 function headForGratin(scene: Scene, urgent: boolean): void {
   const { ciccio } = scene;
   if (!scene.gratin) return;
-  ciccio.goal = { x: scene.gratin.x, then: 'dance', urgent };
+  ciccio.goal = { x: scene.gratin.x, then: 'eat', urgent };
   ciccio.phase = ciccio.at === 'floor' ? 'heading' : 'dismounting';
   if (ciccio.phase === 'dismounting') ciccio.timer = CLIMB_FRAMES;
   ciccio.spin = 0;
@@ -1091,7 +1147,7 @@ function headForGratin(scene: Scene, urgent: boolean): void {
  * the one thing an interrupt may not do is skip the frames a change of height
  * is owed.
  */
-function summon(scene: Scene, x: number, then: 'dance' | 'sit' | 'sleep'): void {
+function summon(scene: Scene, x: number, then: Errand): void {
   const { ciccio } = scene;
   ciccio.goal = { x, then, urgent: true };
   ciccio.spin = 0;
@@ -1186,11 +1242,7 @@ export const bedExpectsHim = (scene: Scene) =>
 
 function runBed(scene: Scene): void {
   const target = bedExpectsHim(scene) ? 1 : 0;
-  scene.bed.turned = clamp(
-    scene.bed.turned + clamp(target - scene.bed.turned, -BED_TURN_SPEED, BED_TURN_SPEED),
-    0,
-    1,
-  );
+  scene.bed.turned = toward(scene.bed.turned, target, BED_TURN_SPEED);
 }
 
 /**
@@ -1227,6 +1279,7 @@ function runCat(scene: Scene, rng: Rng): void {
       phase: 'arriving',
       timer: 0,
       say: null,
+      facing: from === -1 ? 1 : -1,
     };
     scene.ciccio.phase = 'bristling';
     return;
@@ -1242,7 +1295,9 @@ function runCat(scene: Scene, rng: Rng): void {
       cat.timer = MEOW_FRAMES;
       say(cat, CAT_CALL);
     } else {
-      cat.x += Math.sign(away - stopAt) * CAT_SPEED;
+      const move = Math.sign(away - stopAt) * CAT_SPEED;
+      cat.x += move;
+      if (move !== 0) cat.facing = move > 0 ? 1 : -1;
     }
     return;
   }
@@ -1271,6 +1326,7 @@ function runCat(scene: Scene, rng: Rng): void {
   }
 
   // Leaving, by the edge it came in by.
+  cat.facing = cat.from;
   cat.x += cat.from * CAT_SPEED * 1.3;
   if (cat.x < -40 || cat.x > scene.width + 40) {
     scene.cat = null;
@@ -1288,11 +1344,7 @@ function runCat(scene: Scene, rng: Rng): void {
  */
 function runBristle(scene: Scene): void {
   const target = scene.cat?.phase === 'arriving' ? 1 : 0;
-  scene.ciccio.bristle = clamp(
-    scene.ciccio.bristle + clamp(target - scene.ciccio.bristle, -BRISTLE_SPEED, BRISTLE_SPEED),
-    0,
-    1,
-  );
+  scene.ciccio.bristle = toward(scene.ciccio.bristle, target, BRISTLE_SPEED);
 
   for (const heart of scene.hearts) {
     heart.y -= heart.rise;
@@ -1561,29 +1613,47 @@ export function ciccioBob(scene: Scene): number {
 const HIT_WIDE = 34;
 const HIT_TALL = 46;
 
-const hits = (x: number, y: number, atX: number, ground: number, wide = HIT_WIDE) =>
-  Math.abs(x - atX) <= wide && y >= ground - HIT_TALL && y <= ground + 10;
+/**
+ * A box around something standing at `x` with its feet at `footY`.
+ *
+ * `footY` rather than the ground, because that is where the figure is actually
+ * drawn: a squirrel forty-eight units up the wall was hit-tested at floor level,
+ * so the one interaction a stuck squirrel has had to be aimed at the empty floor
+ * beneath it, and a seated hedgehog's head was dead while the carpet in front of
+ * the sofa was live.
+ */
+const hitsBox = (
+  x: number,
+  y: number,
+  atX: number,
+  footY: number,
+  wide: number,
+  tall: number,
+  under = 10,
+) => Math.abs(x - atX) <= wide && y >= footY - tall && y <= footY + under;
 
 export const hitsCiccio = (scene: Scene, x: number, y: number) =>
-  hits(x, y, scene.ciccio.x, scene.ground);
+  hitsBox(x, y, scene.ciccio.x, ciccioY(scene), HIT_WIDE, HIT_TALL);
 
 export const hitsSquirrel = (scene: Scene, squirrel: Squirrel, x: number, y: number) =>
-  hits(x, y, squirrel.x, scene.ground, 26);
+  hitsBox(x, y, squirrel.x, squirrelY(scene, squirrel), 26, HIT_TALL);
 
 export const hitsTv = (scene: Scene, x: number, y: number) =>
-  Math.abs(x - scene.layout.loungeX) <= TV_WIDTH / 2 + 4 &&
-  y >= scene.ground - TV_HANGS_AT - TV_PANEL - 4 &&
-  y <= scene.ground - TV_HANGS_AT + 4;
+  hitsBox(
+    x,
+    y,
+    scene.layout.loungeX,
+    scene.ground - TV_HANGS_AT,
+    TV_WIDTH / 2 + 4,
+    TV_PANEL + 4,
+    4,
+  );
 
 export const hitsBed = (scene: Scene, x: number, y: number) =>
-  Math.abs(x - scene.layout.bedX) <= BED_WIDTH / 2 + 4 &&
-  y >= scene.ground - BED_HEAD - 4 &&
-  y <= scene.ground + 6;
+  hitsBox(x, y, scene.layout.bedX, scene.ground, BED_WIDTH / 2 + 4, BED_HEAD + 4, 6);
 
 export const hitsOven = (scene: Scene, x: number, y: number) =>
-  Math.abs(x - scene.layout.ovenX) <= OVEN_WIDTH / 2 + 6 &&
-  y >= scene.ground - OVEN_TOP - 8 &&
-  y <= scene.ground + 6;
+  hitsBox(x, y, scene.layout.ovenX, scene.ground, OVEN_WIDTH / 2 + 6, OVEN_TOP + 8, 6);
 
 /**
  * A click, in the scene's own units.

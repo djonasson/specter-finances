@@ -1,31 +1,13 @@
-import { useRef } from 'react';
-import { useComputedColorScheme } from '@mantine/core';
-import { watchPixelRatio } from '../chrome';
-import { useSceneCanvas } from '../sceneCanvas';
+import { SceneCanvas } from '../sceneCanvas.tsx';
 import { createScene, resizeScene, step, clickScene } from './scene';
 import { drawScene } from './draw';
 
 /**
- * The cello's street. The scene is in `scene.ts` and the drawing in `draw.ts`;
- * the wiring is `useSceneCanvas`, shared with every other canvas scene.
- *
- * `isDark` is passed as a function rather than a value so a colour-scheme flip
- * does not restart the scene — losing a pizza in mid-air and putting the bird
- * back on his own — which under "auto" happens by itself at sunset.
+ * Cello's scene. What happens is in `scene.ts`, what it looks like is in
+ * `draw.ts`, and the canvas, the frame loop and the clicks are `SceneCanvas` —
+ * shared with every other scene, so a new one cannot get the buffer, the stage
+ * or the resize guard subtly wrong.
  */
 export function CelloBackground() {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const isDark = useComputedColorScheme('light') === 'dark';
-
-  useSceneCanvas(canvasRef, {
-    createScene,
-    resizeScene,
-    step,
-    drawScene,
-    clickScene,
-    isDark: () => isDark,
-    watchPixelRatio,
-  });
-
-  return <canvas ref={canvasRef} aria-hidden style={{ position: 'fixed', inset: 0 }} />;
+  return <SceneCanvas spec={{ createScene, resizeScene, step, drawScene, clickScene }} />;
 }

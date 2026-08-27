@@ -1,62 +1,50 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { act, cleanup, screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
-import { useMantineColorScheme } from '@mantine/core';
-import { renderWithTheme, resizeTo } from '../../test-utils';
+import { act, cleanup } from '@testing-library/react';
+import { renderWithTheme } from '../../test-utils';
 
-// The scene itself is tested in scene.test.ts; what is left here is the wiring,
-// and the wiring has one thing worth pinning: it must not throw the scene away.
-// A colour-scheme change used to rebuild the effect, which under "auto" happens
-// by itself when the phone flips to dark at sunset — a pizza in mid-air and the
-// bird's whole afternoon, gone, for a change of palette.
 vi.mock('./scene', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./scene')>();
   return {
     ...actual,
     createScene: vi.fn(actual.createScene),
-    resizeScene: vi.fn(actual.resizeScene),
+    step: vi.fn(actual.step),
     clickScene: vi.fn(actual.clickScene),
   };
 });
-
 // jsdom implements no canvas, and every drawing call would land on the null it
 // returns from getContext. Nothing here asserts on pixels.
 vi.mock('./draw', () => ({ drawScene: vi.fn() }));
 
-import { createScene, resizeScene, clickScene } from './scene';
-import { sceneScale, GROUND_ABOVE_FOOTER, SCENE_FULL_WIDTH } from '../stage';
-import type { Scene } from './scene';
+import { createScene, step, clickScene } from './scene';
 import { drawScene } from './draw';
-import { footerHeight } from '../chrome';
 import { CelloBackground } from './CelloBackground';
 
-// Only what the frame loop itself touches: everything else goes through
-// drawScene, which is mocked.
-const context2d = {
-  clearRect: vi.fn(),
-  setTransform: vi.fn(),
-} as unknown as CanvasRenderingContext2D;
+/**
+ * Only what is the cello's.
+ *
+ * This file used to hold the whole of the canvas wiring, because that is where
+ * the wiring lived. It is `SceneCanvas` now, shared by every scene and covered
+ * once in `sceneCanvas.test.tsx` against a scene that does nothing — which is
+ * where those tests belong: left here, one background owned the contract of a
+ * module three of them depend on, and retiring this theme would have taken the
+ * coverage with it.
+ */
+
+let context2d: CanvasRenderingContext2D;
 
 beforeEach(() => {
-  vi.mocked(createScene).mockClear();
-  vi.mocked(resizeScene).mockClear();
-  vi.mocked(clickScene).mockClear();
-  vi.mocked(drawScene).mockClear();
-  // The context is shared across the file and nothing else clears it, so an
-  // assertion on `setTransform` would otherwise be satisfied by a call an
-  // earlier test in the same describe had already recorded.
-  vi.mocked(context2d.setTransform).mockClear();
-  vi.mocked(context2d.clearRect).mockClear();
-  // Spied rather than assigned: a raw assignment to the prototype is not
-  // something `restoreAllMocks` can put back, and neither is a `spyOn` left
-  // unrestored — both outlive the file and the next one sees them.
+  context2d = { clearRect: vi.fn(), setTransform: vi.fn() } as unknown as CanvasRenderingContext2D;
   vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(context2d as never);
   vi.stubGlobal(
     'requestAnimationFrame',
     vi.fn(() => 1),
   );
   vi.stubGlobal('cancelAnimationFrame', vi.fn());
+  vi.mocked(createScene).mockClear();
+  vi.mocked(step).mockClear();
+  vi.mocked(clickScene).mockClear();
+  vi.mocked(drawScene).mockClear();
 });
 
 afterEach(() => {
@@ -66,529 +54,23 @@ afterEach(() => {
   localStorage.clear();
 });
 
-/** The scene, plus the one control that used to tear it down. */
-function SceneWithColourSchemeToggle() {
-  const { setColorScheme } = useMantineColorScheme();
-  return (
-    <>
-      <CelloBackground />
-      <button onClick={() => setColorScheme('dark')}>Go dark</button>
-    </>
-  );
-}
-
-describe('keeping the scene alive', () => {
-  it('carries on through a switch to dark rather than starting the scene over', async () => {
-    const user = userEvent.setup();
-    renderWithTheme(<SceneWithColourSchemeToggle />);
-    expect(createScene).toHaveBeenCalledTimes(1);
-
-    await user.click(screen.getByRole('button', { name: 'Go dark' }));
-
-    expect(createScene).toHaveBeenCalledTimes(1);
-  });
-
-  it('leaves the scene alone when the window is resized to the size it already had', () => {
+describe('the street the component builds', () => {
+  it('drives its own scene and its own drawing, not another theme\u2019s', () => {
     renderWithTheme(<CelloBackground />);
-    resizeTo(window.innerWidth, window.innerHeight);
-    expect(resizeScene).not.toHaveBeenCalled();
-  });
+    act(() => vi.mocked(requestAnimationFrame).mock.calls[0][0](1000));
 
-  it('moves the scene into a window that really did change size', () => {
-    renderWithTheme(<CelloBackground />);
-    resizeTo(400, 700);
-    expect(resizeScene).toHaveBeenCalledTimes(1);
-    expect(createScene).toHaveBeenCalledTimes(1);
-  });
-});
-
-describe("drawing at the screen's own resolution", () => {
-  /** The frame loop runs off requestAnimationFrame, which the setup stubs out. */
-  function drawOneFrame() {
-    const frame = vi.mocked(requestAnimationFrame).mock.calls[0][0];
-    act(() => frame(1000));
-  }
-
-  it('sizes the canvas buffer in device pixels, not CSS ones', () => {
-    vi.stubGlobal('devicePixelRatio', 2);
-    renderWithTheme(<CelloBackground />);
-
-    const canvas = document.querySelector('canvas')!;
-    expect(canvas.width).toBe(window.innerWidth * 2);
-    expect(canvas.height).toBe(window.innerHeight * 2);
-  });
-
-  // The buffer is the whole viewport, cleared and repainted forty times a
-  // second: its cost grows with the square of the ratio, and a phone at 3 is
-  // the device least able to pay it. Two is where the sharpness stops being
-  // worth the paint.
-  it('stops following the device beyond twice, however dense the screen', () => {
-    vi.stubGlobal('devicePixelRatio', 3);
-    renderWithTheme(<CelloBackground />);
-
-    expect(document.querySelector('canvas')!.width).toBe(window.innerWidth * 2);
-  });
-
-  // Without this the element lays out at its *attribute* size, so a buffer in
-  // device pixels makes the canvas itself wider than the window.
-  it('keeps the canvas the size of the window on screen', () => {
-    vi.stubGlobal('devicePixelRatio', 3);
-    renderWithTheme(<CelloBackground />);
-
-    const canvas = document.querySelector('canvas')!;
-    expect(canvas.style.width).toBe(`${window.innerWidth}px`);
-    expect(canvas.style.height).toBe(`${window.innerHeight}px`);
-  });
-
-  // Two scales, applied in two places and deliberately not multiplied together
-  // here: the screen's ratio goes on the context once, and the scene's own
-  // scale goes on top of it every frame.
-  it("puts the screen's ratio on the context and leaves the scene its own scale", () => {
-    vi.stubGlobal('devicePixelRatio', 2);
-    // Set here rather than inherited: an earlier test in this file assigns
-    // `window.innerWidth` directly and jsdom never puts it back, so a scene
-    // scale of 1 would let a regression that dropped the scale entirely still
-    // satisfy this.
-    window.innerWidth = 400;
-    renderWithTheme(<CelloBackground />);
-    drawOneFrame();
-
-    expect(context2d.setTransform).toHaveBeenCalledWith(2, 0, 0, 2, 0, 0);
-    expect(sceneScale(400)).not.toBe(1);
-    expect(vi.mocked(drawScene).mock.calls[0][3]).toBeCloseTo(sceneScale(400));
-  });
-
-  // Dragging a window between monitors changes nothing about the scene's own
-  // measurements, so the early-out would otherwise keep the old screen's buffer.
-  it('re-sizes the buffer when only the pixel ratio changes', () => {
-    vi.stubGlobal('devicePixelRatio', 1);
-    renderWithTheme(<CelloBackground />);
-    const canvas = document.querySelector('canvas')!;
-    expect(canvas.width).toBe(window.innerWidth);
-
-    vi.stubGlobal('devicePixelRatio', 2);
-    resizeTo(window.innerWidth, window.innerHeight);
-
-    expect(canvas.width).toBe(window.innerWidth * 2);
-  });
-});
-
-describe('watching for a change of screen', () => {
-  /**
-   * Captures the resolution queries and their listeners.
-   *
-   * Only those: Mantine asks the same API about the colour scheme, so the last
-   * query made is not necessarily this component's.
-   */
-  function watchQueries() {
-    const queries: { query: string; on: Array<() => void>; off: Array<() => void> }[] = [];
-    vi.stubGlobal('matchMedia', (query: string) => {
-      const entry = { query, on: [] as Array<() => void>, off: [] as Array<() => void> };
-      if (query.includes('resolution')) queries.push(entry);
-      return {
-        matches: true,
-        media: query,
-        addEventListener: (_: string, fn: () => void) => entry.on.push(fn),
-        removeEventListener: (_: string, fn: () => void) => entry.off.push(fn),
-      };
-    });
-    return queries;
-  }
-
-  // A change of monitor need not change `innerWidth` at all, and `resize` is not
-  // specified to fire for it — so the window alone is not enough to notice.
-  it('arms a query on the ratio it is drawing at', () => {
-    vi.stubGlobal('devicePixelRatio', 2);
-    const queries = watchQueries();
-
-    renderWithTheme(<CelloBackground />);
-
-    expect(queries.at(-1)!.query).toBe('(resolution: 2dppx)');
-    expect(queries.at(-1)!.on).toHaveLength(1);
-  });
-
-  it('refits the buffer and re-arms at the new ratio when the screen changes', () => {
-    vi.stubGlobal('devicePixelRatio', 1);
-    const queries = watchQueries();
-    renderWithTheme(<CelloBackground />);
-    const canvas = document.querySelector('canvas')!;
-    expect(canvas.width).toBe(window.innerWidth);
-
-    vi.stubGlobal('devicePixelRatio', 2);
-    act(() => queries.at(-1)!.on[0]());
-
-    expect(canvas.width).toBe(window.innerWidth * 2);
-    // Re-armed: the old query can never fire again, so without this one change
-    // of monitor is all it would ever notice.
-    expect(queries.at(-1)!.query).toBe('(resolution: 2dppx)');
-  });
-
-  // Re-arming drops the reference to the old query, so without this the old one
-  // stays subscribed: listeners double per change of screen, `resize` runs once
-  // per accumulated query, and each stale listener holds the whole effect
-  // closure — scene, canvas and context — alive for the life of the document.
-  it('lets the old query go when it arms the new one', () => {
-    vi.stubGlobal('devicePixelRatio', 1);
-    const queries = watchQueries();
-    renderWithTheme(<CelloBackground />);
-    const first = queries.at(-1)!;
-
-    vi.stubGlobal('devicePixelRatio', 2);
-    act(() => first.on[0]());
-
-    expect(first.off).toHaveLength(1);
-    expect(queries.at(-1)).not.toBe(first);
-  });
-
-  it('lets the query go when it goes away', () => {
-    const queries = watchQueries();
-    const { unmount } = renderWithTheme(<CelloBackground />);
-
-    unmount();
-
-    expect(queries.at(-1)!.off).toHaveLength(1);
-  });
-
-  // Safari 13 hands back a real MediaQueryList with only `addListener`, and the
-  // throw lands inside the effect — before the frame loop, before the cleanup
-  // closure — so React unmounts the whole app over a background.
-  it('carries on where the screen cannot be watched at all', () => {
-    // A real MediaQueryList, of the vintage that only has `addListener` — for
-    // the resolution query alone, since the rest of the app needs a working one.
-    const real = window.matchMedia;
-    vi.stubGlobal('matchMedia', (query: string) =>
-      query.includes('resolution')
-        ? { matches: true, media: query, addListener: () => {} }
-        : real(query),
-    );
-
-    expect(() => renderWithTheme(<CelloBackground />)).not.toThrow();
-    expect(requestAnimationFrame).toHaveBeenCalled();
-  });
-});
-
-describe('two decisions, not one', () => {
-  // `resizeScene` is not a no-op on unchanged input: it puts the girl back at
-  // the nearer end of her walk. A change of monitor must not move her.
-  it('refits the buffer for a new ratio without moving the scene', () => {
-    vi.stubGlobal('devicePixelRatio', 1);
-    renderWithTheme(<CelloBackground />);
-    vi.mocked(resizeScene).mockClear();
-
-    vi.stubGlobal('devicePixelRatio', 2);
-    resizeTo(window.innerWidth, window.innerHeight);
-
-    expect(document.querySelector('canvas')!.width).toBe(window.innerWidth * 2);
-    expect(resizeScene).not.toHaveBeenCalled();
-  });
-
-  // And the other way: an identical window must not reallocate the buffer,
-  // which mobile browsers ask for dozens of times as the URL bar collapses.
-  it('leaves the buffer alone when nothing about the window changed', () => {
-    renderWithTheme(<CelloBackground />);
-    const canvas = document.querySelector('canvas')!;
-    canvas.width = 1;
-
-    resizeTo(window.innerWidth, window.innerHeight);
-
-    expect(canvas.width).toBe(1);
-  });
-});
-
-describe('letting go', () => {
-  it('stops the frame loop and drops its listeners when it goes away', () => {
-    const removeWindow = vi.spyOn(window, 'removeEventListener');
-    const removeDocument = vi.spyOn(document, 'removeEventListener');
-
-    const { unmount } = renderWithTheme(<CelloBackground />);
-    unmount();
-
-    expect(cancelAnimationFrame).toHaveBeenCalled();
-    expect(removeWindow).toHaveBeenCalledWith('resize', expect.any(Function));
-    expect(removeDocument).toHaveBeenCalledWith('click', expect.any(Function));
-  });
-});
-
-// The scene is drawn smaller on a narrow window and goes on measuring in the
-// units it was written in, so the stage it is handed is the window divided by
-// that scale. Getting this wrong in either direction is invisible in the scene's
-// own tests: they would still pass, on a stage the wrong size.
-describe('the stage the window gives it', () => {
-  const stageOf = (call: number) => vi.mocked(createScene).mock.calls[call][0];
-
-  it('hands over a stage in scene units, wider than the phone it is on', () => {
-    window.innerWidth = 360;
-    window.innerHeight = 700;
-    renderWithTheme(<CelloBackground />);
-
-    const stage = stageOf(0);
-    expect(stage.width).toBeCloseTo(360 / sceneScale(360));
-    expect(stage.width).toBeGreaterThan(360);
-  });
-
-  it('sizes the canvas itself in screen pixels, whatever the scene measures in', () => {
-    // The stage is in scene units and the backing store is not: sized in scene
-    // units it would be a 500px canvas stretched over a 360px window, with every
-    // scene element drawn nearly forty per cent out.
-    window.innerWidth = 360;
-    window.innerHeight = 700;
-    const { container } = renderWithTheme(<CelloBackground />);
-
-    const canvas = container.querySelector('canvas')!;
-    expect(canvas.width).toBe(360);
-    expect(canvas.height).toBe(700);
-  });
-
-  it('resizes the backing store with the window', () => {
-    window.innerWidth = 1200;
-    window.innerHeight = 800;
-    const { container } = renderWithTheme(<CelloBackground />);
-    resizeTo(360, 700);
-
-    const canvas = container.querySelector('canvas')!;
-    expect(canvas.width).toBe(360);
-  });
-
-  it('leaves a roomy window measuring one to one', () => {
-    // Wide enough that the scene is drawn at full size, taken from the width
-    // that decides it rather than from a number that happens to be past it.
-    const roomy = SCENE_FULL_WIDTH + 200;
-    window.innerWidth = roomy;
-    window.innerHeight = 900;
-    renderWithTheme(<CelloBackground />);
-
-    expect(stageOf(0).width).toBeCloseTo(roomy);
-  });
-
-  it('puts the ground in scene units too, or the scenery stands off the floor', () => {
-    window.innerWidth = 360;
-    window.innerHeight = 700;
-    renderWithTheme(<CelloBackground />);
-
-    const stage = stageOf(0);
-    // Whatever the scale, the ground has to land back on the same screen line.
-    expect(stage.ground * sceneScale(360)).toBeCloseTo(700 - footerHeight() - GROUND_ABOVE_FOOTER);
-  });
-
-  // A scrollbar makes the viewport and the window differ, and the canvas covers
-  // the viewport — so a scene laid out from `innerWidth` is arranged for a stage
-  // wider than the one it is drawn on, and its ground lands off the floor.
-  // Asked at 360x700, where `sceneScale` is not clamped, so the scale and the
-  // ground move with the width rather than sitting at 1 whatever happens.
-  it('lays the stage out in the viewport, not in the window', () => {
-    vi.stubGlobal('innerWidth', 420);
-    vi.stubGlobal('innerHeight', 760);
-    vi.spyOn(document.documentElement, 'clientWidth', 'get').mockReturnValue(360);
-    vi.spyOn(document.documentElement, 'clientHeight', 'get').mockReturnValue(700);
-    renderWithTheme(<CelloBackground />);
-
-    const stage = stageOf(0);
-    expect(sceneScale(360)).not.toBe(sceneScale(420));
-    expect(stage.width).toBeCloseTo(360 / sceneScale(360));
-    // The height from the window, not from the layout viewport: the footer this
-    // ground is measured against moves with the URL bar and `clientHeight` does
-    // not, so taking it from there stands the scenery above the navigation bar
-    // with bare floor beneath it — and leaves every guard agreeing nothing
-    // changed, so it never comes back down.
-    expect(stage.height).toBeCloseTo(760 / sceneScale(360));
-    expect(stage.ground * sceneScale(360)).toBeCloseTo(760 - footerHeight() - GROUND_ABOVE_FOOTER);
-  });
-
-  it('paints at the scale that viewport asks for, and reads clicks by it', () => {
-    vi.stubGlobal('innerWidth', 420);
-    vi.stubGlobal('innerHeight', 760);
-    vi.spyOn(document.documentElement, 'clientWidth', 'get').mockReturnValue(360);
-    vi.spyOn(document.documentElement, 'clientHeight', 'get').mockReturnValue(700);
-    renderWithTheme(<CelloBackground />);
-    act(() => {
-      vi.mocked(requestAnimationFrame).mock.calls[0][0](1000);
-      document.dispatchEvent(new MouseEvent('click', { clientX: 100, clientY: 200 }));
-    });
-
-    const scale = sceneScale(360);
-    expect(drawScene).toHaveBeenCalledWith(context2d, expect.anything(), false, scale);
-    expect(clickScene).toHaveBeenCalledWith(expect.anything(), 100 / scale, 200 / scale);
-  });
-
-  // The guard has two terms and the height one is the one that matters on iOS,
-  // where the URL bar makes the layout and visual viewports differ for the whole
-  // of a collapse — so it is asked with a viewport height of its own.
-  it('leaves the scene alone when neither viewport measurement changed', () => {
-    vi.stubGlobal('innerWidth', 420);
-    vi.stubGlobal('innerHeight', 760);
-    vi.spyOn(document.documentElement, 'clientWidth', 'get').mockReturnValue(360);
-    vi.spyOn(document.documentElement, 'clientHeight', 'get').mockReturnValue(700);
-    renderWithTheme(<CelloBackground />);
-    const canvas = document.querySelector('canvas')!;
-    canvas.width = 1;
-
-    resizeTo(420, 760);
-
-    expect(canvas.width).toBe(1);
-    expect(resizeScene).not.toHaveBeenCalled();
-  });
-
-  it('re-measures the stage when the window changes size', () => {
-    window.innerWidth = 1440;
-    window.innerHeight = 900;
-    renderWithTheme(<CelloBackground />);
-    resizeTo(360, 700);
-
-    const stage = vi.mocked(resizeScene).mock.calls[0][1];
-    expect(stage.width).toBeCloseTo(360 / sceneScale(360));
-  });
-
-  it('tells the drawing what scale to paint at', () => {
-    window.innerWidth = 360;
-    window.innerHeight = 700;
-    renderWithTheme(<CelloBackground />);
-    act(() => {
-      vi.mocked(requestAnimationFrame).mock.calls[0][0](1000);
-    });
-
-    expect(drawScene).toHaveBeenCalledWith(context2d, expect.anything(), false, sceneScale(360));
-  });
-
-  it('takes a click in window coordinates and asks the scene in its own', () => {
-    window.innerWidth = 360;
-    window.innerHeight = 700;
-    renderWithTheme(<CelloBackground />);
-
-    act(() => {
-      document.dispatchEvent(new MouseEvent('click', { clientX: 100, clientY: 200 }));
-    });
-
-    const scale = sceneScale(360);
-    expect(clickScene).toHaveBeenCalledWith(expect.anything(), 100 / scale, 200 / scale);
-  });
-
-  // The stage the wiring holds has to be *replaced* on a resize, not just
-  // compared against. Every other scale assertion here sets the window before
-  // rendering and never moves it, so dropping the assignment that re-holds it
-  // left the whole suite green while the scene was painted at the scale it
-  // launched at: a phone turned to landscape kept drawing at the portrait size
-  // on a buffer that had correctly refitted.
-  it('paints at the new scale after a resize, not the one it started at', () => {
-    window.innerWidth = 360;
-    window.innerHeight = 700;
-    renderWithTheme(<CelloBackground />);
-
-    resizeTo(1440, 900);
-    act(() => {
-      vi.mocked(requestAnimationFrame).mock.calls[0][0](1000);
-    });
-
-    expect(sceneScale(1440)).not.toBe(sceneScale(360));
-    expect(drawScene).toHaveBeenLastCalledWith(
+    expect(step).toHaveBeenCalled();
+    expect(drawScene).toHaveBeenCalledWith(
       context2d,
-      expect.anything(),
+      expect.objectContaining({ girl: expect.anything(), bird: expect.anything() }),
       false,
-      sceneScale(1440),
+      expect.any(Number),
     );
   });
 
-  // The same stale stage, reached the other way: clicks are divided by it, so a
-  // scene drawn correctly would still answer taps in the wrong place — nothing
-  // clickable where it appears to be, and no error anywhere.
-  it('divides a click by the new scale after a resize, not the one it started at', () => {
-    window.innerWidth = 360;
-    window.innerHeight = 700;
+  it('hands its clicks to its own scene', () => {
     renderWithTheme(<CelloBackground />);
-
-    resizeTo(1440, 900);
-    act(() => {
-      document.dispatchEvent(new MouseEvent('click', { clientX: 100, clientY: 200 }));
-    });
-
-    const scale = sceneScale(1440);
-    expect(clickScene).toHaveBeenLastCalledWith(expect.anything(), 100 / scale, 200 / scale);
-  });
-
-  // The guard's third term. `resizeScene` is only reached when the stage really
-  // changed, and the ground is the term carrying the *measured* footer — drop it
-  // from the comparison and a footer that lays out at a new height moves the
-  // band while the scene stays standing where it was.
-  it('moves the scene when only the ground has changed, the window having not', () => {
-    const footer = document.createElement('div');
-    footer.className = 'mantine-AppShell-footer';
-    let height = 60;
-    footer.getBoundingClientRect = () => ({ height }) as DOMRect;
-    document.body.appendChild(footer);
-    try {
-      renderWithTheme(<CelloBackground />);
-      vi.mocked(resizeScene).mockClear();
-
-      height = 120;
-      act(() => window.dispatchEvent(new Event('resize')));
-
-      expect(resizeScene).toHaveBeenCalledTimes(1);
-      expect(vi.mocked(resizeScene).mock.calls[0][1].ground).toBeCloseTo(
-        (window.innerHeight - 120 - GROUND_ABOVE_FOOTER) / sceneScale(window.innerWidth),
-        10,
-      );
-    } finally {
-      footer.remove();
-    }
-  });
-});
-
-// The one test that goes the whole way: a real click, in window coordinates, on
-// a real scene, through the real listener. Everything either side of this was
-// covered — the scene answers a click, and the wiring divides by the scale — and
-// between them sat the question actually being asked, which is whether clicking
-// the girl on the screen does anything at all.
-describe('clicking the scene through the window', () => {
-  const sceneFrom = () => vi.mocked(createScene).mock.results[0].value as Scene;
-
-  /** Runs frames until the predicate holds, driving the loop by hand. */
-  function pumpUntil(holds: (s: Scene) => boolean, limit = 20000) {
-    const scene = sceneFrom();
-    for (let i = 0; i < limit; i++) {
-      const frame = vi.mocked(requestAnimationFrame).mock.calls.at(-1)?.[0];
-      act(() => frame?.(i * 100));
-      if (holds(scene)) return scene;
-    }
-    throw new Error('never happened');
-  }
-
-  it('blows a kiss when she is clicked where she is drawn', () => {
-    window.innerWidth = 1539;
-    window.innerHeight = 1559;
-    renderWithTheme(<CelloBackground />);
-
-    const scene = pumpUntil((s) => s.girl.phase === 'walking' && s.bird.phase === 'escorting');
-    const hearts = scene.hearts.length;
-
-    act(() => {
-      document.dispatchEvent(
-        new MouseEvent('click', { clientX: scene.girl.x, clientY: scene.ground - 30 }),
-      );
-    });
-
-    expect(scene.hearts.length).toBe(hearts + 1);
-  });
-
-  it('finds her on a narrow window, where the scene is drawn smaller than it measures', () => {
-    // The coordinates the browser reports are the window's, and the scene thinks
-    // in its own: undivided, every click lands to the right of and below where
-    // she actually is, and on a phone nothing is ever clickable.
-    window.innerWidth = 360;
-    window.innerHeight = 700;
-    renderWithTheme(<CelloBackground />);
-
-    const scene = pumpUntil((s) => s.girl.phase === 'walking' && s.bird.phase === 'escorting');
-    const hearts = scene.hearts.length;
-    const scale = sceneScale(360);
-
-    act(() => {
-      document.dispatchEvent(
-        new MouseEvent('click', {
-          clientX: scene.girl.x * scale,
-          clientY: (scene.ground - 30) * scale,
-        }),
-      );
-    });
-
-    expect(scene.hearts.length).toBe(hearts + 1);
+    act(() => document.dispatchEvent(new MouseEvent('click', { clientX: 40, clientY: 90 })));
+    expect(clickScene).toHaveBeenCalled();
   });
 });

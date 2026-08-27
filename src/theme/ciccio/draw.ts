@@ -29,6 +29,7 @@ import {
   DEPTH,
   SEAT_HEIGHT,
   ciccioAngle,
+  ciccioFacing,
   ciccioNoseInFront,
   watchingTelevision,
   showingZebra,
@@ -36,7 +37,6 @@ import {
   scoldingAt,
   scolder,
   ciccioBob,
-  CICCIO_NARROWEST,
   ciccioY,
   squirrelY,
 } from './scene';
@@ -241,6 +241,15 @@ function box(
   const topY = ground - h;
   const dx = DEPTH * 0.75;
   const dy = -DEPTH * 0.5;
+  // The room is drawn small — at a phone's scale a cream sofa on a cream wall
+  // is one shape. A hairline in the piece's own darker tone is what keeps the
+  // furniture legible without outlining it like a cartoon.
+  const outline = () => {
+    if (!edge) return;
+    ctx.strokeStyle = edge;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  };
 
   // The right-hand side, which is what was missing: a top face on its own reads
   // as a flap stuck to a flat card, because the solid it belongs to has no
@@ -253,11 +262,7 @@ function box(
   ctx.lineTo(left + w, ground);
   ctx.closePath();
   ctx.fill();
-  if (edge) {
-    ctx.strokeStyle = edge;
-    ctx.lineWidth = 1;
-    ctx.stroke();
-  }
+  outline();
 
   ctx.fillStyle = top;
   ctx.beginPath();
@@ -267,24 +272,13 @@ function box(
   ctx.lineTo(left + w, topY);
   ctx.closePath();
   ctx.fill();
-  if (edge) {
-    ctx.strokeStyle = edge;
-    ctx.lineWidth = 1;
-    ctx.stroke();
-  }
+  outline();
 
   ctx.fillStyle = front;
   ctx.beginPath();
   ctx.roundRect(left, topY, w, h, radius);
   ctx.fill();
-  // The room is drawn small — at a phone's scale a cream sofa on a cream wall
-  // is one shape. A hairline in the piece's own darker tone is what keeps the
-  // furniture legible without outlining it like a cartoon.
-  if (edge) {
-    ctx.strokeStyle = edge;
-    ctx.lineWidth = 1;
-    ctx.stroke();
-  }
+  outline();
 }
 
 /**
@@ -326,6 +320,133 @@ const FRONT_OF_ROOM = 7;
 const SQUIRREL_MIDDLE = -32;
 const gait = (x: number, foot: number, running = false) =>
   Math.sin((x / (running ? RUN_STRIDE : STRIDE)) * Math.PI + foot * Math.PI);
+
+/**
+ * A squirrel's tail, worked out once.
+ *
+ * As one crescent it read as a moon stuck on behind; as a row of overlapping
+ * lobes it read as a chain of balls. What it actually is, is fur: a dense plume
+ * taller than the animal, nearly upright and fat the whole way, every strand
+ * radiating from a curved spine.
+ *
+ * None of it depends on the scene — `facing`, `headDown` and the scolding
+ * rotation are all in the enclosing transform — and none of it is random: every
+ * strand comes off a fixed hash of its own index, because a coat that
+ * reshuffles each frame does not shimmer prettily, it boils. Being neither, it
+ * is built at module load rather than a hundred and seventy times a frame, per
+ * squirrel, for the life of the tab.
+ */
+const TAIL_SPINE = [
+  { x: -5, y: -4, r: 8 },
+  { x: -8, y: -16, r: 12 },
+  { x: -10, y: -29, r: 14 },
+  { x: -11, y: -42, r: 13.5 },
+  { x: -11, y: -53, r: 10.5 },
+];
+
+/** A point along the spine, and which way is out from it. */
+function alongTail(t: number) {
+  const at = t * (TAIL_SPINE.length - 1);
+  const i = Math.min(TAIL_SPINE.length - 2, Math.floor(at));
+  const f = at - i;
+  const a = TAIL_SPINE[i];
+  const b = TAIL_SPINE[i + 1];
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const len = Math.hypot(dx, dy) || 1;
+  return {
+    x: a.x + dx * f,
+    y: a.y + dy * f,
+    r: a.r + (b.r - a.r) * f,
+    // Perpendicular to the spine, pointing away from the body.
+    nx: -dy / len,
+    ny: dx / len,
+  };
+}
+
+/** The soft middle, so no gap shows through the plume. */
+const TAIL_CORE = Array.from({ length: 41 }, (_, i) => {
+  const at = alongTail(i / 40);
+  return { x: at.x, y: at.y, r: at.r * 0.88 };
+});
+
+/**
+ * And the hairs standing out of it: short and many, or it reads as a thistle.
+ *
+ * Grouped by colour and by width rounded to a quarter of a unit, so the hundred
+ * and thirty of them are drawn in eight `stroke()` calls instead of a hundred
+ * and thirty — each of which was also setting `strokeStyle` and `lineWidth`.
+ * The rounding is invisible at the size a squirrel is drawn and the grouping
+ * changes nothing about where any hair goes.
+ */
+const TAIL_HAIRS = Array.from({ length: 130 }, (_, i) => {
+  const h1 = ((i * 2654435761) % 1000) / 1000;
+  const h2 = ((i * 40503) % 997) / 997;
+  const at = alongTail((i % 44) / 43);
+  // Fanned either side of straight out, so the plume has a soft edge rather
+  // than a bristle line.
+  const spread = (h1 - 0.5) * 1.5;
+  const ax = at.nx * Math.cos(spread) - at.ny * Math.sin(spread);
+  const ay = at.nx * Math.sin(spread) + at.ny * Math.cos(spread);
+  const reach = at.r * (0.92 + h2 * 0.22);
+  return {
+    x0: at.x + ax * at.r * 0.35,
+    y0: at.y + ay * at.r * 0.35,
+    x1: at.x + ax * reach,
+    y1: at.y + ay * reach,
+    width: Math.round((3.2 - h2 * 1.1) * 4) / 4,
+    light: i % 3 === 0,
+  };
+});
+
+/** The same hairs, gathered into the fewest strokes that draw them. */
+const TAIL_TUFTS = [
+  ...new Map(TAIL_HAIRS.map((hair) => [`${hair.light}:${hair.width}`, hair])).values(),
+].map((sample) => ({
+  light: sample.light,
+  width: sample.width,
+  hairs: TAIL_HAIRS.filter((h) => h.light === sample.light && h.width === sample.width),
+}));
+
+/**
+ * The same tail seen end-on, for a squirrel with its back to the room.
+ *
+ * An uneven edge rather than a circle with evenly spaced spokes, which is a
+ * sunflower. Fixed geometry again, so it is built once and grouped into strokes
+ * the same way the side view is.
+ */
+const rearLump = (a: number) => 1 + Math.sin(a * 3 + 0.7) * 0.07 + Math.sin(a * 5 + 2.1) * 0.05;
+
+const REAR_EDGE = Array.from({ length: 41 }, (_, i) => {
+  const a = (i / 40) * Math.PI * 2;
+  const r = rearLump(a);
+  return { x: Math.cos(a) * 13 * r, y: -17 + Math.sin(a) * 16.5 * r };
+});
+
+const REAR_HAIRS = Array.from({ length: 66 }, (_, i) => {
+  const h1 = ((i * 2654435761) % 1000) / 1000;
+  const h2 = ((i * 40503) % 997) / 997;
+  // Jittered off the even spacing, or the hairs comb themselves into spokes.
+  const a = ((i + h1 * 0.8) / 66) * Math.PI * 2;
+  const r = rearLump(a);
+  const out = 0.94 + h2 * 0.16;
+  return {
+    x0: Math.cos(a) * 13 * r * 0.62,
+    y0: -17 + Math.sin(a) * 16.5 * r * 0.62,
+    x1: Math.cos(a) * 13 * r * out,
+    y1: -17 + Math.sin(a) * 16.5 * r * out,
+    width: Math.round((3.4 - h1 * 1.2) * 4) / 4,
+    light: i % 3 === 0,
+  };
+});
+
+const REAR_TUFTS = [
+  ...new Map(REAR_HAIRS.map((hair) => [`${hair.light}:${hair.width}`, hair])).values(),
+].map((sample) => ({
+  light: sample.light,
+  width: sample.width,
+  hairs: REAR_HAIRS.filter((h) => h.light === sample.light && h.width === sample.width),
+}));
 
 /** What sits under a thing standing on the floor, so it is standing on it. */
 function contactShadow(
@@ -370,45 +491,44 @@ function drawRoom(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette): void
   // Boards, and the joins between their ends, staggered the way a floor is
   // actually laid. All of it off a fixed hash of the position, so the grain
   // belongs to the floor rather than swimming about under everybody's feet.
+  //
+  // Batched into **two** paths rather than one per line. Every coordinate here
+  // is a function of the room's size and that hash — none of it changes from
+  // frame to frame — and stroked individually it was some four hundred and
+  // thirty `stroke()` calls a frame, forever, on an app whose whole point is
+  // being left open. Two calls draw the same floor.
   const top = g + DEPTH * 0.5;
   const rows = Math.max(1, Math.ceil((scene.height - top) / 9));
+  const BOARD = 86;
+
+  ctx.strokeStyle = p.floorSeam;
+  ctx.lineWidth = 0.8;
+  ctx.beginPath();
   for (let row = 0; row < rows; row++) {
     const y = top + row * 9;
-    ctx.strokeStyle = p.floorSeam;
-    ctx.lineWidth = 0.8;
-    ctx.beginPath();
     ctx.moveTo(0, y);
     ctx.lineTo(scene.width, y);
-    ctx.stroke();
-
-    // The short joins, offset half a board each row.
-    const step = 86;
-    for (let x = ((row % 2) * step) / 2; x < scene.width; x += step) {
-      ctx.beginPath();
+    for (let x = ((row % 2) * BOARD) / 2; x < scene.width; x += BOARD) {
       ctx.moveTo(x, y);
       ctx.lineTo(x, y + 9);
-      ctx.stroke();
     }
+  }
+  ctx.stroke();
 
-    // Grain: a few long, faint streaks along each board.
-    ctx.strokeStyle = p.floorGrain;
-    ctx.lineWidth = 0.7;
+  ctx.strokeStyle = p.floorGrain;
+  ctx.lineWidth = 0.7;
+  ctx.beginPath();
+  for (let row = 0; row < rows; row++) {
+    const y = top + row * 9;
     for (let i = 0; i < Math.ceil(scene.width / 34); i++) {
       const seed = (i * 7919 + row * 104729) % 1000;
       const gx = i * 34 + (seed % 17);
       const gy = y + 2.5 + (seed % 4);
-      ctx.beginPath();
       ctx.moveTo(gx, gy);
       ctx.lineTo(gx + 16 + (seed % 11), gy + (seed % 3 === 0 ? 0.7 : -0.6));
-      ctx.stroke();
     }
   }
-
-  // Skirting, along the join.
-  ctx.fillStyle = p.skirting;
-  ctx.fillRect(0, g - 7, scene.width, 7);
-  ctx.fillStyle = p.floorLine;
-  ctx.fillRect(0, g - 1, scene.width, 1.2);
+  ctx.stroke();
 }
 
 function drawBed(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette): void {
@@ -841,11 +961,11 @@ function drawCiccio(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette): vo
    */
   function drawFace() {
     ctx.save();
-    ctx.translate(0, 0);
-    ctx.scale(turn >= 0 ? 1 : -1, 1);
-    // Shortens towards nothing as he comes end-on, but never to nothing: the
-    // floor keeps a muzzle there to see.
-    ctx.scale(Math.max(Math.abs(turn), CICCIO_NARROWEST), 1);
+    // Shortens towards nothing as he comes end-on, but never to nothing — which
+    // is exactly what `ciccioFacing` means, so it is asked rather than worked
+    // out again here. Computed in the drawing it was a second copy of the one
+    // fact, free to drift, and the only reason `CICCIO_NARROWEST` was exported.
+    ctx.scale(ciccioFacing(scene), 1);
 
     ctx.fillStyle = p.fur;
     ctx.beginPath();
@@ -985,7 +1105,7 @@ function drawSquirrel(
   squirrel: Squirrel,
   p: Palette,
 ): void {
-  const y = squirrelY(scene, squirrel) - squirrel.climb + FRONT_OF_ROOM;
+  const y = squirrelY(scene, squirrel) + FRONT_OF_ROOM;
 
   if (watchingTelevision(scene) && squirrel.climb === 0) {
     drawSquirrelFromBehind(ctx, squirrel.x, y, p);
@@ -1017,75 +1137,23 @@ function drawSquirrel(
   // The tail first, so it sits behind the body — a great question mark curling
   // up and over.
   // The tail is the biggest thing about a squirrel and the hardest to fake.
-  //
-  // As one crescent it read as a moon stuck on behind; as a row of overlapping
-  // lobes it read as a chain of balls. What it actually is, is fur: a dense
-  // plume taller than the animal, every strand radiating out from a curved
-  // spine. So it is drawn as strands — a soft core to close the gaps, then
-  // sixty tapered hairs standing out from it, longest across the middle.
-  //
-  // Every strand comes off a fixed hash of its own index rather than off `rng`.
-  // A coat that reshuffles each frame does not shimmer prettily, it boils.
-  // Nearly upright, and fat the whole way. Curved up and over it came out a
-  // half moon lying behind the squirrel; the real one stands straight up behind
-  // it, leaning back a little, as wide at the top as in the middle and rounded
-  // off at the tip.
-  const SPINE = [
-    { x: -5, y: -4, r: 8 },
-    { x: -8, y: -16, r: 12 },
-    { x: -10, y: -29, r: 14 },
-    { x: -11, y: -42, r: 13.5 },
-    { x: -11, y: -53, r: 10.5 },
-  ];
-
-  /** A point along the spine, and which way is out from it. */
-  function along(t: number) {
-    const at = t * (SPINE.length - 1);
-    const i = Math.min(SPINE.length - 2, Math.floor(at));
-    const f = at - i;
-    const a = SPINE[i];
-    const b = SPINE[i + 1];
-    const x = a.x + (b.x - a.x) * f;
-    const y = a.y + (b.y - a.y) * f;
-    const r = a.r + (b.r - a.r) * f;
-    // Perpendicular to the spine, pointing away from the body.
-    const dx = b.x - a.x;
-    const dy = b.y - a.y;
-    const len = Math.hypot(dx, dy) || 1;
-    return { x, y, r, nx: -dy / len, ny: dx / len };
-  }
-
-  // A soft core, so the strands have something to stand out of and no gap
-  // shows through the middle of the plume.
+  // See `TAIL_CORE` and `TAIL_HAIRS`, which is where it is worked out.
   ctx.fillStyle = p.squirrelTail;
-  for (let i = 0; i <= 40; i++) {
-    const at = along(i / 40);
+  for (const lobe of TAIL_CORE) {
     ctx.beginPath();
-    ctx.arc(at.x, at.y, at.r * 0.88, 0, Math.PI * 2);
+    ctx.arc(lobe.x, lobe.y, lobe.r, 0, Math.PI * 2);
     ctx.fill();
   }
 
   ctx.lineCap = 'round';
-  for (let i = 0; i < 130; i++) {
-    // A cheap fixed hash: the same hair in the same place every frame.
-    const h1 = ((i * 2654435761) % 1000) / 1000;
-    const h2 = ((i * 40503) % 997) / 997;
-    const t = (i % 44) / 43;
-    const at = along(t);
-    // Fanned either side of straight out, so the plume has a soft edge rather
-    // than a bristle line.
-    const spread = (h1 - 0.5) * 1.5;
-    const ax = at.nx * Math.cos(spread) - at.ny * Math.sin(spread);
-    const ay = at.nx * Math.sin(spread) + at.ny * Math.cos(spread);
-    // Short and many, not long and few: hairs standing a whole radius proud of
-    // the core read as a thistle. They only have to break the outline.
-    const reach = at.r * (0.92 + h2 * 0.22);
-
-    ctx.strokeStyle = i % 3 === 0 ? p.squirrelTailLight : p.squirrelTail;
-    ctx.lineWidth = 3.2 - h2 * 1.1;
+  for (const tuft of TAIL_TUFTS) {
+    ctx.strokeStyle = tuft.light ? p.squirrelTailLight : p.squirrelTail;
+    ctx.lineWidth = tuft.width;
     ctx.beginPath();
-    ctx.moveTo(at.x + ax * at.r * 0.35, at.y + ay * at.r * 0.35);
-    ctx.lineTo(at.x + ax * reach, at.y + ay * reach);
+    for (const hair of tuft.hairs) {
+      ctx.moveTo(hair.x0, hair.y0);
+      ctx.lineTo(hair.x1, hair.y1);
+    }
     ctx.stroke();
   }
 
@@ -1172,36 +1240,22 @@ function drawSquirrelFromBehind(
   }
 
   // The tail first, filling most of the view — it is between us and the animal.
-  // Built with an uneven edge rather than as a disc with spokes: a circle with
-  // evenly radiating hairs is a sunflower, not a tail.
-  const lump = (a: number) => 1 + Math.sin(a * 3 + 0.7) * 0.07 + Math.sin(a * 5 + 2.1) * 0.05;
-
+  // See `REAR_EDGE` and `REAR_TUFTS`, which is where its shape is worked out.
   ctx.fillStyle = p.squirrelTail;
   ctx.beginPath();
-  for (let i = 0; i <= 40; i++) {
-    const a = (i / 40) * Math.PI * 2;
-    const r = lump(a);
-    const px = Math.cos(a) * 13 * r;
-    const py = -17 + Math.sin(a) * 16.5 * r;
-    if (i === 0) ctx.moveTo(px, py);
-    else ctx.lineTo(px, py);
-  }
+  REAR_EDGE.forEach((pt, i) => (i === 0 ? ctx.moveTo(pt.x, pt.y) : ctx.lineTo(pt.x, pt.y)));
   ctx.closePath();
   ctx.fill();
 
   ctx.lineCap = 'round';
-  for (let i = 0; i < 66; i++) {
-    const h1 = ((i * 2654435761) % 1000) / 1000;
-    const h2 = ((i * 40503) % 997) / 997;
-    // Jittered off the even spacing, or the hairs comb themselves into spokes.
-    const a = ((i + h1 * 0.8) / 66) * Math.PI * 2;
-    const r = lump(a);
-    const out = 0.94 + h2 * 0.16;
-    ctx.strokeStyle = i % 3 === 0 ? p.squirrelTailLight : p.squirrelTail;
-    ctx.lineWidth = 3.4 - h1 * 1.2;
+  for (const tuft of REAR_TUFTS) {
+    ctx.strokeStyle = tuft.light ? p.squirrelTailLight : p.squirrelTail;
+    ctx.lineWidth = tuft.width;
     ctx.beginPath();
-    ctx.moveTo(Math.cos(a) * 13 * r * 0.62, -17 + Math.sin(a) * 16.5 * r * 0.62);
-    ctx.lineTo(Math.cos(a) * 13 * r * out, -17 + Math.sin(a) * 16.5 * r * out);
+    for (const hair of tuft.hairs) {
+      ctx.moveTo(hair.x0, hair.y0);
+      ctx.lineTo(hair.x1, hair.y1);
+    }
     ctx.stroke();
   }
 
@@ -1218,15 +1272,11 @@ function drawCat(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette): void 
   const cat = scene.cat;
   if (!cat) return;
   const g = scene.ground;
-  // It looks at him on the way in and while it is with him, and away from him
-  // on the way out — which is the same thing as the way it is walking.
-  const facing = cat.phase === 'leaving' ? cat.from : Math.sign(scene.ciccio.x - cat.x) || 1;
-
   contactShadow(ctx, cat.x, g + FRONT_OF_ROOM, 26, p);
 
   ctx.save();
   ctx.translate(cat.x, g + FRONT_OF_ROOM);
-  ctx.scale(facing, 1);
+  ctx.scale(cat.facing, 1);
 
   // Tail, up and curled at the tip the way a pleased cat carries it.
   ctx.strokeStyle = p.cat;

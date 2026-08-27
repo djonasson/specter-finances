@@ -19,6 +19,7 @@ import {
   SQUIRREL_REACH,
   scolder,
   scoldingAt,
+  hitsSquirrel,
   showingZebra,
   CAT_NEAR,
   MAX_HEARTS,
@@ -417,19 +418,17 @@ describe('two squirrels who love him', () => {
     }
   });
 
-  it('settles them either side of him whenever he is not chasing food', () => {
-    const s = sceneAt(1280);
-    for (let i = 0; i < 6000; i++) {
-      step(s, steady);
-      if (dashingForFood(s)) continue;
-      // Given a moment's peace they are where they belong.
-      if (s.ciccio.phase !== 'wandering') continue;
-      run(s, 0, steady);
-    }
-    run(s, 400, steady);
+  it('settles them either side of him, given a quiet afternoon', () => {
+    const s = quietScene(1280);
+    run(s, 6400, steady);
     const [left, right] = s.squirrels;
     expect(left.x).toBeLessThan(s.ciccio.x);
     expect(right.x).toBeGreaterThan(s.ciccio.x);
+    for (const q of s.squirrels) {
+      // Within the dead zone of where they want to stand: closer than that and
+      // they would shuffle a fraction every frame for ever.
+      expect(Math.abs(Math.abs(q.x - s.ciccio.x) - FLANK_GAP)).toBeLessThanOrEqual(FLANK_SETTLED);
+    }
   });
 
   it('keeps them in the room while it keeps them beside him', () => {
@@ -857,7 +856,9 @@ describe('watching television', () => {
     const [left, right] = s.squirrels;
     expect(left.x).toBeLessThan(s.ciccio.x);
     expect(right.x).toBeGreaterThan(s.ciccio.x);
-    expect(squirrelY(s, left)).toBe(s.ground - SEAT_HEIGHT.sofa);
+    // The seat part of its height — one of them may already be off up the wall,
+    // which `squirrelY` now includes because that is where it is drawn.
+    expect(squirrelY(s, left) + left.climb).toBe(s.ground - SEAT_HEIGHT.sofa);
   });
 
   // Ticked only while he is seated, a television he never reaches never expires
@@ -912,16 +913,34 @@ describe('watching television', () => {
     expect(s.ciccio.phase).toBe('wandering');
   });
 
-  // A stored `on` can outlive the thing it is about; a derived one could not.
-  // That is the price of storing it, and it is paid here.
-  it('is never left on for a television the room no longer has room for', () => {
+  // A stored `on` could outlive the room it belongs to, which is the price of
+  // storing it rather than deriving it. It does not, and the reason is the
+  // layout: there is a living room at every width. This is what says so — a
+  // resize down to the narrowest window the app is opened at, still with a
+  // sofa under the set that is on.
+  it('always has a room for the set that is on, however narrow the window', () => {
     const s = sceneAt(1280);
     clickScene(s, s.layout.loungeX, s.ground - TV_HANGS_AT - 10);
     settleOn(s, 'sofa');
     resizeScene(s, stageOf(320));
-    // The room still has a lounge at every width, so it stays on — what is
-    // pinned is that the two can never disagree.
-    expect(s.tv.on).toBe(s.layout.loungeX > 0);
+
+    expect(s.tv.on).toBe(true);
+    expect(s.layout.loungeX - SOFA_WIDTH / 2).toBeGreaterThan(0);
+    expect(s.layout.loungeX + SOFA_WIDTH / 2).toBeLessThanOrEqual(stageOf(320).width);
+  });
+
+  // Where the drawing puts a figure and where a tap looks for it are the same
+  // number. A squirrel up the wall was hit-tested at floor level, so the one
+  // interaction a stuck squirrel has had to be aimed at the empty floor beneath.
+  it('finds a squirrel where it is drawn, not where its feet started', () => {
+    const s = sceneAt(1280);
+    clickScene(s, s.layout.loungeX, s.ground - TV_HANGS_AT - 10);
+    settleOn(s, 'sofa');
+    const squirrel = s.squirrels[0];
+    squirrel.climb = CLIMB_MAX;
+
+    expect(hitsSquirrel(s, squirrel, squirrel.x, squirrelY(s, squirrel) - 10)).toBe(true);
+    expect(hitsSquirrel(s, squirrel, squirrel.x, s.ground - 5)).toBe(false);
   });
 });
 
@@ -976,19 +995,22 @@ describe('getting on and off the furniture', () => {
     }
   });
 
-  it('keeps him between them on the furniture as well as on the floor', () => {
+  // The floor case is covered above, over every width. What is left to ask is
+  // whether it still holds once they are *on* something — where their places
+  // come from his seat rather than from his walk.
+  it('keeps him between them on the furniture, not only on the floor', () => {
     const s = sceneAt(1280);
-    let wrongFor = 0;
+    let seated = 0;
     for (let i = 0; i < 30000; i++) {
       step(s, eager);
-      // Running for a gratin he is out in front of both, and a squirrel he
-      // overtook needs a moment to run back — so what is pinned here is that
-      // they are never stuck on the wrong side, not that they never are.
+      if (s.ciccio.at === 'floor') continue;
+      seated++;
       const [left, right] = s.squirrels;
-      const wrong = left.x > s.ciccio.x || right.x < s.ciccio.x;
-      wrongFor = wrong ? wrongFor + 1 : 0;
-      expect(wrongFor).toBeLessThan(700);
+      expect(left.x).toBeLessThan(s.ciccio.x);
+      expect(right.x).toBeGreaterThan(s.ciccio.x);
     }
+    // And that the question was actually asked.
+    expect(seated).toBeGreaterThan(1000);
   });
 
   it('never leaves anybody on a spot the room does not have', () => {

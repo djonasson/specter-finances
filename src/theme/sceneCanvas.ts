@@ -1,5 +1,5 @@
 import { useEffect, useRef, type RefObject } from 'react';
-import { canvasPixelRatio, fitCanvas } from './chrome';
+import { canvasPixelRatio, fitCanvas, watchPixelRatio } from './chrome';
 import { stageFor } from './stage';
 import type { SceneSize } from './stage';
 
@@ -30,10 +30,11 @@ export interface SceneSpec<S> {
   drawScene: (ctx: CanvasRenderingContext2D, scene: S, isDark: boolean, scale: number) => void;
   /** Given the point in the scene's own units. Omitted if nothing is clickable. */
   clickScene?: (scene: S, x: number, y: number) => void;
-  /** Read every frame rather than closed over, so a theme flip does not restart. */
-  isDark: () => boolean;
-  /** Re-arms when the display's pixel ratio changes; see `watchPixelRatio`. */
-  watchPixelRatio: (onChange: () => void) => () => void;
+  /**
+   * Read through the ref below rather than closed over, so a theme flip does
+   * not tear the scene down: under "auto" that happens by itself at sunset.
+   */
+  isDark: boolean;
 }
 
 export function useSceneCanvas<S>(
@@ -52,8 +53,7 @@ export function useSceneCanvas<S>(
   useEffect(() => {
     const canvas = canvasRef.current!;
     const ctx = canvas.getContext('2d')!;
-    const { createScene, resizeScene, step, drawScene, clickScene, watchPixelRatio } =
-      specRef.current;
+    const { createScene, resizeScene, step, drawScene, clickScene } = specRef.current;
 
     let animationId: number;
     let lastTime = 0;
@@ -107,7 +107,7 @@ export function useSceneCanvas<S>(
 
       step(scene, Math.random);
       ctx.clearRect(0, 0, cssWidth, cssHeight);
-      drawScene(ctx, scene, specRef.current.isDark(), size.scale);
+      drawScene(ctx, scene, specRef.current.isDark, size.scale);
     }
 
     /**

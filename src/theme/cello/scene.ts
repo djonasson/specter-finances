@@ -14,7 +14,7 @@
  * is the only one that decides what happens.
  */
 
-import { clamp, sceneFloor } from '../stage';
+import { clamp, sceneFloor, toward } from '../stage';
 import type { SceneSize } from '../stage';
 
 /** Frames, at the ~40fps the background loop is throttled to. */
@@ -1723,7 +1723,7 @@ function driveCar(scene: Scene): void {
 /** Eases her round to face the way she is going. See `Girl.facing`. */
 function turnGirl(scene: Scene): void {
   const { girl } = scene;
-  girl.facing = clamp(girl.facing + clamp(girl.dir - girl.facing, -TURN_STEP, TURN_STEP), -1, 1);
+  girl.facing = toward(girl.facing, girl.dir, TURN_STEP);
 }
 
 function walkGirl(scene: Scene, rng: Rng): void {
