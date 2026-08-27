@@ -62,8 +62,13 @@ export const TV_HANGS_AT = 62;
  * the ground is the scene's to paint — and painting it is what stops the room
  * reading as furniture floating on a page. It is the tallest thing here by
  * construction, so it *is* the reach; everything else has to fit under it.
+ *
+ * Set to give a 170px band at desktop, which is the whole of what this theme
+ * was budgeted. Most of the extra over a room's worth of furniture goes to the
+ * squirrel who climbs it: `CLIMB_MAX` is what is left once one of them and its
+ * tail are subtracted, so raising the ceiling is how it gets to climb higher.
  */
-export const WALL_HEIGHT = 118;
+export const WALL_HEIGHT = 136;
 
 /** How deep the room is drawn, for the top faces that give it a third side. */
 export const DEPTH = 13;
@@ -364,9 +369,6 @@ export interface Layout {
    * thing nobody notices until it is on a phone.
    */
   loungeX: number;
-  /** The rug, which is scenery: nothing reads it, so it has no null case. */
-  rugX: number;
-  rugWidth: number;
   wanderLeft: number;
   wanderRight: number;
 }
@@ -411,7 +413,6 @@ export function layoutFor(width: number): Layout {
     bedRight + GAP + OVEN_WIDTH / 2,
     loungeLeft - GAP - OVEN_WIDTH / 2,
   );
-  const kitchenRight = ovenX + OVEN_WIDTH / 2;
 
   // His whole floor, inset by a flank at each end so a squirrel beside him is
   // still in the room. There is no clamp on how short this may get, because at
@@ -420,17 +421,10 @@ export function layoutFor(width: number): Layout {
   const wanderLeft = EDGE + FLANK_GAP;
   const wanderRight = width - EDGE - FLANK_GAP;
 
-  // Centred on the open floor between the kitchen and the sofa, which is the
-  // part of the room he actually walks.
-  const openLeft = Math.max(wanderLeft, kitchenRight);
-  const openRight = Math.min(wanderRight, loungeX - SOFA_WIDTH / 2);
-
   return {
     bedX,
     ovenX,
     loungeX,
-    rugX: (openLeft + openRight) / 2,
-    rugWidth: Math.max(90, (openRight - openLeft) * 0.78),
     wanderLeft,
     wanderRight,
   };

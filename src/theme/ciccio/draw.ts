@@ -55,9 +55,6 @@ const LIGHT = {
   floorSeam: '#c9b191',
   floorGrain: '#d3bd9f',
   shadow: 'rgba(60, 40, 24, 0.16)',
-  rug: '#c98d78',
-  rugInner: '#dba894',
-  rugTrim: '#b0725e',
 
   ovenBody: '#d9d2c8',
   ovenBodyTop: '#e8e3db',
@@ -141,9 +138,6 @@ const DARK: Palette = {
   floorSeam: '#4a3c2e',
   floorGrain: '#61503e',
   shadow: 'rgba(0, 0, 0, 0.3)',
-  rug: '#6b4438',
-  rugInner: '#7d5344',
-  rugTrim: '#8a5e4d',
 
   ovenBody: '#4a453e',
   ovenBodyTop: '#57514a',
@@ -306,6 +300,23 @@ const STRIDE = 11;
  * about four times as fast as at a stroll.
  */
 const RUN_STRIDE = 5.5;
+
+/**
+ * How far towards the viewer the three of them stand.
+ *
+ * The furniture is against the back wall and they walk the strip in front of
+ * it, but drawn on the very same line they simply overlapped it — passing the
+ * cooker read as standing inside it. A few units nearer, into the floor, and
+ * the same drawing order reads as in front. Presentation only: `ground` is
+ * still the line the scene measures everything from.
+ */
+const FRONT_OF_ROOM = 7;
+
+/**
+ * Half way up a squirrel as it is drawn — feet at nothing, the top of the tail
+ * at about −64. The pivot the head-down turn goes about.
+ */
+const SQUIRREL_MIDDLE = -32;
 const gait = (x: number, foot: number, running = false) =>
   Math.sin((x / (running ? RUN_STRIDE : STRIDE)) * Math.PI + foot * Math.PI);
 
@@ -391,23 +402,6 @@ function drawRoom(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette): void
   ctx.fillRect(0, g - 7, scene.width, 7);
   ctx.fillStyle = p.floorLine;
   ctx.fillRect(0, g - 1, scene.width, 1.2);
-}
-
-function drawRug(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette): void {
-  const { rugX, rugWidth } = scene.layout;
-  ctx.fillStyle = p.rug;
-  ctx.beginPath();
-  ctx.ellipse(rugX, scene.ground + 8, rugWidth / 2, 8.5, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = p.rugInner;
-  ctx.beginPath();
-  ctx.ellipse(rugX, scene.ground + 8, rugWidth / 2 - 7, 5, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.strokeStyle = p.rugTrim;
-  ctx.lineWidth = 1.2;
-  ctx.beginPath();
-  ctx.ellipse(rugX, scene.ground + 8, rugWidth / 2 - 3.5, 6.6, 0, 0, Math.PI * 2);
-  ctx.stroke();
 }
 
 function drawBed(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette): void {
@@ -659,7 +653,7 @@ function drawCiccio(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette): vo
   const { ciccio } = scene;
   // Off the scene, so a climb on or off is drawn part way up rather than at
   // whichever end of it `at` currently names.
-  const y = ciccioY(scene);
+  const y = ciccioY(scene) + FRONT_OF_ROOM;
   const asleep = ciccio.phase === 'sleeping';
 
   const LONG = 23; // half his length, nose excluded
@@ -830,7 +824,7 @@ function drawSquirrel(
   squirrel: Squirrel,
   p: Palette,
 ): void {
-  const y = squirrelY(scene, squirrel) - squirrel.climb;
+  const y = squirrelY(scene, squirrel) - squirrel.climb + FRONT_OF_ROOM;
 
   if (watchingTelevision(scene) && squirrel.climb === 0) {
     drawSquirrelFromBehind(ctx, squirrel.x, y, p);
@@ -840,12 +834,16 @@ function drawSquirrel(
   ctx.save();
   ctx.translate(squirrel.x, y);
   // Head down is how a squirrel actually comes down a wall, and it is also the
-  // moment it works out that it cannot. Turned about its own middle rather than
-  // mirrored, so the tail stays behind it and the feet stay on the wall.
+  // moment it works out that it cannot.
+  //
+  // Turned about the middle of the *figure*, so it occupies the same band of
+  // wall afterwards: turned about anything else it drops by however far the
+  // pivot is off centre, which is exactly what it looked like — a squirrel that
+  // reached the top and then slid down half its own height to think about it.
   if (squirrel.headDown) {
-    ctx.translate(0, -18);
+    ctx.translate(0, SQUIRREL_MIDDLE);
     ctx.rotate(Math.PI);
-    ctx.translate(0, -18);
+    ctx.translate(0, -SQUIRREL_MIDDLE);
   }
   ctx.scale(squirrel.facing || 0.001, 1);
 
@@ -1063,10 +1061,10 @@ function drawCat(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette): void 
   // on the way out — which is the same thing as the way it is walking.
   const facing = cat.phase === 'leaving' ? cat.from : Math.sign(scene.ciccio.x - cat.x) || 1;
 
-  contactShadow(ctx, cat.x, g, 26, p);
+  contactShadow(ctx, cat.x, g + FRONT_OF_ROOM, 26, p);
 
   ctx.save();
-  ctx.translate(cat.x, g);
+  ctx.translate(cat.x, g + FRONT_OF_ROOM);
   ctx.scale(facing, 1);
 
   // Tail, up and curled at the tip the way a pleased cat carries it.
@@ -1195,9 +1193,11 @@ function drawGratin(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette): vo
   // How much is left, so it goes down as he eats it.
   const left = Math.max(0.25, gratin.bites / GRATIN_BITES);
 
-  contactShadow(ctx, gratin.x, g, 22, p);
+  contactShadow(ctx, gratin.x, g + FRONT_OF_ROOM, 22, p);
 
-  // The dish.
+  // The dish, standing on the same strip of floor they walk.
+  ctx.save();
+  ctx.translate(0, FRONT_OF_ROOM);
   ctx.fillStyle = p.dish;
   ctx.beginPath();
   ctx.ellipse(gratin.x, g - 3, 12, 4.5, 0, 0, Math.PI * 2);
@@ -1215,6 +1215,8 @@ function drawGratin(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette): vo
   ctx.beginPath();
   ctx.ellipse(gratin.x - 1, g - 10.5, 7.5 * left, 2.6 * left, 0, 0, Math.PI * 2);
   ctx.fill();
+
+  ctx.restore();
 
   ctx.fillStyle = p.steam;
   for (const puff of gratin.steam) {
@@ -1294,7 +1296,6 @@ export function drawScene(
   ctx.scale(scale, scale);
 
   drawRoom(ctx, scene, p);
-  drawRug(ctx, scene, p);
   drawBed(ctx, scene, p);
   drawKitchen(ctx, scene, p);
   drawTv(ctx, scene, p);

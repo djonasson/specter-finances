@@ -125,14 +125,6 @@ describe('the room, laid out', () => {
     expect(l.wanderRight + FLANK_GAP).toBeLessThanOrEqual(stage.width);
   });
 
-  // The drawing takes insets off this — a trim inside a border inside the rug —
-  // and a canvas arc with a negative radius throws, which inside the frame loop
-  // means the scene stops for the life of the tab. `layoutFor` floors it, so
-  // there is no guard in `draw.ts` to go stale; this is what says so.
-  it.each(WIDTHS)('never hands the drawing a rug too small to inset at %ipx', (width) => {
-    expect(layoutFor(stageOf(width).width).rugWidth).toBeGreaterThanOrEqual(90);
-  });
-
   it('gives a wider window a wider walk, rather than bigger furniture', () => {
     const narrow = layoutFor(stageOf(360).width);
     const wide = layoutFor(stageOf(1440).width);
