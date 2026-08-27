@@ -1223,7 +1223,7 @@ function drawSquirrelFromBehind(
   x: number,
   y: number,
   p: Palette,
-  swing = 0,
+  swing: number,
 ): void {
   ctx.save();
   ctx.translate(x, y);
@@ -1456,6 +1456,11 @@ function drawSaying(
   top: number,
   p: Palette,
 ): void {
+  // Saved rather than put back by hand: the reset was three of the four things
+  // this sets, re-spelling the canvas defaults as literals and leaving `font`
+  // behind. Left set, the alignment reached the next thing to draw text — the
+  // "z" over a sleeping hedgehog, which then sat off his head.
+  ctx.save();
   ctx.font = '600 11px system-ui, -apple-system, "Segoe UI", sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
@@ -1486,11 +1491,7 @@ function drawSaying(
 
   ctx.fillStyle = p.bubbleText;
   ctx.fillText(saying.line, x, bottom - height / 2);
-  ctx.globalAlpha = 1;
-  // Put the text state back. Left set, the next thing to draw text — the "z"
-  // over a sleeping hedgehog — inherited this alignment and sat off his head.
-  ctx.textAlign = 'start';
-  ctx.textBaseline = 'alphabetic';
+  ctx.restore();
 }
 
 /**
@@ -1525,9 +1526,9 @@ export function drawScene(
   drawHearts(ctx, scene, p);
 
   // Bubbles last, over everything, so one is never half behind a sofa — the
-  // cat's included, which the scene has built, ticked and typed all along while
-  // nothing here drew it, leaving a silent cat through the whole of the meow
-  // this code calls "the point of the visit".
+  // cat's included. The scene built, ticked and typed `cat.say` all along while
+  // nothing here drew it, so the meow this code calls "the point of the visit"
+  // was silent for the whole of every visit.
   for (const squirrel of scene.squirrels) {
     if (squirrel.say) {
       drawSaying(ctx, squirrel.say, squirrel.x, squirrelY(scene, squirrel) - 46, p);
@@ -1538,6 +1539,10 @@ export function drawScene(
   // the frame `at` changed while he was still half way up.
   if (scene.ciccio.say) {
     drawSaying(ctx, scene.ciccio.say, scene.ciccio.x, ciccioY(scene) - 34, p);
+  }
+  // Clear of its ears, which are the tallest part of it at −37.
+  if (scene.cat?.say) {
+    drawSaying(ctx, scene.cat.say, scene.cat.x, scene.ground + FRONT_OF_ROOM - 46, p);
   }
 
   ctx.restore();

@@ -7,6 +7,7 @@ import { renderWithTheme, resizeTo } from '../test-utils';
 import { SceneCanvas } from './sceneCanvas.tsx';
 import type { SceneSpec } from './sceneCanvas';
 import { sceneScale, GROUND_ABOVE_FOOTER } from './stage';
+import type { SceneSize } from './stage';
 import { footerHeight, MAX_PIXEL_RATIO } from './chrome';
 
 /**
@@ -160,16 +161,37 @@ describe('the canvas a scene stands on', () => {
   });
 });
 
+/**
+ * What a window of this size becomes, in the scene's own units.
+ *
+ * The arithmetic written out at each assertion was three copies in this file
+ * alone, and the ground's is the part with two readings that each cost a bug —
+ * so a change to `stageFor` had three places here to follow it to, and any one
+ * of them left behind would have gone on agreeing with itself.
+ */
+const stageOf = (width: number, height: number) => {
+  const scale = sceneScale(width);
+  return {
+    width: width / scale,
+    height: height / scale,
+    ground: (height - footerHeight() - GROUND_ABOVE_FOOTER) / scale,
+  };
+};
+
+/** Every field of a stage, to ten places. */
+function expectStage(actual: SceneSize, width: number, height: number) {
+  const want = stageOf(width, height);
+  expect(actual.width).toBeCloseTo(want.width, 10);
+  expect(actual.height).toBeCloseTo(want.height, 10);
+  expect(actual.ground).toBeCloseTo(want.ground, 10);
+}
+
 describe('the stage a scene is handed', () => {
   it('lays it out in the scene’s own units, not the window’s', () => {
     resizeTo(360, 700);
     render();
 
-    const stage = spec.createScene.mock.calls[0][0];
-    const scale = sceneScale(360);
-    expect(stage.width).toBeCloseTo(360 / scale, 10);
-    expect(stage.height).toBeCloseTo(700 / scale, 10);
-    expect(stage.ground).toBeCloseTo((700 - footerHeight() - GROUND_ABOVE_FOOTER) / scale, 10);
+    expectStage(spec.createScene.mock.calls[0][0], 360, 700);
   });
 
   // The two measurements are deliberately from different places, and each was a
@@ -184,12 +206,10 @@ describe('the stage a scene is handed', () => {
     vi.spyOn(document.documentElement, 'clientHeight', 'get').mockReturnValue(742);
     render();
 
-    const stage = spec.createScene.mock.calls[0][0];
-    const scale = sceneScale(1009);
-    expect(stage.width).toBeCloseTo(1009 / scale, 10);
-    expect(stage.ground).toBeCloseTo((800 - footerHeight() - GROUND_ABOVE_FOOTER) / scale, 10);
+    // The width off the document's 1009, the height off the window's 800.
+    expectStage(spec.createScene.mock.calls[0][0], 1009, 800);
     // Not the layout viewport's 742, which a collapsing URL bar never changes.
-    expect(stage.ground).not.toBeCloseTo((742 - footerHeight() - GROUND_ABOVE_FOOTER) / scale, 10);
+    expect(spec.createScene.mock.calls[0][0].ground).not.toBeCloseTo(stageOf(1009, 742).ground, 10);
   });
 
   it('builds the scene once, and hands it randomness rather than taking it', () => {
@@ -265,9 +285,7 @@ describe('two decisions, not one', () => {
     const built = spec.createScene.mock.calls[0][0];
     const moved = spec.resizeScene.mock.calls[0][1];
     expect(Object.keys(moved).sort()).toEqual(Object.keys(built).sort());
-    const scale = sceneScale(1200);
-    expect(moved.width).toBeCloseTo(1200 / scale, 10);
-    expect(moved.ground).toBeCloseTo((700 - footerHeight() - GROUND_ABOVE_FOOTER) / scale, 10);
+    expectStage(moved, 1200, 700);
   });
 
   it('refits the buffer for a change of ratio without moving the scene', () => {

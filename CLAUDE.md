@@ -439,12 +439,14 @@ climb while either of them is still moving vertically, the seat rule again: roll
 on a squirrel still settling onto the cushion, it added the wall to that same
 frame.
 
-**A timer that counts frames counts the wrong thing.** The cat's interval runs
-down only while a visit is actually possible, the way the oven's runs only while
-there is no gratin out. Ticked on every frame it went as far as −1500 across a
-busy day, and the cat then walked in on the very frame he swallowed the last bite
-or stepped off the sofa — pouncing rather than dropping by. The pacing it names
-is therefore in _pottering_, which is why the number moved when the floor went in.
+**A timer that counts frames counts the wrong thing.** What the cat's interval
+counts is _pottering_, so it runs down only while pottering is what he is doing.
+Ticked on every frame it went as far as −1500 across a busy day, which is a
+counter that has stopped pacing anything: the cat walked in on the very frame he
+swallowed the last bite or stepped off the sofa, pouncing rather than dropping
+by. Gating it made it a slower clock, which is why the number moved with it —
+2100 put the first visit at 65 seconds and one every two and a half minutes,
+against the 50 seconds and two minutes it is measured at now.
 
 **"Sometimes" and "faster" are measured, never described.** Three of these were
 quietly wrong by a factor of three and only a count found them: the cat's first
