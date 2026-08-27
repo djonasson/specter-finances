@@ -377,6 +377,13 @@ export const MUTATIONS = [
     tests: ['src/theme/ciccio/scene.test.ts'],
   },
   {
+    name: 'the room answers a tap meant for a squirrel sitting on it',
+    file: 'src/theme/ciccio/scene.ts',
+    find: "  if (tappedSquirrel((squirrel) => squirrel.climb > 0 || squirrel.at !== 'floor')) return;",
+    replace: '  if (tappedSquirrel((squirrel) => squirrel.climb > 0)) return;',
+    tests: ['src/theme/ciccio/scene.test.ts'],
+  },
+  {
     name: "the cat's interval runs down through his meals rather than counting his free time",
     file: 'src/theme/ciccio/scene.ts',
     find: '    if (!catMayCall(scene) || --scene.catNextIn > 0) return;',

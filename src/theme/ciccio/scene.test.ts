@@ -21,6 +21,8 @@ import {
   scolder,
   scoldingAt,
   hitsSquirrel,
+  hitsTv,
+  hitsBed,
   showingZebra,
   CAT_NEAR,
   MAX_HEARTS,
@@ -989,6 +991,59 @@ describe('watching television', () => {
     clickScene(s, squirrel.x, squirrelY(s, squirrel) - 20);
     expect(s.tv.showLeft).toBe(40000);
     expect(s.chatter).not.toBeNull();
+  });
+
+  // The same failure, in the two places it happens without anybody climbing
+  // anything: whatever a squirrel is sitting *on* covers it. Keyed on `climb`
+  // the exception fixed only the one case it was found in — measured on a grid
+  // over a seated squirrel's own box, 13.7% of one on the sofa is inside the
+  // television's and 74.4% of one in bed is inside the bed's, so three quarters
+  // of a squirrel in bed could not be tapped at all.
+  it.each([
+    [
+      'the television, while it sits on the sofa',
+      'sofa' as const,
+      (s: ReturnType<typeof sceneAt>) => tapTelevision(s),
+    ],
+    [
+      'the bed, while it sits in it',
+      'bed' as const,
+      (s: ReturnType<typeof sceneAt>) => clickScene(s, s.layout.bedX, s.ground - 10),
+    ],
+  ])('answers a tap on a seated squirrel rather than %s', (_name, seat, send) => {
+    const s = sceneAt(1280);
+    send(s);
+    settleOn(s, seat);
+    // They follow him onto it a few frames behind, and it is *them* this is
+    // about, so wait for them rather than for him.
+    runUntil(
+      s,
+      (x) => x.squirrels.every((q) => q.at === seat && q.lift >= 1),
+      400,
+      seat === 'bed' ? sleepy : eager,
+    );
+    expect(s.squirrels.every((q) => q.at === seat)).toBe(true);
+
+    // A point that is inside both boxes, found by walking the squirrel's own.
+    const squirrel = s.squirrels[0];
+    const foot = squirrelY(s, squirrel);
+    let both: [number, number] | null = null;
+    for (let x = squirrel.x - 30; x <= squirrel.x + 30 && !both; x += 0.5) {
+      for (let y = foot - 50; y <= foot + 14 && !both; y += 0.5) {
+        const room = seat === 'sofa' ? hitsTv(s, x, y) : hitsBed(s, x, y);
+        if (hitsSquirrel(s, squirrel, x, y) && room) both = [x, y];
+      }
+    }
+    expect(both).not.toBeNull();
+
+    const wasWatching = { ...s.tv };
+    s.chatter = null;
+    clickScene(s, both![0], both![1]);
+
+    expect(s.chatter).not.toBeNull();
+    // And the room was not answered as well: no programme restarted, no errand.
+    expect(s.tv).toEqual(wasWatching);
+    expect(s.ciccio.goal).toBeNull();
   });
 
   it('finds a squirrel where it is drawn, not where its feet started', () => {

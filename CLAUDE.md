@@ -408,10 +408,15 @@ may not do is skip frames a change of height is owed. The room is hit-tested
 **before** the animals: his box is thirty-four units either side of an animal a
 few units across, so testing him first makes the oven unclickable exactly while
 he is standing in front of it, which is when somebody is most likely reaching
-past him for it. The **one** exception is a squirrel off the ground: it and the
-television share the wall, and the set's box is the wider of the two, so the
-single interaction the whole wall-rescue has was being answered by restarting the
-programme.
+past him for it. The **one** exception is a squirrel that is not standing on the
+floor, because whatever it is off the floor _on_ covers it: keyed on the climb
+alone it fixed only the case it was found in — a stuck climber sharing the wall
+with the set, whose box is the wider of the two, so the single interaction the
+whole wall-rescue has was answered by restarting the programme. Measured on a
+grid over a seated squirrel's own box, 13.7% of one on the sofa is inside the
+television's and **74.4%** of one in bed is inside the bed's, so three quarters
+of a squirrel in bed could not be tapped at all — the bed answered instead,
+taking him out of it to go back to it.
 
 **What happens on its own is a rota, not three chances**: potter, eat, potter,
 watch something, potter, sleep. Rolled separately they came out in any order and

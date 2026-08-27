@@ -1757,12 +1757,22 @@ export function clickScene(scene: Scene, x: number, y: number): void {
     return hit;
   };
 
-  // A squirrel off the ground is asked *before* the set, and only then: the two
-  // share the wall, and the set's box swallowed the middle of a stuck one — so
-  // the single interaction the whole rescue has was aimed at a television that
-  // answered by restarting the programme. Everywhere else the room comes first,
-  // because his own box is enormous and the furniture never moves.
-  if (tappedSquirrel((squirrel) => squirrel.climb > 0)) return;
+  // A squirrel that is not standing on the floor is asked *before* the room,
+  // and it is the only thing that is: whatever it is off the floor *on* covers
+  // it, so the room would answer every tap aimed at it.
+  //
+  // Measured, on a grid over a seated squirrel's own box: 13.7% of one on the
+  // sofa is inside the television's, and 74.4% of one in bed is inside the
+  // bed's. So three quarters of a squirrel in bed could not be tapped at all —
+  // the bed answered instead, taking him out of it to go back to it — and a tap
+  // on one watching television restarted the programme. That is the same
+  // failure the stuck climber had, and keying the exception on `climb` fixed it
+  // for exactly the one case it was found in.
+  //
+  // Everywhere else the room still comes first, because *his* box is thirty-four
+  // units either side of an animal a few units across and the furniture never
+  // moves.
+  if (tappedSquirrel((squirrel) => squirrel.climb > 0 || squirrel.at !== 'floor')) return;
 
   if (hitsOven(scene, x, y)) {
     serveGratin(scene);
