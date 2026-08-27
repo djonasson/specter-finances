@@ -31,6 +31,7 @@ import {
   ciccioAngle,
   ciccioNoseInFront,
   watchingTelevision,
+  showingZebra,
   dashingForFood,
   scoldingAt,
   scolder,
@@ -89,6 +90,9 @@ const LIGHT = {
   tvScreenOff: '#3a3a41',
   tvScreenOn: '#0b0b0d',
   tvMark: '#e50914',
+  zebra: '#f4f4f2',
+  zebraDark: '#141414',
+  zebraEye: '#2a2a2a',
   tvGlow: 'rgba(255, 236, 200, 0.30)',
   tvGlowFade: 'rgba(255, 236, 200, 0)',
   tvSheen: 'rgba(255,255,255,0.07)',
@@ -172,6 +176,9 @@ const DARK: Palette = {
   tvScreenOff: '#212125',
   tvScreenOn: '#0b0b0d',
   tvMark: '#e50914',
+  zebra: '#e6e6e2',
+  zebraDark: '#0d0d0d',
+  zebraEye: '#1e1e1e',
   tvGlow: 'rgba(255, 232, 190, 0.22)',
   tvGlowFade: 'rgba(255, 232, 190, 0)',
   tvSheen: 'rgba(255,255,255,0.05)',
@@ -563,6 +570,97 @@ function drawSofa(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette): void
 }
 
 /**
+ * A zebra's head in profile, which is what the screen turns to for the last few
+ * seconds of whatever they are watching.
+ *
+ * Facing left, so it reads against the sofa below it rather than off the edge.
+ * `size` is the height of the head and everything else is a share of it, so it
+ * scales with the panel rather than needing a second set of numbers.
+ */
+function drawZebra(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  size: number,
+  p: Palette,
+): void {
+  const u = size / 30;
+
+  ctx.save();
+  ctx.translate(cx + 5 * u, cy);
+
+  // Neck and head: one shape, muzzle out to the left.
+  ctx.fillStyle = p.zebra;
+  ctx.beginPath();
+  // A long straight muzzle is most of what says horse rather than dog: the
+  // head runs well out to the left and narrows as it goes.
+  ctx.moveTo(6 * u, 15 * u);
+  ctx.lineTo(9 * u, -2 * u);
+  ctx.quadraticCurveTo(9 * u, -12 * u, 1 * u, -13 * u);
+  ctx.quadraticCurveTo(-9 * u, -13 * u, -17 * u, -8 * u);
+  ctx.quadraticCurveTo(-25 * u, -4 * u, -24 * u, 0.5 * u);
+  ctx.quadraticCurveTo(-21 * u, 3 * u, -16 * u, -1 * u);
+  ctx.quadraticCurveTo(-8 * u, 4 * u, -2 * u, 15 * u);
+  ctx.closePath();
+  ctx.fill();
+
+  // Ear.
+  ctx.beginPath();
+  ctx.moveTo(3 * u, -12 * u);
+  ctx.lineTo(6 * u, -19 * u);
+  ctx.lineTo(9 * u, -11 * u);
+  ctx.closePath();
+  ctx.fill();
+
+  // The mane, standing up along the back of the neck.
+  ctx.fillStyle = p.zebraDark;
+  ctx.beginPath();
+  ctx.moveTo(7 * u, -10 * u);
+  ctx.lineTo(12 * u, -6 * u);
+  ctx.lineTo(11 * u, 13 * u);
+  ctx.lineTo(6 * u, 14 * u);
+  ctx.closePath();
+  ctx.fill();
+
+  // Stripes: across the neck, and a few over the cheek.
+  ctx.strokeStyle = p.zebraDark;
+  ctx.lineCap = 'round';
+  ctx.lineWidth = 2.2 * u;
+  for (let i = 0; i < 4; i++) {
+    const y = -2 * u + i * 4.4 * u;
+    ctx.beginPath();
+    ctx.moveTo(6 * u, y);
+    ctx.quadraticCurveTo(0, y + 1.5 * u, -3.5 * u, y + 3.5 * u);
+    ctx.stroke();
+  }
+  ctx.lineWidth = 1.7 * u;
+  for (let i = 0; i < 4; i++) {
+    const x = -4 * u - i * 4.2 * u;
+    ctx.beginPath();
+    ctx.moveTo(x, -11 * u + i * 1.9 * u);
+    ctx.lineTo(x - 2.4 * u, -5.5 * u + i * 2.1 * u);
+    ctx.stroke();
+  }
+
+  // Muzzle, and an eye.
+  ctx.fillStyle = p.zebraDark;
+  ctx.beginPath();
+  ctx.ellipse(-21 * u, -1.5 * u, 3.6 * u, 2.8 * u, -0.35, 0, Math.PI * 2);
+  ctx.fill();
+  // The eye last, so no stripe lands on top of it.
+  ctx.fillStyle = p.zebraEye;
+  ctx.beginPath();
+  ctx.ellipse(-2 * u, -6.5 * u, 1.8 * u, 2.2 * u, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = p.zebra;
+  ctx.beginPath();
+  ctx.arc(-1.4 * u, -7.4 * u, 0.7 * u, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.restore();
+}
+
+/**
  * The television: wide, thin, and hung on the wall over the sofa.
  *
  * Switched on it is a black screen with a red letter on it, and the glow it
@@ -591,24 +689,28 @@ function drawTv(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette): void {
   ctx.fill();
 
   if (on) {
-    // The letter, drawn as three strokes rather than as text: a font that is
-    // not on the machine would silently substitute something else, and the
-    // whole point of it is the shape.
-    const h = TV_PANEL - 18;
-    const w = h * 0.62;
-    const x = loungeX - w / 2;
-    const y = top + 8;
-    const bar = w * 0.3;
-    ctx.fillStyle = p.tvMark;
-    ctx.fillRect(x, y, bar, h);
-    ctx.fillRect(x + w - bar, y, bar, h);
-    ctx.beginPath();
-    ctx.moveTo(x, y);
-    ctx.lineTo(x + bar, y);
-    ctx.lineTo(x + w, y + h);
-    ctx.lineTo(x + w - bar, y + h);
-    ctx.closePath();
-    ctx.fill();
+    if (showingZebra(scene)) {
+      drawZebra(ctx, loungeX, top + TV_PANEL / 2, TV_PANEL - 14, p);
+    } else {
+      // The letter, drawn as three strokes rather than as text: a font that is
+      // not on the machine would silently substitute something else, and the
+      // whole point of it is the shape.
+      const h = TV_PANEL - 18;
+      const w = h * 0.62;
+      const x = loungeX - w / 2;
+      const y = top + 8;
+      const bar = w * 0.3;
+      ctx.fillStyle = p.tvMark;
+      ctx.fillRect(x, y, bar, h);
+      ctx.fillRect(x + w - bar, y, bar, h);
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x + bar, y);
+      ctx.lineTo(x + w, y + h);
+      ctx.lineTo(x + w - bar, y + h);
+      ctx.closePath();
+      ctx.fill();
+    }
 
     // The light it throws on the room below it.
     const glow = ctx.createRadialGradient(loungeX, top + TV_PANEL, 2, loungeX, top + TV_PANEL, 90);

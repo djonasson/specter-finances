@@ -228,6 +228,15 @@ const CLIMB_FRAMES = 14;
  */
 export const MAX_CLIMB = 24 / CLIMB_FRAMES;
 
+/**
+ * The last stretch of a programme, when the screen turns to a zebra.
+ *
+ * Derived from the time left rather than stored beside it, the way the lit
+ * window is: a zebra on a set that is not about to go off is not a state the
+ * scene can reach, and there is nothing to keep in step.
+ */
+const ZEBRA_FRAMES = 170;
+
 /** How long a programme lasts, and how long a nap does. */
 const SHOW_FRAMES = 3400;
 const NAP_FRAMES = 2200;
@@ -1475,6 +1484,9 @@ export function ciccioAngle(scene: Scene): number {
   const base = Math.acos(clamp(ciccio.facing, -1, 1));
   return ciccio.phase === 'wobbling' ? base + ciccio.spin : base;
 }
+
+/** The closing few seconds of whatever they are watching. */
+export const showingZebra = (scene: Scene) => scene.tv.on && scene.tv.showLeft <= ZEBRA_FRAMES;
 
 /** Whether the three of them have their backs to the room, watching the set. */
 export const watchingTelevision = (scene: Scene) => scene.ciccio.phase === 'sitting';

@@ -18,6 +18,7 @@ import {
   SQUIRREL_REACH,
   scolder,
   scoldingAt,
+  showingZebra,
   CAT_NEAR,
   MAX_HEARTS,
   SQUIRREL_CALL,
@@ -812,6 +813,23 @@ describe('watching television', () => {
     s.ciccio.goal = null;
     s.ciccio.phase = 'wandering';
     runUntil(s, (x) => !x.tv.on, 60000, steady);
+  });
+
+  // Derived from the time left, the way the lit window is: a zebra on a set
+  // that is not about to go off is not a state the scene can reach, and there
+  // is nothing to keep in step.
+  it('turns the screen over to a zebra for the closing seconds', () => {
+    const s = sceneAt(1280);
+    clickScene(s, s.layout.loungeX, s.ground - TV_HANGS_AT - 10);
+    expect(s.tv.on).toBe(true);
+    expect(showingZebra(s)).toBe(false);
+
+    runUntil(s, (x) => showingZebra(x), 60000, steady);
+    // And only at the end of it — a few seconds, not the whole programme.
+    expect(s.tv.showLeft).toBeLessThan(300);
+
+    runUntil(s, (x) => !x.tv.on, 4000, steady);
+    expect(showingZebra(s)).toBe(false);
   });
 
   it('gets him back off the sofa once the programme has finished', () => {
