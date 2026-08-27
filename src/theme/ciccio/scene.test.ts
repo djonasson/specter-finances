@@ -1264,6 +1264,26 @@ describe('one of them gets stuck up the wall', () => {
     expect(other.climb).toBeGreaterThan(0);
   });
 
+  // Stepped down at the same rate, the rescuer reaches the bottom first — it
+  // started lower — and leaves him to finish on his own, which rather undoes
+  // the point of anybody having gone up.
+  it('brings it down with him rather than racing him to the bottom', () => {
+    const s = watching();
+    runUntil(s, (x) => x.rescue?.phase === 'descending', 30000, eager);
+    const rescue = s.rescue!;
+    const climber = s.squirrels[rescue.climber];
+    const other = s.squirrels[rescue.climber === 0 ? 1 : 0];
+
+    while (s.rescue?.phase === 'descending') {
+      step(s, steady);
+      // Always underneath him, and never already home while he is still up.
+      expect(other.climb).toBeLessThan(climber.climb + 0.01);
+      if (climber.climb > 0.5) expect(other.climb).toBeGreaterThan(0);
+    }
+    expect(climber.climb).toBe(0);
+    expect(other.climb).toBe(0);
+  });
+
   it('brings them both down and then tells it off', () => {
     const s = watching();
     runUntil(s, (x) => x.rescue?.phase === 'scolding', 30000, eager);

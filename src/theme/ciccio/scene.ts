@@ -370,6 +370,11 @@ export const ciccioFloor = sceneFloor(SCENE_REACH);
  */
 export const CLIMB_MAX = WALL_HEIGHT - SEAT_HEIGHT.sofa - SQUIRREL_REACH;
 const CLIMB_SPEED = 0.55;
+/**
+ * How high the one doing the fetching goes: just under him, near enough to be
+ * collecting him rather than joining him.
+ */
+const ESCORT_BELOW = CLIMB_MAX - 10;
 /** How long he stays up there working out that he cannot get down. */
 const STUCK_FRAMES = 150;
 /** And how long the telling-off lasts. */
@@ -1307,16 +1312,23 @@ function runRescue(scene: Scene, rng: Rng): void {
 
   if (rescue.phase === 'fetching') {
     // Up to just below it, which is where you would stop to collect somebody.
-    other.climb = Math.min(CLIMB_MAX - 10, other.climb + CLIMB_SPEED);
-    if (other.climb >= CLIMB_MAX - 10) rescue.phase = 'descending';
+    other.climb = Math.min(ESCORT_BELOW, other.climb + CLIMB_SPEED);
+    if (other.climb >= ESCORT_BELOW) rescue.phase = 'descending';
     return;
   }
 
   if (rescue.phase === 'descending') {
-    for (const squirrel of [climber, other]) {
-      squirrel.climb = Math.max(0, squirrel.climb - CLIMB_SPEED * 1.4);
-    }
-    if (climber.climb === 0 && other.climb === 0) {
+    // They come down **together**, the rescuer keeping station just below.
+    //
+    // Stepped down at the same rate they did not: the rescuer started lower, so
+    // it reached the bottom first and left him to do the last stretch on his
+    // own — which rather undoes the whole point of somebody going up to fetch
+    // him. Holding the second to a share of the first's height keeps it just
+    // underneath the entire way, and lands them both at once.
+    climber.climb = Math.max(0, climber.climb - CLIMB_SPEED * 1.4);
+    other.climb = climber.climb * (ESCORT_BELOW / CLIMB_MAX);
+    if (climber.climb === 0) {
+      other.climb = 0;
       climber.headDown = false;
       rescue.phase = 'scolding';
       rescue.timer = SCOLD_FRAMES;
