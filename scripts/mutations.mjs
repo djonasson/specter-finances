@@ -63,7 +63,8 @@ export const MUTATIONS = [
     name: 'a present moves the balance',
     file: 'src/services/utils.ts',
     find: '      presentA += d;\n      presentB += m;',
-    replace: '      presentA += d;\n      presentB += m;\n      forgivenA += d;\n      forgivenB += m;',
+    replace:
+      '      presentA += d;\n      presentB += m;\n      forgivenA += d;\n      forgivenB += m;',
     tests: ['src/services/utils.test.ts'],
   },
   {
@@ -87,8 +88,8 @@ export const MUTATIONS = [
   {
     name: 'an edit rewrites the columns the app maintains, erasing the marker',
     file: 'src/services/sheets.ts',
-    find: "`${tab}!A${rowIndex}:F${rowIndex}`",
-    replace: "`${tab}!A${rowIndex}:J${rowIndex}`",
+    find: '{ range: `${sheetName}!A${rowIndex}:F${rowIndex}`, values: [entered] },',
+    replace: '{ range: `${sheetName}!A${rowIndex}:J${rowIndex}`, values: [entered] },',
     tests: ['src/services/sheets.test.ts'],
   },
 
@@ -130,7 +131,8 @@ export const MUTATIONS = [
     name: 'the ratio watch refuses a query that does not match itself',
     file: 'src/theme/chrome.ts',
     find: "    query = typeof next?.addEventListener === 'function' ? next : null;",
-    replace: "    query = typeof next?.addEventListener === 'function' && next.matches ? next : null;",
+    replace:
+      "    query = typeof next?.addEventListener === 'function' && next.matches ? next : null;",
     tests: ['src/theme/chrome.test.ts'],
   },
 
