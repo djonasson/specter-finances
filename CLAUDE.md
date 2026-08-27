@@ -74,6 +74,24 @@ list.
   exercised through `ExpenseForm`/`RecurringForm` and `useMovements` tests, plus
   a wiring test proving each wrapper drives its own tab.
 
+**`npm run mutate` asks the other question: would the suite notice?** It breaks
+each load-bearing thing on purpose — the settlement signs and coefficients, the
+asymmetric write ranges that keep a recurring marker from being erased, the
+catch-up cap, the guards that decide whether work is skipped, the constants
+other constants are derived from — and reports any the tests do not catch. A
+survivor is a test that cannot fail, which is how a wrong number reaches the
+sheet with everything green. Run it when touching anything on that list; the
+list lives in `scripts/mutations.mjs` and adding to it costs two lines.
+
+Three things about it are deliberate. It **refuses to start on a dirty tree**,
+because it edits files in place and a crash would come between you and anything
+uncommitted. A mutation whose text is **not found, or found twice, is an
+error** rather than a pass — a find-and-replace that quietly matches nothing
+tests nothing while reporting success. And a mutation that changes no behaviour
+does not belong on the list: "measure the band from the park rather than the
+tallest tree" is unkillable while the park _is_ the tallest, so what is asked
+instead is whether the band follows a banana that outgrows it.
+
 Run `npm run test` before calling any change done, and say plainly if it fails —
 never report work as complete on a red suite. If asked whether something is
 tested, check rather than assume, and answer honestly: an admitted gap is
