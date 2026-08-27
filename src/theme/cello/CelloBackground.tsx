@@ -7,14 +7,8 @@ import {
   viewportSize,
   watchPixelRatio,
 } from '../chrome';
-import {
-  createScene,
-  resizeScene,
-  step,
-  clickScene,
-  sceneScale,
-  GROUND_ABOVE_FOOTER,
-} from './scene';
+import { createScene, resizeScene, step, clickScene } from './scene';
+import { sceneScale, GROUND_ABOVE_FOOTER } from '../stage';
 import { drawScene } from './draw';
 
 /**

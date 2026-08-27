@@ -14,6 +14,9 @@
  * is the only one that decides what happens.
  */
 
+import { sceneScale, GROUND_ABOVE_FOOTER } from '../stage';
+import type { SceneSize } from '../stage';
+
 /** Frames, at the ~40fps the background loop is throttled to. */
 export const EATING_FRAMES = 40;
 export const FULL_FRAMES = 400;
@@ -630,34 +633,6 @@ const PERCH_HEIGHT = {
 /** Which of them he is on, or would be if he flew home now. */
 export type Perch = keyof typeof PERCH_HEIGHT;
 
-/** The scene stands this far above the app's footer. */
-export const GROUND_ABOVE_FOOTER = 34;
-
-/**
- * The window width the scene was drawn for. Wider than this changes nothing —
- * the scenery does not grow, it just has more room to stand in.
- */
-export const SCENE_FULL_WIDTH = 900;
-/** Narrow enough that a phone fits the scene; small enough is not smaller still. */
-export const SCENE_MIN_SCALE = 0.72;
-/** The width at which the shrinking stops, being about the narrowest phone. */
-const SCENE_MIN_WIDTH = 360;
-
-/**
- * How large to draw the scene on a window this wide.
- *
- * The scene is drawn scaled rather than laid out differently, and everything in
- * this file goes on working in the units it was written in — a phone simply
- * hands it a wider stage (`width / sceneScale(width)`) with smaller scenery on
- * it. At 360px unscaled there is no room between the school and the oven for a
- * car, or for her to walk anywhere worth walking.
- */
-export function sceneScale(width: number): number {
-  const range = SCENE_FULL_WIDTH - SCENE_MIN_WIDTH;
-  const along = (width - SCENE_MIN_WIDTH) / range;
-  return clamp(SCENE_MIN_SCALE + along * (1 - SCENE_MIN_SCALE), SCENE_MIN_SCALE, 1);
-}
-
 /**
  * The highest a squirrel gets: the top of the tallest thing it can climb, plus
  * the arc of a crossing.
@@ -920,12 +895,6 @@ export interface Scene {
   pizza: Pizza | null;
   hearts: Heart[];
   frame: number;
-}
-
-export interface SceneSize {
-  width: number;
-  height: number;
-  ground: number;
 }
 
 type Rng = () => number;

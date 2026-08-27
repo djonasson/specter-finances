@@ -24,14 +24,8 @@ vi.mock('./scene', async (importOriginal) => {
 // returns from getContext. Nothing here asserts on pixels.
 vi.mock('./draw', () => ({ drawScene: vi.fn() }));
 
-import {
-  createScene,
-  resizeScene,
-  clickScene,
-  sceneScale,
-  GROUND_ABOVE_FOOTER,
-  SCENE_FULL_WIDTH,
-} from './scene';
+import { createScene, resizeScene, clickScene } from './scene';
+import { sceneScale, GROUND_ABOVE_FOOTER, SCENE_FULL_WIDTH } from '../stage';
 import type { Scene } from './scene';
 import { drawScene } from './draw';
 import { footerHeight } from '../chrome';

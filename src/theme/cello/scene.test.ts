@@ -79,13 +79,10 @@ import {
   DRIFT_LIFE,
   MAX_HEARTS,
   MAX_PUFFS,
-  GROUND_ABOVE_FOOTER,
-  SCENE_FULL_WIDTH,
   SCHOOL_REACH,
-  SCENE_MIN_SCALE,
-  sceneScale,
   PEEL_RELEASE_SWING,
 } from './scene';
+import { GROUND_ABOVE_FOOTER, SCENE_FULL_WIDTH, SCENE_MIN_SCALE, sceneScale } from '../stage';
 import type { Scene, Squirrel } from './scene';
 import { stageFloorHeight } from '../registry';
 
