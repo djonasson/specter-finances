@@ -74,6 +74,14 @@ list.
   exercised through `ExpenseForm`/`RecurringForm` and `useMovements` tests, plus
   a wiring test proving each wrapper drives its own tab.
 
+**The suite runs on half the cores, capped at six** (`maxWorkers` in
+`vite.config.ts`). Not a courtesy to the desktop: uncapped, twenty cores ran it
+in 14.7s at 1385% CPU and six workers run it in 13.3s at 881% — faster and a
+third less work, because past that point the workers contend for memory rather
+than getting anything done. `npm run mutate` additionally asks `nice` to put it
+last in the queue, since it runs the suite once per mutation and nobody is
+waiting on it.
+
 **`npm run mutate` asks the other question: would the suite notice?** It breaks
 each load-bearing thing on purpose — the settlement signs and coefficients, the
 asymmetric write ranges that keep a recurring marker from being erased, the
