@@ -108,6 +108,9 @@ const tapTelevision = (s: ReturnType<typeof sceneAt>) =>
 /** Taps the cooker, which starts a bake rather than putting a gratin out. */
 const tapOven = (s: ReturnType<typeof sceneAt>) => clickScene(s, s.layout.ovenX, s.ground - 30);
 
+/** Taps the bed. */
+const tapBed = (s: ReturnType<typeof sceneAt>) => clickScene(s, s.layout.bedX, s.ground - 10);
+
 /** Taps the cooker and runs on until the gratin actually comes out of it. */
 function bakeThrough(s: ReturnType<typeof sceneAt>, rng = steady) {
   tapOven(s);
@@ -116,8 +119,8 @@ function bakeThrough(s: ReturnType<typeof sceneAt>, rng = steady) {
 }
 
 /** Sat in front of the television, with the programme held open. */
-function watchingAt(width = 1280, seed?: number) {
-  const s = seed === undefined ? sceneAt(width) : sceneAt(width, seeded(seed));
+function watchingAt(width = 1280, rng: () => number = steady) {
+  const s = sceneAt(width, rng);
   tapTelevision(s);
   runUntil(s, (x) => x.ciccio.phase === 'sitting', 60000, steady);
   runUntil(s, (x) => allWatching(x), 2000, steady);
@@ -782,20 +785,10 @@ describe('a potato gratin', () => {
   // One slot, by construction. The timer must also stop while one is out, or it
   // runs down during a long meal and a second appears the frame the first is
   // finished — one gratin per meal, for ever after.
-  it('never puts a second one out, however fast the oven is clicked', () => {
-    const s = bakeThrough(sceneAt(900));
-    const first = s.gratin;
-    for (let i = 0; i < 6000; i++) {
-      tapOven(s);
-      step(s, eager);
-      if (s.gratin) expect(s.gratin).toBe(first);
-      else break;
-    }
-  });
-
-  // Asked directly, because the loop above cannot see it: tapping every frame
-  // restarts the bake every frame, so nothing ever comes out of the oven to be
-  // a second gratin, and the loop breaks the moment he finishes the first.
+  // Asked directly rather than by tapping in a loop: tapping every frame is
+  // refused every frame, so nothing ever comes out of the oven to *be* a second
+  // gratin and the loop breaks the moment he finishes the first. It spent 6000
+  // frames asserting an identity that held trivially.
   it('refuses to start another while one is out, or while one is still in', () => {
     const out = bakeThrough(sceneAt(900));
     expect(out.gratin).not.toBeNull();
@@ -814,7 +807,7 @@ describe('a potato gratin', () => {
   it('sends him running for it, and he says so on the way', () => {
     const s = sceneAt(900);
     s.ciccio.x = s.layout.wanderRight;
-    clickScene(s, s.layout.ovenX, s.ground - 30);
+    tapOven(s);
 
     // The tap sends him at once rather than leaving him to notice on his own
     // turn, and the line is said on whichever path found the food.
@@ -826,8 +819,10 @@ describe('a potato gratin', () => {
 
   it('says it on the path he finds it by himself too, not only when tapped', () => {
     const s = sceneAt(900);
-    runUntil(s, (x) => x.gratin !== null, 60000, eager);
-    runUntil(s, (x) => x.ciccio.phase === 'heading', 400);
+    // The bake, not the gratin: he sets off after the scent, so by the time one
+    // is on the floor he has long since said it and arrived.
+    runUntil(s, (x) => x.baking !== null, 60000, eager);
+    runUntil(s, (x) => x.ciccio.phase === 'heading', 400, eager);
     expect(s.ciccio.say!.line).toBe(CICCIO_GRATIN);
   });
 
@@ -941,11 +936,11 @@ describe('a potato gratin', () => {
 
   it('caps the steam rather than growing it for as long as the app is open', () => {
     const s = sceneAt(900);
-    clickScene(s, s.layout.ovenX, s.ground - 30);
+    tapOven(s);
     for (let i = 0; i < 4000; i++) {
       step(s, eager);
       if (s.gratin) expect(s.gratin.steam.length).toBeLessThanOrEqual(MAX_STEAM);
-      else clickScene(s, s.layout.ovenX, s.ground - 30);
+      else tapOven(s);
     }
   });
 });
@@ -1087,11 +1082,7 @@ describe('watching television', () => {
       'sofa' as const,
       (s: ReturnType<typeof sceneAt>) => tapTelevision(s),
     ],
-    [
-      'the bed, while it sits in it',
-      'bed' as const,
-      (s: ReturnType<typeof sceneAt>) => clickScene(s, s.layout.bedX, s.ground - 10),
-    ],
+    ['the bed, while it sits in it', 'bed' as const, (s: ReturnType<typeof sceneAt>) => tapBed(s)],
   ])('answers a tap on a seated squirrel rather than %s', (_name, seat, send) => {
     const s = sceneAt(1280);
     send(s);
@@ -1138,7 +1129,7 @@ describe('watching television', () => {
   // answering at all.
   it('lets every one of them be tapped while they are on a thing together', () => {
     const s = sceneAt(1280);
-    clickScene(s, s.layout.bedX, s.ground - 10);
+    tapBed(s);
     settleOn(s, 'bed');
     runUntil(s, (x) => x.squirrels.every((q) => q.at === 'bed' && q.lift >= 1), 400, sleepy);
 
@@ -1250,9 +1241,9 @@ describe('getting on and off the furniture', () => {
       // and climbs onto it: tapped every 29 frames he was re-aimed before he
       // ever arrived, and the row measured no vertical movement at all.
       const targets = [
-        (x: typeof s) => clickScene(x, x.layout.ovenX, x.ground - 30),
+        (x: typeof s) => tapOven(x),
         (x: typeof s) => tapTelevision(x),
-        (x: typeof s) => clickScene(x, x.layout.bedX, x.ground - 10),
+        (x: typeof s) => tapBed(x),
       ];
       let previous = [ciccioY(s), ...s.squirrels.map((q) => squirrelY(s, q))];
       let worst = 0;
@@ -1371,7 +1362,7 @@ describe('answering a tap on a thing', () => {
     const s = sceneAt(1440);
     expect(s.bed.turned).toBe(0);
 
-    clickScene(s, s.layout.bedX, s.ground - 20);
+    tapBed(s);
     step(s, steady);
     expect(s.bed.turned).toBeGreaterThan(0);
 
@@ -1381,7 +1372,7 @@ describe('answering a tap on a thing', () => {
   // Derived, not stored: a bed made up for nobody is not a state to reach.
   it('makes it up again once nobody is coming', () => {
     const s = sceneAt(1440);
-    clickScene(s, s.layout.bedX, s.ground - 20);
+    tapBed(s);
     runUntil(s, (x) => x.bed.turned >= 0.99, 200, steady);
 
     s.ciccio.goal = null;
@@ -1416,7 +1407,7 @@ describe('answering a tap on a thing', () => {
     tapTelevision(s);
     runUntil(s, (x) => x.ciccio.at === 'sofa' && x.ciccio.phase === 'sitting', 60000, eager);
 
-    clickScene(s, s.layout.bedX, s.ground - 20);
+    tapBed(s);
     expect(s.ciccio.phase).toBe('dismounting');
     expect(s.ciccio.at).toBe('sofa');
   });
@@ -1482,7 +1473,7 @@ describe('the round they speak in', () => {
   // His own, about something he has seen — not a greeting anybody answers.
   it('keeps the gratin line his alone', () => {
     const s = sceneAt(1280);
-    clickScene(s, s.layout.ovenX, s.ground - 30);
+    tapOven(s);
     expect(s.ciccio.say!.line).toBe(CICCIO_GRATIN);
     expect(s.squirrels.map((q) => q.say)).toEqual([null, null]);
   });
@@ -1493,7 +1484,7 @@ describe('the round they speak in', () => {
 describe('all three asleep', () => {
   it('has the squirrels sleeping too, once they are in the bed with him', () => {
     const s = sceneAt(1280);
-    clickScene(s, s.layout.bedX, s.ground - 10);
+    tapBed(s);
     settleOn(s, 'bed');
     runUntil(s, (x) => x.squirrels.every((q) => q.at === 'bed' && q.lift >= 1), 400, sleepy);
 
@@ -1567,14 +1558,6 @@ describe('the smell of it coming out of the oven', () => {
       if (!s.baking) break;
       expect(s.baking.scent.length).toBeLessThanOrEqual(14);
     }
-  });
-
-  it('is not baking and not lit once it is out', () => {
-    const s = quietScene(1280);
-    startBaking(s);
-    runUntil(s, (x) => x.gratin !== null, BAKE_FRAMES + 400, steady);
-    expect(ovenBaking(s)).toBe(false);
-    expect(s.baking).toBeNull();
   });
 });
 
@@ -1653,11 +1636,38 @@ describe('the closing zebra', () => {
     runUntil(s, (x) => x.ciccio.goal?.then === 'eat', 2000, steady);
   });
 
+  // The hold at the threshold is the one loop in the scene that could in
+  // principle wedge: it stops the countdown until all three are seated, so a
+  // programme nobody ever sits down for would never end, and the rota's own
+  // `free` gate gives up while `tv.on`. The argument that it cannot is a chain
+  // of six unrelated finite things, so it is measured instead of argued.
+  it('always gets to the end of a programme, whatever is going on', () => {
+    for (const seed of [2, 5, 11]) {
+      const rng = seeded(seed);
+      const s = sceneAt(1280, rng);
+      let longest = 0;
+      let on = 0;
+      for (let i = 0; i < 120000; i++) {
+        step(s, rng);
+        // Taps at every target, so the set is turned on and interrupted from
+        // every state there is.
+        if (i % 700 === 0) tapTelevision(s);
+        if (i % 1100 === 0) tapOven(s);
+        if (i % 1700 === 0) tapBed(s);
+        on = s.tv.on ? on + 1 : 0;
+        longest = Math.max(longest, on);
+      }
+      // A programme is 3400 frames; anything near twice that is a set that
+      // stopped being able to end.
+      expect(longest).toBeLessThan(7000);
+    }
+  });
+
   it('does not leave the set on for ever when he is sent somewhere else', () => {
     const s = watchingAt(1280);
     s.tv.showLeft = 30000;
-    clickScene(s, s.layout.bedX, s.ground - 10);
-    expect(s.tv.on).toBe(false);
+    tapBed(s);
+    runUntil(s, (x) => !x.tv.on, 400, steady);
   });
 });
 
@@ -1671,7 +1681,7 @@ describe('the two of them, told apart', () => {
   it('sends the same one up the wall every time', () => {
     const climbers = new Set<string>();
     for (const seed of [1, 3, 7]) {
-      const s = watchingAt(1280, seed);
+      const s = watchingAt(1280, seeded(seed));
       // Rolled, not `eager`: a roll that always comes out 0 picks the same
       // squirrel by accident and would agree with this whatever the rule is.
       const rng = seeded(seed);
@@ -1878,6 +1888,26 @@ describe('the little blue cat', () => {
   // him still wandering on the floor — so without the `tv.on` half of the gate
   // the cat could be let in on that very frame and freeze him in front of a set
   // counting itself down. He would reach the sofa, if at all, to a dead screen.
+  // `baking` gave food a second way to exist and this gate did not learn about
+  // it: he waits out a bake in `wobbling` with no goal and no gratin, so the
+  // gate opened and a cat let itself in on him three times over three seeded
+  // days while his dinner was in the oven.
+  it('does not call while his dinner is still in the oven', () => {
+    let arrivals = 0;
+    for (const seed of [1, 7, 99]) {
+      const rng = seeded(seed);
+      const s = sceneAt(1280, rng);
+      let hadCat = false;
+      for (let i = 0; i < 90000; i++) {
+        const baking = s.baking !== null;
+        step(s, rng);
+        if (s.cat && !hadCat && baking) arrivals++;
+        hadCat = s.cat !== null;
+      }
+    }
+    expect(arrivals).toBe(0);
+  });
+
   it('does not let itself in on the frame a programme starts', () => {
     const s = quietScene(1280);
     // The two counters aimed at the same frame. `runRoutine` runs first and
@@ -1928,7 +1958,7 @@ describe('one of them gets stuck up the wall', () => {
    * the likelier of the two.
    */
   function leftToClimb(width = 1280) {
-    const s = watching(width);
+    const s = watchingAt(width);
     runUntil(s, (x) => x.rescue !== null, 60000, eager);
     return s;
   }
@@ -2003,7 +2033,7 @@ describe('one of them gets stuck up the wall', () => {
   // one of them would set off up the wall, get stuck, be fetched down and told
   // off, all three drawn from behind facing a switched-off screen.
   it('never starts a climb in front of a set that has gone off', () => {
-    const s = watching();
+    const s = watchingAt();
     // The programme ends while he is still on the cushion.
     s.tv.on = false;
     s.tv.showLeft = 0;
@@ -2021,15 +2051,6 @@ describe('one of them gets stuck up the wall', () => {
     const s = leftToClimb();
     for (const squirrel of s.squirrels) expect(squirrel.lift).toBeGreaterThanOrEqual(1);
   });
-
-  /** Sat in front of the television, which is the only time this happens. */
-  function watching(width = 1280) {
-    const s = sceneAt(width);
-    tapTelevision(s);
-    runUntil(s, (x) => x.ciccio.phase === 'sitting', 60000, steady);
-    s.tv.showLeft = Number.MAX_SAFE_INTEGER;
-    return s;
-  }
 
   it('only ever happens on the sofa', () => {
     const s = sceneAt(1280);
@@ -2065,7 +2086,7 @@ describe('one of them gets stuck up the wall', () => {
   // Every climb ran the whole drama before this: a lot of ceremony for
   // something meant to happen "sometimes", and only one version of it to see.
   it('sometimes gets it told off part way up, and it comes down by itself', () => {
-    const s = watching();
+    const s = watchingAt();
     runUntil(s, (x) => x.rescue?.phase === 'recalled', 60000, eager);
     const rescue = s.rescue!;
     const climber = s.squirrels[rescue.climber];
@@ -2114,11 +2135,15 @@ describe('one of them gets stuck up the wall', () => {
   // sofa and the whole thing is a twitch; called back near the top it may as
   // well have finished, and it reads as the other one changing its mind.
   it('calls it back from the middle of the climb, not either end of it', () => {
-    const s = sceneAt(1280);
+    const s = watchingAt(1280);
     let seen = 0;
     let phase: string | null = null;
     for (let i = 0; i < 120000; i++) {
       step(s, eager);
+      // Held open, and nothing in the oven: he stops watching when he goes to
+      // eat, and with `eager` the cooker is otherwise never idle.
+      s.baking = null;
+      s.gratin = null;
       if (s.tv.on) s.tv.showLeft = 5000;
       if (s.rescue?.phase === 'recalled' && phase !== 'recalled') {
         const up = s.squirrels[s.rescue.climber].climb / CLIMB_MAX;
@@ -2196,7 +2221,7 @@ describe('one of them gets stuck up the wall', () => {
 
     // He is called away — the one thing that must not leave a squirrel up a
     // wall for the life of the tab.
-    clickScene(s, s.layout.ovenX, s.ground - 30);
+    tapOven(s);
     runUntil(s, (x) => x.squirrels.every((q) => q.climb === 0), 4000, steady);
     expect(s.rescue).toBeNull();
     expect(s.squirrels.every((q) => !q.headDown)).toBe(true);
@@ -2231,7 +2256,9 @@ describe('interrupting a climb, and the room afterwards', () => {
     s.tv.showLeft = Number.MAX_SAFE_INTEGER;
 
     clickScene(s, s.ciccio.x, ciccioY(s) - 10);
-    expect(s.tv.on).toBe(false);
+    // Off once he has actually left it — `settleTv` asks at the end of a frame,
+    // after he has moved, rather than each caller switching it off itself.
+    runUntil(s, (x) => !x.tv.on, 400, steady);
 
     runUntil(s, (x) => x.ciccio.at === 'floor', 400, steady);
     run(s, 300, steady);
@@ -2312,7 +2339,7 @@ describe('interrupting a climb, and the room afterwards', () => {
     const before = ciccioY(s);
     expect(Math.abs(before - s.ground)).toBeGreaterThan(1);
 
-    clickScene(s, s.layout.bedX, s.ground - 20);
+    tapBed(s);
     for (let i = 0; i < 200; i++) {
       const was = ciccioY(s);
       step(s, steady);

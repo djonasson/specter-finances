@@ -330,8 +330,8 @@ export const MUTATIONS = [
   {
     name: 'the oven puts a second gratin out on top of the first',
     file: 'src/theme/ciccio/scene.ts',
-    find: '  if (scene.gratin || scene.baking) return;',
-    replace: '  if (false) return;',
+    find: '  if (foodInPlay(scene)) return;\n  scene.baking = { left: BAKE_FRAMES, scent: [] };',
+    replace: '  scene.baking = { left: BAKE_FRAMES, scent: [] };',
     tests: ['src/theme/ciccio/scene.test.ts'],
   },
   {
@@ -420,9 +420,9 @@ export const MUTATIONS = [
     tests: ['src/theme/ciccio/scene.test.ts'],
   },
   {
-    name: 'getting him off the sofa leaves the programme running, so he goes back',
+    name: 'the set stays on after he has stopped watching, so a programme never ends',
     file: 'src/theme/ciccio/scene.ts',
-    find: "  if (ciccio.at === 'sofa') {\n    scene.tv.on = false;\n    scene.tv.showLeft = 0;\n  }",
+    find: '  if (!watching) switchTvOff(scene);',
     replace: '',
     tests: ['src/theme/ciccio/scene.test.ts'],
   },
@@ -464,22 +464,22 @@ export const MUTATIONS = [
   {
     name: 'food walks him off the sofa instead of bringing the programme to its end',
     file: 'src/theme/ciccio/scene.ts',
-    find: '    if (!scene.tv.on && (ciccio.timer <= 0 || scene.gratin || scene.baking)) {',
-    replace: '    if (scene.gratin || scene.baking || (!scene.tv.on && ciccio.timer <= 0)) {',
+    find: '    if (!scene.tv.on && (ciccio.timer <= 0 || foodInPlay(scene))) {',
+    replace: '    if (foodInPlay(scene) || (!scene.tv.on && ciccio.timer <= 0)) {',
     tests: ['src/theme/ciccio/scene.test.ts'],
   },
   {
     name: 'the closing zebra plays whether or not anybody is on the sofa',
     file: 'src/theme/ciccio/scene.ts',
-    find: '  if (scene.tv.showLeft <= ZEBRA_FRAMES && !allWatching(scene)) return;',
+    find: '  if (ending && !allWatching(scene)) return;',
     replace: '',
     tests: ['src/theme/ciccio/scene.test.ts'],
   },
   {
     name: 'a bake does not bring the programme forward to its ending',
     file: 'src/theme/ciccio/scene.ts',
-    find: '  if ((scene.gratin || scene.baking) && scene.tv.showLeft > ZEBRA_FRAMES) {',
-    replace: '  if (false) {',
+    find: '  if (scene.tv.on && scene.tv.showLeft > ZEBRA_FRAMES) scene.tv.showLeft = ZEBRA_FRAMES;',
+    replace: '',
     tests: ['src/theme/ciccio/scene.test.ts'],
   },
   {
@@ -499,8 +499,15 @@ export const MUTATIONS = [
   {
     name: 'the squirrels lie awake in the bed he is asleep in',
     file: 'src/theme/ciccio/scene.ts',
-    find: "  scene.ciccio.phase === 'sleeping' && squirrel.at === 'bed' && squirrel.lift >= 1;",
+    find: "  scene.ciccio.phase === 'sleeping' && settledOn(squirrel, 'bed');",
     replace: '  false;',
     tests: ['src/theme/ciccio/draw.test.ts', 'src/theme/ciccio/scene.test.ts'],
+  },
+  {
+    name: 'the rota and the cat ignore a gratin that is still in the oven',
+    file: 'src/theme/ciccio/scene.ts',
+    find: 'export const foodInPlay = (scene: Scene) => scene.gratin !== null || scene.baking !== null;',
+    replace: 'export const foodInPlay = (scene: Scene) => scene.gratin !== null;',
+    tests: ['src/theme/ciccio/scene.test.ts'],
   },
 ];

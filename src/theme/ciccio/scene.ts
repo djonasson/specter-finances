@@ -328,6 +328,26 @@ export const MAX_HEARTS = 10;
 /** One heart every this many frames, wherever hearts come from. */
 const HEART_EVERY = 14;
 
+/**
+ * A heart over somebody, if there is room for one.
+ *
+ * The cap and the three tuned numbers live here rather than at each site: the
+ * zebra's hearts were a verbatim copy of the cat's under a comment claiming
+ * "one machinery for hearts, one place they are capped", which is exactly what
+ * it was not. The cadence is the caller's, since only it knows what it is
+ * counting.
+ */
+function addHeart(scene: Scene, x: number, y: number, rng: Rng): void {
+  if (scene.hearts.length >= MAX_HEARTS) return;
+  scene.hearts.push({
+    x: x + (rng() - 0.5) * 12,
+    y,
+    rise: 0.4 + rng() * 0.22,
+    drift: (rng() - 0.5) * 0.3,
+    life: 90,
+  });
+}
+
 export const CICCIO_CALL = 'Ciccio Ciccio!';
 export const CICCIO_GRATIN = 'Ciccio pasticcio!';
 export const SQUIRREL_CALL = 'Susin!';
@@ -1030,7 +1050,7 @@ function walkCiccio(scene: Scene, rng: Rng): void {
       // `eating` guards on a gratin in reach, so he would fall straight back to
       // wandering, be sent for the same errand next frame, and jitter at the
       // oven door until it opened.
-      if (ciccio.after === 'eating' && !scene.gratin && scene.baking) return;
+      if (ciccio.after === 'eating' && scene.baking) return;
       ciccio.phase = ciccio.after === 'eating' ? 'eating' : 'wandering';
       ciccio.after = 'wandering';
     }
@@ -1065,7 +1085,7 @@ function walkCiccio(scene: Scene, rng: Rng): void {
     // closing zebra (see `runTv`), they watch that through, and only then does
     // anybody move. Cutting the picture mid-scene to go and stand at an oven
     // that is still baking was both ruder and less use.
-    if (!scene.tv.on && (ciccio.timer <= 0 || scene.gratin || scene.baking)) {
+    if (!scene.tv.on && (ciccio.timer <= 0 || foodInPlay(scene))) {
       startDismount(ciccio);
     }
     return;
@@ -1074,7 +1094,7 @@ function walkCiccio(scene: Scene, rng: Rng): void {
   if (ciccio.phase === 'sleeping') {
     // A gratin does not wake him: it is scenery, not a projectile, and it will
     // keep. It does shorten the nap, because he can smell it.
-    ciccio.timer -= scene.gratin || scene.baking ? 3 : 1;
+    ciccio.timer -= foodInPlay(scene) ? 3 : 1;
     if (ciccio.timer <= 0) startDismount(ciccio);
     return;
   }
@@ -1128,7 +1148,7 @@ function wander(scene: Scene, rng: Rng): void {
   // the run it is already making for food, which would re-set the same goal
   // every frame and hide a bug behind idempotence. It is set as a *goal* rather
   // than as a phase, so everything that has to happen on the way happens once.
-  if ((scene.gratin || scene.baking) && ciccio.goal?.then !== 'eat') {
+  if (foodInPlay(scene) && ciccio.goal?.then !== 'eat') {
     headForGratin(scene, ciccio.goal?.urgent ?? false);
     return;
   }
@@ -1270,7 +1290,7 @@ function startDismount(ciccio: Ciccio): void {
  * started sending him directly.
  */
 function headForGratin(scene: Scene, urgent: boolean): void {
-  if (!scene.gratin && !scene.baking) return;
+  if (!foodInPlay(scene)) return;
   summon(scene, 'eat', urgent);
   // Said on the frame he spots it. Keyed on the goal *holding*, he would shout
   // it every frame of the run across the room.
@@ -1291,14 +1311,6 @@ function summon(scene: Scene, then: Errand, urgent = true): void {
   const x = errandTarget(scene, then);
   // The thing it was for is gone, which only a meal can be.
   if (x === undefined) return;
-  // Sent anywhere but the sofa, he has stopped watching, so the set goes off
-  // with him — the same rule as tapping him there. It is also what keeps the
-  // closing zebra's wait from hanging: that holds the programme until all three
-  // are seated, and this is the only other way one of them leaves.
-  if (then !== 'sit' && (ciccio.at === 'sofa' || ciccio.goal?.then === 'sit')) {
-    scene.tv.on = false;
-    scene.tv.showLeft = 0;
-  }
   ciccio.goal = { x, then, urgent };
   ciccio.spin = 0;
   ciccio.after = 'wandering';
@@ -1355,16 +1367,10 @@ export function tapCiccio(scene: Scene): void {
     startWobble(ciccio);
     return;
   }
-  // Getting him up off the sofa turns the set off with him, because the
-  // programme is *why* he would go back: `wander` re-issues the sit errand on
-  // the first frame he reaches the floor, and the set is on for the whole of
-  // the only time he is ever up there — so the tap was a 35-frame bob that
-  // read as a tap that did nothing. Taking him off it is the decision to stop
-  // watching, the same way the set going off on its own is.
-  if (ciccio.at === 'sofa') {
-    scene.tv.on = false;
-    scene.tv.showLeft = 0;
-  }
+  // The set goes off with him, because the programme is *why* he would go
+  // back: `wander` re-issues the sit errand on the first frame he reaches the
+  // floor, so the tap was otherwise a 35-frame bob that read as doing nothing.
+  // `runTv` does the switching off — this only has to stop him heading back.
   ciccio.goal = null;
   startDismount(ciccio);
 }
@@ -1399,6 +1405,37 @@ function runChatter(scene: Scene, rng: Rng): void {
   scene.chatter = turn >= 2 ? null : { next: turn + 1, wait: CHATTER_GAP };
 }
 
+/**
+ * Carries a list of puffs one frame: move, grow, age, and drop the dead.
+ *
+ * The scent and the plate's steam are one kind of thing — which is what `drift`
+ * was added to `Puff` for — and they were still two copies of the same seven
+ * steps, differing only in how fast a puff swells. The cello makes the same
+ * move with `runSmoke` over its two chimneys.
+ */
+function agePuffs(puffs: Puff[], grow: number): Puff[] {
+  for (const puff of puffs) {
+    puff.x += puff.drift;
+    puff.y -= puff.rise;
+    puff.size += grow;
+    puff.life--;
+  }
+  return puffs.filter((puff) => puff.life > 0);
+}
+
+/**
+ * Whether there is food in play at all: in the oven, or out on the floor.
+ *
+ * Named because it is asked eight times, and because writing it out is what
+ * went wrong: `baking` gave food a second way to exist, six sites learned about
+ * it and **two did not** — `catMayCall` and the rota's own `free` gate, which
+ * are precisely the two predicates that mean *do not interrupt him*. He waits
+ * out a bake in `wobbling` with no goal and no gratin, so both of them opened,
+ * and over three seeded days a cat let itself in on him three times while his
+ * dinner was in the oven. One predicate is one place to forget.
+ */
+export const foodInPlay = (scene: Scene) => scene.gratin !== null || scene.baking !== null;
+
 /** Where a gratin is set down once it comes out: just clear of the oven. */
 const gratinSpot = (scene: Scene) => {
   const { ovenX, wanderLeft, wanderRight } = scene.layout;
@@ -1414,8 +1451,17 @@ const gratinSpot = (scene: Scene) => {
  * business anybody would want to watch.
  */
 export function startBaking(scene: Scene): void {
-  if (scene.gratin || scene.baking) return;
+  if (foodInPlay(scene)) return;
   scene.baking = { left: BAKE_FRAMES, scent: [] };
+
+  // Something in the oven does not cut a programme off — it brings it forward
+  // to its ending. The closing zebra plays now, all three watch it through, the
+  // set goes off by itself, and `wander` picks the errand up afterwards.
+  //
+  // Once, here, rather than clamped every frame while food is in play: as a
+  // standing clamp, turning the television on with a gratin already on the
+  // floor gave a programme that was at its closing titles by the next frame.
+  if (scene.tv.on && scene.tv.showLeft > ZEBRA_FRAMES) scene.tv.showLeft = ZEBRA_FRAMES;
 }
 
 /**
@@ -1438,13 +1484,7 @@ function runOven(scene: Scene, rng: Rng): void {
   const baking = scene.baking;
   if (!baking) return;
 
-  for (const puff of baking.scent) {
-    puff.x += puff.drift;
-    puff.y -= puff.rise;
-    puff.size += 0.05;
-    puff.life--;
-  }
-  baking.scent = baking.scent.filter((puff) => puff.life > 0);
+  baking.scent = agePuffs(baking.scent, 0.05);
 
   if (scene.frame % SCENT_EVERY === 0 && baking.scent.length < MAX_SCENT) {
     // Out of the door and off towards him, whichever side of the oven he is on.
@@ -1474,36 +1514,56 @@ function runOven(scene: Scene, rng: Rng): void {
 function runTv(scene: Scene, rng: Rng): void {
   if (!scene.tv.on) return;
 
-  // Something in the oven does not cut the picture off — it brings the
-  // programme forward to its ending. The closing zebra plays now, they watch it
-  // through, and the set goes off by itself; `wander` then picks up the errand.
-  if ((scene.gratin || scene.baking) && scene.tv.showLeft > ZEBRA_FRAMES) {
-    scene.tv.showLeft = ZEBRA_FRAMES;
-  }
-
-  // And the zebra never plays to an empty sofa: the last stretch waits for all
+  // The zebra never plays to an empty sofa: the last stretch waits for all
   // three of them to be on it. Held at the threshold rather than paused
   // anywhere, so what waits is the ending and not the middle of the programme.
-  if (scene.tv.showLeft <= ZEBRA_FRAMES && !allWatching(scene)) return;
+  const ending = scene.tv.showLeft <= ZEBRA_FRAMES;
+  if (ending && !allWatching(scene)) return;
 
-  // The zebra is his favourite part, and he says so the same way the cat's kiss
-  // does — one machinery for hearts, one place they are capped.
-  if (showingZebra(scene) && scene.frame % HEART_EVERY === 0 && scene.hearts.length < MAX_HEARTS) {
-    scene.hearts.push({
-      x: scene.ciccio.x + (rng() - 0.5) * 12,
-      y: ciccioY(scene) - scene.ground - 22,
-      rise: 0.4 + rng() * 0.22,
-      drift: (rng() - 0.5) * 0.3,
-      life: 90,
-    });
+  // The zebra is his favourite part, and he says so. The cheap test first: the
+  // scan behind `showingZebra` is otherwise run on all fourteen frames out of
+  // fourteen to answer a question thirteen of them discard — the ordering
+  // `runRescue` already carries a comment about.
+  if (scene.frame % HEART_EVERY === 0 && ending) {
+    addHeart(scene, scene.ciccio.x, ciccioY(scene) - scene.ground - 22, rng);
   }
 
-  // Runs down whether or not anybody is watching, or a set he never reaches
-  // never expires and the sofa is where he lives from then on.
-  if (--scene.tv.showLeft <= 0) {
-    scene.tv.on = false;
-    scene.tv.showLeft = 0;
-  }
+  // Runs down whether or not anybody is *watching*, which is not the same as
+  // whether anybody is coming: a set he never reaches never expires, and the
+  // sofa is where he lives from then on.
+  if (--scene.tv.showLeft <= 0) switchTvOff(scene);
+}
+
+/** Off, and its countdown with it — a set left with frames on it is half off. */
+function switchTvOff(scene: Scene): void {
+  scene.tv.on = false;
+  scene.tv.showLeft = 0;
+}
+
+/**
+ * The set goes off once he has stopped watching it, and this is the only place
+ * that decides he has.
+ *
+ * On the sofa, on his way to it, or climbing onto it are the three ways of not
+ * having given up on the programme; anything else and he has. Written instead
+ * at each of the places he can be sent away — `summon`, `tapCiccio` — it was
+ * three copies of the same two lines, and, worse, it was the thing keeping the
+ * zebra's wait from wedging: a seventh way to get him off the sofa, added
+ * later, would not have produced a glitch but a programme that never ended.
+ *
+ * Run at the **end** of a frame, after he has moved. Asked before, it fired on
+ * a set that had only just been switched on: the rota turns it on and `wander`
+ * issues the errand for it later in that same frame, so for those few lines he
+ * is on the floor with no goal and looks exactly like somebody who has given
+ * up. Turning *on* stays stored and stays theirs — "on while he is still
+ * walking over" is a state somebody reaches by clicking.
+ */
+function settleTv(scene: Scene): void {
+  if (!scene.tv.on) return;
+  const { ciccio } = scene;
+  const watching =
+    ciccio.at === 'sofa' || ciccio.goal?.then === 'sit' || ciccio.phase === 'mounting';
+  if (!watching) switchTvOff(scene);
 }
 
 /**
@@ -1516,7 +1576,7 @@ function runTv(scene: Scene, rng: Rng): void {
  */
 export const allWatching = (scene: Scene) =>
   scene.ciccio.phase === 'sitting' &&
-  scene.squirrels.every((squirrel) => squirrel.at === 'sofa' && squirrel.lift >= 1);
+  scene.squirrels.every((squirrel) => settledOn(squirrel, 'sofa'));
 
 /**
  * Whether the bed is expecting him: he is on his way to it, climbing into it,
@@ -1545,7 +1605,7 @@ function runBed(scene: Scene): void {
 const catMayCall = (scene: Scene) =>
   scene.ciccio.at === 'floor' &&
   (scene.ciccio.phase === 'wandering' || scene.ciccio.phase === 'wobbling') &&
-  !scene.gratin &&
+  !foodInPlay(scene) &&
   // The rota turns the set on and returns, four lines before this runs, leaving
   // him still `wandering` on the floor — so without this the cat could let
   // itself in on the very frame a programme started and freeze him in front of
@@ -1612,16 +1672,10 @@ function runCat(scene: Scene, rng: Rng): void {
 
   if (cat.phase === 'kissing') {
     // Hearts over the pair of them, while the kiss lasts.
-    if (scene.frame % HEART_EVERY === 0 && scene.hearts.length < MAX_HEARTS) {
-      scene.hearts.push({
-        x: (cat.x + scene.ciccio.x) / 2 + (rng() - 0.5) * 12,
-        y: -26,
-        rise: 0.4 + rng() * 0.22,
-        drift: (rng() - 0.5) * 0.3,
-        life: 90,
-      });
+    if (scene.frame % HEART_EVERY === 0) {
+      addHeart(scene, (cat.x + scene.ciccio.x) / 2, -26, rng);
     }
-    if (--cat.timer <= 0) startLeaving(scene);
+    if (--cat.timer <= 0) startLeaving(scene, cat);
     return;
   }
 
@@ -1642,8 +1696,8 @@ function runCat(scene: Scene, rng: Rng): void {
  * Nothing about the visit is unfinished by then: it has said its piece and
  * given him his kiss.
  */
-function startLeaving(scene: Scene): void {
-  scene.cat!.phase = 'leaving';
+function startLeaving(scene: Scene, cat: Cat): void {
+  cat.phase = 'leaving';
   if (scene.ciccio.phase === 'bristling') scene.ciccio.phase = 'wandering';
 }
 
@@ -1814,6 +1868,16 @@ export function scoldSwing(scene: Scene, squirrel: Squirrel): number {
 const SCOLD_SWING = 0.28;
 
 /**
+ * On a named seat and all the way onto it.
+ *
+ * `at` names a seat from the moment a climb starts, so being *on* one is the
+ * lift being finished — a distinction written out at each of eight sites, and
+ * one that has already been got subtly wrong once.
+ */
+export const settledOn = (animal: { at: Spot; lift: number }, spot: Spot) =>
+  animal.at === spot && animal.lift >= 1;
+
+/**
  * Whether a squirrel is asleep — derived, never stored.
  *
  * They sleep because *he* does and because they are in the bed with him, which
@@ -1822,7 +1886,7 @@ const SCOLD_SWING = 0.28;
  * `bedExpectsHim`.
  */
 export const squirrelAsleep = (scene: Scene, squirrel: Squirrel) =>
-  scene.ciccio.phase === 'sleeping' && squirrel.at === 'bed' && squirrel.lift >= 1;
+  scene.ciccio.phase === 'sleeping' && settledOn(squirrel, 'bed');
 
 /**
  * Which of the two goes up the wall: always the same one.
@@ -1849,7 +1913,7 @@ function runRoutine(scene: Scene): void {
     ciccio.at === 'floor' &&
     (ciccio.phase === 'wandering' || ciccio.phase === 'wobbling') &&
     !ciccio.goal &&
-    !scene.gratin &&
+    !foodInPlay(scene) &&
     !scene.tv.on &&
     !scene.cat;
   if (!free) return;
@@ -1873,13 +1937,7 @@ function runSteam(scene: Scene, rng: Rng): void {
   const gratin = scene.gratin;
   if (!gratin) return;
 
-  for (const puff of gratin.steam) {
-    puff.x += puff.drift;
-    puff.y -= puff.rise;
-    puff.size += 0.06;
-    puff.life--;
-  }
-  gratin.steam = gratin.steam.filter((puff) => puff.life > 0);
+  gratin.steam = agePuffs(gratin.steam, 0.06);
 
   if (scene.frame % STEAM_EVERY === 0 && gratin.steam.length < MAX_STEAM) {
     gratin.steam.push({
@@ -1925,6 +1983,7 @@ export function step(scene: Scene, rng: Rng): void {
   runSteam(scene, rng);
   followSquirrels(scene);
   runChatter(scene, rng);
+  settleTv(scene);
 }
 
 /**

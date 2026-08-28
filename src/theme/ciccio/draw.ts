@@ -113,12 +113,10 @@ const LIGHT = {
   gratinTop: '#c98a3f',
   ovenDish: '#7d604a',
   scent: '#c9a06a',
-  squirrelHe: '#a85c26',
-  squirrelHeTail: '#bd7038',
-  squirrelHeTailLight: '#d68f57',
-  squirrelShe: '#e0a06a',
-  squirrelSheTail: '#eab98c',
-  squirrelSheTailLight: '#f6d3ad',
+  coats: {
+    he: { body: '#a85c26', tail: '#bd7038', tailLight: '#d68f57' },
+    she: { body: '#e0a06a', tail: '#eab98c', tailLight: '#f6d3ad' },
+  },
   steam: '#ffffff',
 
   cat: '#7fa8d8',
@@ -202,12 +200,10 @@ const DARK: Palette = {
   gratinTop: '#a06e30',
   ovenDish: '#5d4636',
   scent: '#9c7c52',
-  squirrelHe: '#8a4c1e',
-  squirrelHeTail: '#9c5e2c',
-  squirrelHeTailLight: '#b0763f',
-  squirrelShe: '#bd854e',
-  squirrelSheTail: '#c99a6c',
-  squirrelSheTailLight: '#dcb389',
+  coats: {
+    he: { body: '#8a4c1e', tail: '#9c5e2c', tailLight: '#b0763f' },
+    she: { body: '#bd854e', tail: '#c99a6c', tailLight: '#dcb389' },
+  },
   steam: '#cfc8bd',
 
   cat: '#5b7ea8',
@@ -1179,25 +1175,6 @@ function drawScent(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette): voi
   ctx.globalAlpha = 1;
 }
 
-/**
- * Which of the two coats a squirrel wears.
- *
- * Read off `kind`, the same field that decides which of them goes up the wall,
- * so the darker one is always the one being told off. Chosen any other way —
- * by index, by side, by a roll — the pair would swap coats the first time
- * anything reordered them, and the scolding would stop matching the animal.
- */
-interface Coat {
-  body: string;
-  tail: string;
-  tailLight: string;
-}
-
-const coatFor = (kind: SquirrelKind, p: Palette): Coat =>
-  kind === 'he'
-    ? { body: p.squirrelHe, tail: p.squirrelHeTail, tailLight: p.squirrelHeTailLight }
-    : { body: p.squirrelShe, tail: p.squirrelSheTail, tailLight: p.squirrelSheTailLight };
-
 /** A squirrel: upright, cream-bellied, mostly tail. */
 function drawSquirrel(
   ctx: CanvasRenderingContext2D,
@@ -1208,7 +1185,7 @@ function drawSquirrel(
   const y = squirrelY(scene, squirrel) + FRONT_OF_ROOM;
 
   const swing = scoldSwing(scene, squirrel);
-  const coat = coatFor(squirrel.kind, p);
+  const coat = p.coats[squirrel.kind];
 
   if (watchingTelevision(scene) && squirrel.climb === 0) {
     drawSquirrelFromBehind(ctx, squirrel.x, y, p, coat, swing);
@@ -1336,7 +1313,7 @@ function drawSquirrelFromBehind(
   x: number,
   y: number,
   p: Palette,
-  coat: Coat,
+  coat: Palette['coats'][SquirrelKind],
   swing: number,
 ): void {
   ctx.save();

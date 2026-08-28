@@ -432,6 +432,14 @@ bed is tapped _for_ is to send them to it. What is pinned is the pair either
 side of that: each of them is reachable while they are all on it, and the bed is
 _entirely_ tappable once nobody is.
 
+**"Is there food" is one predicate, `foodInPlay`, and that is not tidiness.**
+`baking` gave food a second way to exist; six sites learned about it and two did
+not — `catMayCall` and the rota's own `free` gate, which are exactly the two
+that mean _do not interrupt him_. He waits out a bake in `wobbling` with no goal
+and no gratin, so both opened, and over three seeded days a cat let itself in on
+him three times while his dinner was in the oven. Six copies is six chances to
+forget; the two that were forgotten are the two that mattered.
+
 **The gratin is cooked, not conjured.** It goes _in_ the oven — the light on,
 the dish behind the glass — and comes out on the floor `BAKE_FRAMES` later.
 Both the light and the dish are derived from `scene.baking`, the lit-window rule
@@ -452,9 +460,23 @@ ending.** Something going in the oven pulls `showLeft` down to the closing
 zebra, all three sit through it, the set goes off by itself, and only then does
 anybody move. So `sitting` waits on `!tv.on` and food no longer overrules it,
 and the tap on the cooker deliberately does _not_ summon him while a programme
-is on. Every other way he leaves the sofa — a tap on him, an errand elsewhere —
-**turns the set off with him**, which is also what stops the zebra's wait below
-from hanging.
+is on. The pull is done **once, in `startBaking`**, not clamped every frame
+while food is in play: as a standing clamp, switching the set on with a gratin
+already on the floor gave a programme that was at its closing titles by the next
+frame.
+
+**The set goes off when he has stopped watching, and `settleTv` is the only
+thing that decides he has** — on the sofa, walking to it or climbing onto it are
+the three ways of not having given up. Written instead at each place he can be
+sent away it was three copies of two lines, and it was also what kept the
+zebra's wait below from wedging: a seventh way off the sofa, added later, would
+not have produced a glitch but **a programme that never ended**, which
+`scene.test.ts` now measures rather than argues — taps at every target over
+three seeded runs, and the set always reaches its end. Without the rule the same
+test finds it on for the entire 120,000-frame run. It is asked at the **end** of
+a frame, after he has moved: asked before, it fired on a set that had only just
+been switched on, since the rota turns it on and `wander` issues the errand for
+it later in that same frame.
 
 **The closing zebra never plays to an empty sofa.** Its last stretch holds at
 the threshold until all three are on it, and the waiting lives in

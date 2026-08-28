@@ -28,6 +28,20 @@ import { sceneScale } from '../stage';
  * A stubbed context records the text that reaches the canvas, which is enough to
  * ask that question of every speaker in the room.
  */
+/** Steps until it happens, and says so rather than falling off the end. */
+function runUntil(
+  scene: ReturnType<typeof sceneAt>,
+  done: (s: ReturnType<typeof sceneAt>) => boolean,
+  limit: number,
+  rng: () => number,
+) {
+  for (let i = 0; i < limit; i++) {
+    if (done(scene)) return;
+    step(scene, rng);
+  }
+  throw new Error(`never happened within ${limit} frames`);
+}
+
 function recordingContext() {
   const text: string[] = [];
   const calls: string[] = [];
@@ -102,9 +116,12 @@ describe('what reaches the canvas', () => {
   it('draws a “z” for every one of them asleep in the bed, not just for him', () => {
     const s = sceneAt(1280);
     clickScene(s, s.layout.bedX, s.ground - 10);
-    for (let i = 0; i < 20000 && !s.squirrels.every((q) => squirrelAsleep(s, q)); i++) {
-      step(s, () => 0.0005);
-    }
+    runUntil(
+      s,
+      (x) => x.squirrels.every((q) => squirrelAsleep(x, q)),
+      20000,
+      () => 0.0005,
+    );
     expect(s.ciccio.phase).toBe('sleeping');
     // Two "z"s per sleeper, and there are three of them.
     expect(drawn(s).filter((line) => line === 'z')).toHaveLength(6);
