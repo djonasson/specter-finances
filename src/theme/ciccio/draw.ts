@@ -13,7 +13,7 @@
  * units throughout.
  */
 
-import type { Scene, Squirrel } from './scene';
+import type { Scene, Squirrel, SquirrelKind } from './scene';
 import {
   OVEN_WIDTH,
   OVEN_HEIGHT,
@@ -35,6 +35,8 @@ import {
   showingZebra,
   dashingForFood,
   scoldSwing,
+  ovenBaking,
+  squirrelAsleep,
   ciccioBob,
   ciccioY,
   squirrelY,
@@ -103,15 +105,17 @@ const LIGHT = {
   nose: '#4f4f52',
   eye: '#2b2b2b',
 
-  squirrel: '#c8763a',
-  squirrelDark: '#ab5f2b',
   squirrelBelly: '#f4ead9',
-  squirrelTail: '#d98a4a',
-  squirrelTailLight: '#eaa66a',
 
   dish: '#e4e0d8',
   gratin: '#e8c98a',
   gratinTop: '#c98a3f',
+  ovenDish: '#7d604a',
+  scent: '#c9a06a',
+  coats: {
+    he: { body: '#a85c26', tail: '#bd7038', tailLight: '#d68f57', dark: '#6d3813' },
+    she: { body: '#e0a06a', tail: '#eab98c', tailLight: '#f6d3ad', dark: '#a86432' },
+  },
   steam: '#ffffff',
 
   cat: '#7fa8d8',
@@ -187,15 +191,17 @@ const DARK: Palette = {
   nose: '#2a2a2c',
   eye: '#141414',
 
-  squirrel: '#a55f2d',
-  squirrelDark: '#83491f',
   squirrelBelly: '#cbbda6',
-  squirrelTail: '#b4713a',
-  squirrelTailLight: '#c98a52',
 
   dish: '#5a544b',
   gratin: '#b89a63',
   gratinTop: '#a06e30',
+  ovenDish: '#5d4636',
+  scent: '#9c7c52',
+  coats: {
+    he: { body: '#8a4c1e', tail: '#9c5e2c', tailLight: '#b0763f', dark: '#4d2a0d' },
+    she: { body: '#bd854e', tail: '#c99a6c', tailLight: '#dcb389', dark: '#8a5a2c' },
+  },
   steam: '#cfc8bd',
 
   cat: '#5b7ea8',
@@ -627,17 +633,34 @@ function drawKitchen(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette): v
   box(ctx, ovenX, g, w, OVEN_HEIGHT, p.ovenBody, p.ovenBodyTop, 3, p.ovenEdge);
   box(ctx, ovenX, g - OVEN_HEIGHT, w + 6, 5, p.ovenTrim, p.ovenTrimTop, 1.5, p.ovenEdge);
 
-  // Door, and the glow of something cooking behind it.
+  // The door. What is behind it is *derived* from there being something in the
+  // oven — light and dish together, so a lit oven with an empty shelf, or a
+  // gratin cooking in the dark, are not states this can draw.
   ctx.fillStyle = p.ovenGlass;
   ctx.beginPath();
   ctx.roundRect(left + 8, g - 44, w - 16, 32, 3);
   ctx.fill();
-  ctx.fillStyle = p.ovenGlow;
-  ctx.globalAlpha = 0.5;
-  ctx.beginPath();
-  ctx.ellipse(ovenX, g - 26, w / 2 - 15, 8, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.globalAlpha = 1;
+
+  if (ovenBaking(scene)) {
+    ctx.fillStyle = p.ovenGlow;
+    ctx.globalAlpha = 0.5;
+    ctx.beginPath();
+    ctx.ellipse(ovenX, g - 26, w / 2 - 15, 8, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+
+    // The dish on the shelf, in silhouette against the light.
+    const shelf = g - 22;
+    ctx.fillStyle = p.ovenDish;
+    ctx.beginPath();
+    ctx.roundRect(ovenX - 13, shelf - 7, 26, 8, 2);
+    ctx.fill();
+    // And what is in it, domed over the rim.
+    ctx.fillStyle = p.gratinTop;
+    ctx.beginPath();
+    ctx.ellipse(ovenX, shelf - 7, 11, 4, 0, Math.PI, 0);
+    ctx.fill();
+  }
 
   // Handle and dials.
   ctx.fillStyle = p.ovenTrim;
@@ -1091,19 +1114,74 @@ function drawCiccio(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette): vo
 
   ctx.restore();
 
-  if (asleep) {
-    // Off the frame count, so they drift rather than sitting still — and drawn
-    // outside the flip, or they would be mirrored along with him.
-    ctx.fillStyle = p.eye;
-    ctx.font = '600 9px system-ui, sans-serif';
-    ctx.textAlign = 'center';
-    for (let i = 0; i < 2; i++) {
-      const t = (scene.frame / 70 + i * 0.5) % 1;
-      ctx.globalAlpha = 0.55 * (1 - t);
-      ctx.fillText('z', ciccio.x + 16 + t * 9, y - 26 - t * 20);
-    }
-    ctx.globalAlpha = 1;
+  if (asleep) sleepingZs(ctx, scene, p, ciccio.x + 16, y - 26, 0);
+}
+
+/**
+ * The "z"s over somebody asleep — his, and both squirrels'.
+ *
+ * One function because it is one thing three animals do: written out per
+ * sleeper it drifted, and the squirrels simply did not have any while sharing a
+ * bed with a hedgehog who did. Off the frame count so they rise rather than
+ * sitting still, and drawn outside anybody's flip, or they would be mirrored
+ * along with the sleeper.
+ */
+function sleepingZs(
+  ctx: CanvasRenderingContext2D,
+  scene: Scene,
+  p: Palette,
+  x: number,
+  top: number,
+  phase: number,
+): void {
+  // Its own save: it is called from outside both sleepers' own `restore()`, and
+  // it sets `fillStyle`, `font`, `textAlign` and `globalAlpha` while putting
+  // only two of the four back.
+  ctx.save();
+  ctx.fillStyle = p.eye;
+  ctx.font = '600 9px system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  for (let i = 0; i < 2; i++) {
+    // `phase` offsets each sleeper's own pair. Sharing one `frame / 70` put six
+    // letters in perfect lockstep above three animals, which reads as one
+    // effect drawn three times rather than three of them asleep.
+    const t = (scene.frame / 70 + i * 0.5 + phase) % 1;
+    ctx.globalAlpha = 0.55 * (1 - t);
+    ctx.fillText('z', x + t * 9, top - t * 20);
   }
+  ctx.restore();
+}
+
+/**
+ * The smell of it, drifting out of the oven and off across the room to him.
+ *
+ * Wisps rather than the plate's round puffs — a cartoon scent is a ribbon that
+ * goes somewhere, and where it goes is `drift`, which the scene aims at him
+ * when each one is born.
+ */
+function drawScent(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette): void {
+  if (scene.scent.length === 0) return;
+
+  // Saved rather than put back by hand: this sets `strokeStyle`, `lineCap` and
+  // a `lineWidth` of up to five against a default of one, and left them set. It
+  // is invisible only because everything drawn after it happens to set its own
+  // — the accident `drawSaying` in this file already records learning about.
+  ctx.save();
+  ctx.strokeStyle = p.scent;
+  ctx.lineCap = 'round';
+  for (const puff of scene.scent) {
+    const fade = Math.min(1, puff.life / 60);
+    ctx.globalAlpha = 0.5 * fade;
+    ctx.lineWidth = puff.size * 0.5;
+    const x = puff.x;
+    const y = scene.ground + puff.y;
+    // A short curl, leaning the way it is travelling.
+    ctx.beginPath();
+    ctx.moveTo(x - puff.size, y + puff.size);
+    ctx.quadraticCurveTo(x + puff.size * puff.drift * 2, y, x + puff.size, y - puff.size);
+    ctx.stroke();
+  }
+  ctx.restore();
 }
 
 /** A squirrel: upright, cream-bellied, mostly tail. */
@@ -1116,9 +1194,10 @@ function drawSquirrel(
   const y = squirrelY(scene, squirrel) + FRONT_OF_ROOM;
 
   const swing = scoldSwing(scene, squirrel);
+  const coat = p.coats[squirrel.kind];
 
   if (watchingTelevision(scene) && squirrel.climb === 0) {
-    drawSquirrelFromBehind(ctx, squirrel.x, y, p, swing);
+    drawSquirrelFromBehind(ctx, squirrel.x, y, coat, swing);
     return;
   }
 
@@ -1148,7 +1227,7 @@ function drawSquirrel(
   // up and over.
   // The tail is the biggest thing about a squirrel and the hardest to fake.
   // See `TAIL_CORE` and `TAIL_HAIRS`, which is where it is worked out.
-  ctx.fillStyle = p.squirrelTail;
+  ctx.fillStyle = coat.tail;
   for (const lobe of TAIL_CORE) {
     ctx.beginPath();
     ctx.arc(lobe.x, lobe.y, lobe.r, 0, Math.PI * 2);
@@ -1157,7 +1236,7 @@ function drawSquirrel(
 
   ctx.lineCap = 'round';
   for (const tuft of TAIL_TUFTS) {
-    ctx.strokeStyle = tuft.light ? p.squirrelTailLight : p.squirrelTail;
+    ctx.strokeStyle = tuft.light ? coat.tailLight : coat.tail;
     ctx.lineWidth = tuft.width;
     ctx.beginPath();
     for (const hair of tuft.hairs) {
@@ -1168,7 +1247,7 @@ function drawSquirrel(
   }
 
   // Body.
-  ctx.fillStyle = p.squirrel;
+  ctx.fillStyle = coat.body;
   ctx.beginPath();
   ctx.ellipse(0, -14, 10, 14, 0, 0, Math.PI * 2);
   ctx.fill();
@@ -1180,13 +1259,13 @@ function drawSquirrel(
   ctx.fill();
 
   // Head.
-  ctx.fillStyle = p.squirrel;
+  ctx.fillStyle = coat.body;
   ctx.beginPath();
   ctx.arc(4, -28, 8, 0, Math.PI * 2);
   ctx.fill();
 
   // Ear.
-  ctx.fillStyle = p.squirrelDark;
+  ctx.fillStyle = coat.dark;
   ctx.beginPath();
   ctx.ellipse(1.5, -35, 2.8, 4, -0.2, 0, Math.PI * 2);
   ctx.fill();
@@ -1200,14 +1279,14 @@ function drawSquirrel(
   ctx.beginPath();
   ctx.arc(7.5, -30, 1.9, 0, Math.PI * 2);
   ctx.fill();
-  ctx.fillStyle = p.squirrelDark;
+  ctx.fillStyle = coat.dark;
   ctx.beginPath();
   ctx.ellipse(7.5, -15, 3.2, 2.5, 0, 0, Math.PI * 2);
   ctx.fill();
 
   // Feet, taking turns. Two of them rather than one, or there is nothing for a
   // stride to alternate between.
-  ctx.fillStyle = p.squirrelDark;
+  ctx.fillStyle = coat.dark;
   [0, 1].forEach((foot) => {
     const swing = gait(squirrel.x, foot, dashingForFood(scene));
     ctx.beginPath();
@@ -1216,6 +1295,19 @@ function drawSquirrel(
   });
 
   ctx.restore();
+
+  // They are in the bed too, so they get the same "z"s he does — over the
+  // outside shoulder, away from him, or all three sets pile up in the middle.
+  if (squirrelAsleep(scene, squirrel)) {
+    sleepingZs(
+      ctx,
+      scene,
+      p,
+      squirrel.x + squirrel.side * 13,
+      y - 22,
+      squirrel.side === -1 ? 0.33 : 0.66,
+    );
+  }
 }
 
 /**
@@ -1236,7 +1328,7 @@ function drawSquirrelFromBehind(
   ctx: CanvasRenderingContext2D,
   x: number,
   y: number,
-  p: Palette,
+  coat: Palette['coats'][SquirrelKind],
   swing: number,
 ): void {
   ctx.save();
@@ -1249,7 +1341,7 @@ function drawSquirrelFromBehind(
   turnAbout(ctx, SQUIRREL_MIDDLE, swing);
 
   // Feet either side, just showing past the tail.
-  ctx.fillStyle = p.squirrelDark;
+  ctx.fillStyle = coat.dark;
   for (const fx of [-6, 6]) {
     ctx.beginPath();
     ctx.ellipse(fx, -1.8, 4, 2.4, 0, 0, Math.PI * 2);
@@ -1258,7 +1350,7 @@ function drawSquirrelFromBehind(
 
   // The tail first, filling most of the view — it is between us and the animal.
   // See `REAR_EDGE` and `REAR_TUFTS`, which is where its shape is worked out.
-  ctx.fillStyle = p.squirrelTail;
+  ctx.fillStyle = coat.tail;
   ctx.beginPath();
   REAR_EDGE.forEach((pt, i) => (i === 0 ? ctx.moveTo(pt.x, pt.y) : ctx.lineTo(pt.x, pt.y)));
   ctx.closePath();
@@ -1266,7 +1358,7 @@ function drawSquirrelFromBehind(
 
   ctx.lineCap = 'round';
   for (const tuft of REAR_TUFTS) {
-    ctx.strokeStyle = tuft.light ? p.squirrelTailLight : p.squirrelTail;
+    ctx.strokeStyle = tuft.light ? coat.tailLight : coat.tail;
     ctx.lineWidth = tuft.width;
     ctx.beginPath();
     for (const hair of tuft.hairs) {
@@ -1534,6 +1626,7 @@ export function drawScene(
   drawTv(ctx, scene, p);
   drawSofa(ctx, scene, p);
 
+  drawScent(ctx, scene, p);
   drawGratin(ctx, scene, p);
   for (const squirrel of scene.squirrels) drawSquirrel(ctx, scene, squirrel, p);
   drawCiccio(ctx, scene, p);

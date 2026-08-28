@@ -432,11 +432,113 @@ bed is tapped _for_ is to send them to it. What is pinned is the pair either
 side of that: each of them is reachable while they are all on it, and the bed is
 _entirely_ tappable once nobody is.
 
+**"Is there food" is one predicate, `foodInPlay`, and that is not tidiness.**
+`baking` gave food a second way to exist; six sites learned about it and two did
+not — `catMayCall` and the rota's own `free` gate, which are exactly the two
+that mean _do not interrupt him_. He waits out a bake in `wobbling` with no goal
+and no gratin, so both opened, and over three seeded days a cat let itself in on
+him three times while his dinner was in the oven. Six copies is six chances to
+forget; the two that were forgotten are the two that mattered.
+
+**The gratin is cooked, not conjured.** It goes _in_ the oven — the light on,
+the dish behind the glass — and comes out on the floor `BAKE_FRAMES` later.
+Both the light and the dish are derived from `scene.baking`, the lit-window rule
+again, so a glowing oven with an empty shelf is not a state the scene can reach.
+The smell drifts out of the door and across the room **towards him**, and that
+is what fetches him: `errandTarget` knows where a gratin _will_ be, so he sets
+off after the scent long before there is anything on the floor to run to, and
+**dances at the oven door until it opens** rather than arriving to nothing —
+`eating` guards on a gratin in reach, so without that he would fall back to
+wandering, be sent for the same errand next frame, and jitter at the door until
+it opened. A tap on the cooker starts the same flow; it used to drop a finished
+gratin on the floor, which skipped the only part of the business worth watching.
+Only `startBaking` ever makes one, and it refuses while there is one either in
+the oven or out of it.
+
+**Food does not walk him out of a programme — it brings the programme to its
+ending.** Something going in the oven pulls `showLeft` down to the closing
+zebra, all three sit through it, the set goes off by itself, and only then does
+anybody move. So `sitting` waits on `!tv.on` and food no longer overrules it,
+and the tap on the cooker deliberately does _not_ summon him while a programme
+is on. The pull is `bringProgrammeForward`, asked **whenever either fact
+changes** — when food appears and when the set comes on (`switchTvOn`) — and not
+clamped every frame while food is in play. As a standing clamp, switching the
+set on over a waiting gratin gave a programme at its closing titles one frame
+later; done only in `startBaking`, the other ordering left a cooked gratin going
+cold on the floor for a whole programme, first bite 3802 frames after the tap
+against 884 the documented way round. It is also what keeps a tap on the cooker
+from being wholly inert when a gratin is already out and a programme is on.
+
+**The set goes off when he has stopped watching, and `settleTv` is the only
+thing that decides he has** — on the sofa, walking to it, climbing onto it, or
+mid-dance are the four ways of not having given up. Each of the last three was
+paid for: `startWobble` clears the goal, so without the dance a tap on him half
+way to the sofa cancelled the programme outright, and the rota's `watch` turn —
+the only arm that did not issue its own errand — was eaten whenever it came up
+while he was dancing, costing between a twelfth and a quarter of all television.
+`mounting` needs the seat named with it, or the one thing it can cover is a
+hedgehog getting into _bed_ while declared to be watching television. And the
+sofa arm excludes `dismounting`: held lit through the climb down, `showingZebra`
+goes false while `tv.on` stays true, and `drawTv` has two arms only — so the
+closing titles un-played and the screen flipped back to the station letter for
+the whole descent. Written instead at each place he can be
+sent away it was three copies of two lines, and it was also what kept the
+zebra's wait below from wedging: a seventh way off the sofa, added later, would
+not have produced a glitch but **a programme that never ended**, which
+`scene.test.ts` now measures rather than argues — taps at every target over
+three seeded runs, and the set always reaches its end. Without the rule the same
+test finds it on for the entire 120,000-frame run. It is asked at the **end** of
+a frame, after he has moved: asked before, it fired on a set that had only just
+been switched on, since the rota turns it on and `wander` issues the errand for
+it later in that same frame.
+
+**The closing zebra never plays to an empty sofa.** Its last stretch holds at
+the threshold until all three are on it, and the waiting lives in
+`showingZebra` itself rather than only in the countdown: gated on the countdown
+alone, the screen turned to the zebra and froze there for the whole of the walk
+over, so they arrived to an ending already in progress. He makes hearts through
+it, on the same machinery and the same cap as the cat's kiss.
+
+**The scent leaves by the side he is on, and outlives the bake.** Which edge of
+the door it comes out of and which way it drifts are one decision: measured
+against the right edge alone, more than half his walk spawned it there and sent
+it left, straight across the face of the cooker it had just left — and
+`drawScent` paints after `drawKitchen`, so it crossed in front of the appliance
+at door height. The trail lives on `scene`, not on `Baking`, so ageing outlives
+emitting: owned by the bake it was destroyed whole on the frame the door opened,
+six puffs with four still at full opacity, at the moment the eye is on the oven.
+Its length needs no cap — the interval and the life bound it at six by
+construction, and the guard that used to stand there could not fire at any value
+any of them could hold.
+
+**The two squirrels are told apart, and by one field.** `kind` is carried at
+creation exactly as `side` is. The clumsy one — `he` — is the one who goes up
+the wall and gets told off, and the one drawn a shade darker; `runRescue` used
+to roll `rng() < 0.5` for the climber, so it was the left squirrel one time and
+the right the next and there was no clumsy one to recognise. `rescue.climber`
+names the **squirrel**, not its slot — identity rather than position, the same
+rule as `bird.perchedOn`. Held as an index it needed an `explorerIndex` to turn
+`kind` into a 0 or a 1, whose second branch nothing could reach. Each coat also
+carries its own `dark`: left shared when the bodies went per-kind, it sat at
+contrast 1.04 against the darker squirrel's own body — brighter than it, in
+light mode — so his ear, chest paws and both feet were invisible, on the one the
+whole change exists to make recognisable. The coats read off
+that same field on purpose: picked separately, the scolding and the colour would
+have disagreed half the time and it would have looked like two different pairs
+of squirrels. They sleep in the bed too — `squirrelAsleep` is derived from _his_
+sleeping, so a squirrel dozing on the sofa is unreachable — and the "z"s are one
+function for all three sleepers, over the outside shoulder so the sets do not
+pile up in the middle.
+
+**A visit ends when the cat turns to go**, not when it walks off the edge of the
+screen: that was another two seconds of three animals standing still watching a
+cat's back, with nothing about the visit left unfinished.
+
 **What happens on its own is a rota, not three chances**: potter, eat, potter,
 watch something, potter, sleep. Rolled separately they came out in any order and
 sometimes not at all — a whole seeded day could pass with the television never
 once on. Taps interrupt; they do not shuffle the order. There is **no oven
-timer**: the rota and a tap on the cooker both go through `serveGratin`, and the
+timer**: the rota and a tap on the cooker both go through `startBaking`, and the
 one that used to exist sat seeded and unread for a while with eight lines of
 comment above it explaining how it had been tuned.
 
@@ -486,7 +588,11 @@ rescue before the two endings were counted (they now split 52/48), and with the
 oven baking every 1400 frames he set off for the sofa twenty-three thousand
 frames in a day and actually sat for thirteen — with every individual behaviour
 test green. `scene.test.ts` measures the day over seeded runs, counts the cat's
-visits over fifty simulated minutes, and counts both endings of the climb.
+visits over fifty simulated minutes, and counts both endings of the climb. The
+day now comes out around 56–58% about the room, 3% waiting at the oven, 1%
+eating, 22–24% watching and 15–16% asleep over seven bakes — and the wait at the
+oven door is tallied **apart** from pottering, because it is the one share a
+longer `BAKE_FRAMES` grows, and it grows it out of everything else.
 
 **The drawing owns no facts.** `spin`, the turn it means (`ciccioAngle`), the bob,
 `showingZebra`, `scoldingAt`, `scoldSwing` and the seat heights all come off the

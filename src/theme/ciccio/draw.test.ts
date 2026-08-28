@@ -1,6 +1,17 @@
 import { describe, it, expect } from 'vitest';
 import { drawScene } from './draw';
-import { createScene, say, step, CAT_CALL, CICCIO_CALL, SQUIRREL_CALL } from './scene';
+import {
+  createScene,
+  say,
+  step,
+  clickScene,
+  squirrelAsleep,
+  startBaking,
+  ovenBaking,
+  CAT_CALL,
+  CICCIO_CALL,
+  SQUIRREL_CALL,
+} from './scene';
 import { sceneScale } from '../stage';
 
 /**
@@ -17,6 +28,20 @@ import { sceneScale } from '../stage';
  * A stubbed context records the text that reaches the canvas, which is enough to
  * ask that question of every speaker in the room.
  */
+/** Steps until it happens, and says so rather than falling off the end. */
+function runUntil(
+  scene: ReturnType<typeof sceneAt>,
+  done: (s: ReturnType<typeof sceneAt>) => boolean,
+  limit: number,
+  rng: () => number,
+) {
+  for (let i = 0; i < limit; i++) {
+    if (done(scene)) return;
+    step(scene, rng);
+  }
+  throw new Error(`never happened within ${limit} frames`);
+}
+
 function recordingContext() {
   const text: string[] = [];
   const calls: string[] = [];
@@ -84,6 +109,68 @@ describe('what reaches the canvas', () => {
     for (let i = 0; i < 4000 && s.cat?.say == null; i++) step(s, () => 0.5);
     expect(s.cat?.say?.line).toBe(CAT_CALL);
     expect(drawn(s)).toContain(CAT_CALL);
+  });
+
+  // Three sleepers, three sets of "z"s. The squirrels shared his bed and had
+  // none of their own.
+  it('draws a “z” for every one of them asleep in the bed, not just for him', () => {
+    const s = sceneAt(1280);
+    clickScene(s, s.layout.bedX, s.ground - 10);
+    runUntil(
+      s,
+      (x) => x.squirrels.every((q) => squirrelAsleep(x, q)),
+      20000,
+      () => 0.0005,
+    );
+    expect(s.ciccio.phase).toBe('sleeping');
+    // Two "z"s per sleeper, and there are three of them.
+    expect(drawn(s).filter((line) => line === 'z')).toHaveLength(6);
+  });
+
+  it('draws no “z” at all while everybody is up', () => {
+    const s = sceneAt(1280);
+    expect(drawn(s).filter((line) => line === 'z')).toHaveLength(0);
+  });
+
+  // The oven's light and its dish are one fact, and a canvas is the only place
+  // to see that they agree: a lit oven with an empty shelf would draw the glow
+  // and nothing in it.
+  it('paints nothing behind the oven door while nothing is baking', () => {
+    const cold = recordingContext();
+    const s = sceneAt(1280);
+    expect(ovenBaking(s)).toBe(false);
+    drawScene(cold.ctx, s, false, sceneScale(1280));
+
+    const hot = recordingContext();
+    startBaking(s);
+    drawScene(hot.ctx, s, false, sceneScale(1280));
+
+    // A lit oven with a dish in it is strictly more drawing than a dark one.
+    expect(hot.calls.length).toBeGreaterThan(cold.calls.length);
+  });
+
+  // The trail's own loop was never once executed by the suite: every draw ran
+  // with nothing in the air, because the oven test starts a bake and draws
+  // without stepping, so no puff has been born yet.
+  it('draws the scent once there is any in the air', () => {
+    const s = sceneAt(1280);
+    startBaking(s);
+    runUntil(
+      s,
+      (x) => x.scent.length > 0,
+      200,
+      () => 0.5,
+    );
+
+    const bare = recordingContext();
+    const withScent = recordingContext();
+    const empty = sceneAt(1280);
+    drawScene(bare.ctx, empty, false, sceneScale(1280));
+    drawScene(withScent.ctx, s, false, sceneScale(1280));
+    // Against a room with nothing in the air, not against zero: the sofa and
+    // the cat draw curves of their own.
+    const curves = (r: typeof bare) => r.calls.filter((c) => c === 'quadraticCurveTo').length;
+    expect(curves(withScent)).toBe(curves(bare) + s.scent.length);
   });
 
   it('draws a whole frame in both colour schemes without throwing', () => {
