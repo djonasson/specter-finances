@@ -1323,13 +1323,16 @@ describe('how his day divides', () => {
   function day(seed: number) {
     const rng = seeded(seed);
     const s = sceneAt(1280, rng);
-    const tally = { about: 0, eating: 0, watching: 0, sleeping: 0 };
+    const tally = { about: 0, waiting: 0, eating: 0, watching: 0, sleeping: 0 };
     const FRAMES = 90000;
     for (let i = 0; i < FRAMES; i++) {
       step(s, rng);
       if (s.ciccio.at === 'bed') tally.sleeping++;
       else if (s.ciccio.at === 'sofa') tally.watching++;
       else if (s.ciccio.phase === 'eating') tally.eating++;
+      // Counted apart from pottering: the wait at the oven door is the one
+      // share a longer bake grows, and it grows it out of everything else.
+      else if (s.baking) tally.waiting++;
       else tally.about++;
     }
     return Object.fromEntries(
@@ -1338,11 +1341,12 @@ describe('how his day divides', () => {
   }
 
   // Bands, not numbers, and measured rather than chosen: over three seeded days
-  // this comes out around 63-75% about the room, 2% with his head in a dish,
-  // 16-25% in front of the television and 3-14% asleep. What the bands protect
-  // is that none of the four ever goes to nothing — which is exactly what
-  // happened when the oven was tuned to bake every 1400 frames and he spent the
-  // whole day walking towards food he kept being interrupted for.
+  // this comes out around 56-58% about the room, 3% waiting at the oven, 1%
+  // with his head in a dish, 22-24% in front of the television and 15-16%
+  // asleep, over seven bakes. What the bands protect is that none of them ever
+  // goes to nothing — which is exactly what happened when the oven was tuned to
+  // bake every 1400 frames and he spent the whole day walking towards food he
+  // kept being interrupted for.
   it.each([1, 7, 99])('spends it about the room, eating, watching and asleep (seed %i)', (seed) => {
     const share = day(seed);
     expect(share.about).toBeGreaterThan(45);
@@ -1351,6 +1355,10 @@ describe('how his day divides', () => {
     expect(share.watching).toBeGreaterThan(8);
     expect(share.watching).toBeLessThan(40);
     expect(share.sleeping).toBeGreaterThanOrEqual(2);
+    // A bake he waits out is worth watching; a day spent waiting for one is
+    // not. This is the share a longer `BAKE_FRAMES` would grow.
+    expect(share.waiting).toBeGreaterThanOrEqual(1);
+    expect(share.waiting).toBeLessThan(15);
   });
 });
 
