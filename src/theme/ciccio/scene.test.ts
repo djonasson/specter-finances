@@ -1078,16 +1078,18 @@ describe('watching television', () => {
     settleOn(s, 'bed');
     runUntil(s, (x) => x.squirrels.every((q) => q.at === 'bed' && q.lift >= 1), 400, sleepy);
 
+    // Answered by *them* means they talk. A phase change is not enough: the bed
+    // answering a tap meant for him also changes his phase — it takes him out
+    // of bed — which is the whole failure this is about.
     const reaches = (who: 'ciccio' | 0 | 1) => {
       for (let x = 0; x <= s.width; x += 1) {
         for (let y = s.ground - 140; y <= s.ground; y += 1) {
-          s.chatter = null;
-          const before = s.ciccio.phase;
           if (!(who === 'ciccio' ? hitsCiccio(s, x, y) : hitsSquirrel(s, s.squirrels[who], x, y)))
             continue;
+          s.chatter = null;
+          const at = s.ciccio.at;
           clickScene(s, x, y);
-          const answered = s.chatter !== null || s.ciccio.phase !== before;
-          if (answered) return true;
+          if (s.chatter !== null && s.ciccio.at === at) return true;
         }
       }
       return false;
@@ -1556,6 +1558,19 @@ describe('the little blue cat', () => {
     expect(pounces / visits).toBeLessThan(0.15);
   });
 
+  // The rota turns the set on and returns, four lines before `runCat` runs, with
+  // him still wandering on the floor — so without the `tv.on` half of the gate
+  // the cat could be let in on that very frame and freeze him in front of a set
+  // counting itself down. He would reach the sofa, if at all, to a dead screen.
+  it('does not let itself in on the frame a programme starts', () => {
+    const s = sceneAt(1280);
+    for (let i = 0; i < 60000; i++) {
+      const hadCat = s.cat;
+      step(s, eager);
+      if (s.cat && !hadCat) expect(s.tv.on).toBe(false);
+    }
+  });
+
   it('calls only when he is free, and counts the time he has free', () => {
     const s = sceneAt(1280);
     let least = Number.POSITIVE_INFINITY;
@@ -1660,6 +1675,25 @@ describe('one of them gets stuck up the wall', () => {
     );
     expect(most).toBeGreaterThan(0.2);
     expect(least).toBeLessThan(-0.2);
+  });
+
+  // He stays `sitting` after a programme ends until his own dwell runs out, and
+  // `runRescue` owns the whole climb off that predicate — so on the phase alone
+  // one of them would set off up the wall, get stuck, be fetched down and told
+  // off, all three drawn from behind facing a switched-off screen.
+  it('never starts a climb in front of a set that has gone off', () => {
+    const s = watching();
+    // The programme ends while he is still on the cushion.
+    s.tv.on = false;
+    s.tv.showLeft = 0;
+    s.ciccio.timer = Number.MAX_SAFE_INTEGER;
+
+    for (let i = 0; i < 20000; i++) {
+      step(s, eager);
+      if (s.ciccio.phase !== 'sitting') break;
+      expect(s.rescue).toBeNull();
+      expect(s.squirrels.every((q) => q.climb === 0)).toBe(true);
+    }
   });
 
   it('waits until they are both sitting still before anybody climbs', () => {
@@ -1866,6 +1900,23 @@ describe('interrupting a climb, and the room afterwards', () => {
   // A tap on him while he was seated set the phase and left `at` naming the
   // sofa, so he walked the room a cushion's height in the air — and since the
   // rota only starts something while he is on the floor, it never ran again.
+  // Otherwise the tap is a 35-frame bob: `wander` re-issues the sit errand on
+  // the first frame he reaches the floor, and the set is on for the whole of the
+  // only time he is ever up there.
+  it('stops the programme when he is taken off the sofa, so he stays off it', () => {
+    const s = sceneAt(1280);
+    tapTelevision(s);
+    settleOn(s, 'sofa');
+    s.tv.showLeft = Number.MAX_SAFE_INTEGER;
+
+    clickScene(s, s.ciccio.x, ciccioY(s) - 10);
+    expect(s.tv.on).toBe(false);
+
+    runUntil(s, (x) => x.ciccio.at === 'floor', 400, steady);
+    run(s, 300, steady);
+    expect(s.ciccio.at).toBe('floor');
+  });
+
   it('gets him off the sofa when he is tapped there, rather than stranding him', () => {
     const s = sceneAt(1280);
     tapTelevision(s);
@@ -1878,6 +1929,24 @@ describe('interrupting a climb, and the room afterwards', () => {
     // And the rota is running again, which it could not while he was up there.
     s.tv.on = false;
     runUntil(s, (x) => x.ciccio.goal !== null || x.gratin !== null, 8000, steady);
+  });
+
+  // Including when he is already dancing. The drop used to sit below
+  // `startWobble`'s early return, so a tap on a hedgehog mid-wobble kept the
+  // errand — and `runRoutine`'s own `free` gate admits `wobbling`, so one rota
+  // arm setting a goal without `heading` would have brought the deadlock back.
+  it('drops the errand even when he is already mid-dance', () => {
+    const s = sceneAt(1280);
+    serveGratin(s);
+    runUntil(s, (x) => x.ciccio.phase === 'heading', 400, steady);
+    // Put him in the dance with the errand still set, which is the state the
+    // early return used to protect.
+    s.ciccio.phase = 'wobbling';
+    s.ciccio.spin = 0;
+    expect(s.ciccio.goal).not.toBeNull();
+
+    tapHimOnOpenFloor(s);
+    expect(s.ciccio.goal).toBeNull();
   });
 
   // The other half of the same deadlock: neither gate will issue a goal while
