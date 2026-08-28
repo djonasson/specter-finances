@@ -786,11 +786,29 @@ describe('a potato gratin', () => {
     const s = bakeThrough(sceneAt(900));
     const first = s.gratin;
     for (let i = 0; i < 6000; i++) {
-      clickScene(s, s.layout.ovenX, s.ground - 30);
+      tapOven(s);
       step(s, eager);
       if (s.gratin) expect(s.gratin).toBe(first);
       else break;
     }
+  });
+
+  // Asked directly, because the loop above cannot see it: tapping every frame
+  // restarts the bake every frame, so nothing ever comes out of the oven to be
+  // a second gratin, and the loop breaks the moment he finishes the first.
+  it('refuses to start another while one is out, or while one is still in', () => {
+    const out = bakeThrough(sceneAt(900));
+    expect(out.gratin).not.toBeNull();
+    tapOven(out);
+    expect(out.baking).toBeNull();
+
+    const inTheOven = quietScene(900);
+    startBaking(inTheOven);
+    run(inTheOven, 60, steady);
+    const left = inTheOven.baking!.left;
+    tapOven(inTheOven);
+    // Not restarted: the tap is refused rather than putting the timer back.
+    expect(inTheOven.baking!.left).toBe(left);
   });
 
   it('sends him running for it, and he says so on the way', () => {
