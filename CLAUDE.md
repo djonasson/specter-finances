@@ -460,14 +460,28 @@ ending.** Something going in the oven pulls `showLeft` down to the closing
 zebra, all three sit through it, the set goes off by itself, and only then does
 anybody move. So `sitting` waits on `!tv.on` and food no longer overrules it,
 and the tap on the cooker deliberately does _not_ summon him while a programme
-is on. The pull is done **once, in `startBaking`**, not clamped every frame
-while food is in play: as a standing clamp, switching the set on with a gratin
-already on the floor gave a programme that was at its closing titles by the next
-frame.
+is on. The pull is `bringProgrammeForward`, asked **whenever either fact
+changes** — when food appears and when the set comes on (`switchTvOn`) — and not
+clamped every frame while food is in play. As a standing clamp, switching the
+set on over a waiting gratin gave a programme at its closing titles one frame
+later; done only in `startBaking`, the other ordering left a cooked gratin going
+cold on the floor for a whole programme, first bite 3802 frames after the tap
+against 884 the documented way round. It is also what keeps a tap on the cooker
+from being wholly inert when a gratin is already out and a programme is on.
 
 **The set goes off when he has stopped watching, and `settleTv` is the only
-thing that decides he has** — on the sofa, walking to it or climbing onto it are
-the three ways of not having given up. Written instead at each place he can be
+thing that decides he has** — on the sofa, walking to it, climbing onto it, or
+mid-dance are the four ways of not having given up. Each of the last three was
+paid for: `startWobble` clears the goal, so without the dance a tap on him half
+way to the sofa cancelled the programme outright, and the rota's `watch` turn —
+the only arm that did not issue its own errand — was eaten whenever it came up
+while he was dancing, costing between a twelfth and a quarter of all television.
+`mounting` needs the seat named with it, or the one thing it can cover is a
+hedgehog getting into _bed_ while declared to be watching television. And the
+sofa arm excludes `dismounting`: held lit through the climb down, `showingZebra`
+goes false while `tv.on` stays true, and `drawTv` has two arms only — so the
+closing titles un-played and the screen flipped back to the station letter for
+the whole descent. Written instead at each place he can be
 sent away it was three copies of two lines, and it was also what kept the
 zebra's wait below from wedging: a seventh way off the sofa, added later, would
 not have produced a glitch but **a programme that never ended**, which
@@ -485,11 +499,30 @@ alone, the screen turned to the zebra and froze there for the whole of the walk
 over, so they arrived to an ending already in progress. He makes hearts through
 it, on the same machinery and the same cap as the cat's kiss.
 
+**The scent leaves by the side he is on, and outlives the bake.** Which edge of
+the door it comes out of and which way it drifts are one decision: measured
+against the right edge alone, more than half his walk spawned it there and sent
+it left, straight across the face of the cooker it had just left — and
+`drawScent` paints after `drawKitchen`, so it crossed in front of the appliance
+at door height. The trail lives on `scene`, not on `Baking`, so ageing outlives
+emitting: owned by the bake it was destroyed whole on the frame the door opened,
+six puffs with four still at full opacity, at the moment the eye is on the oven.
+Its length needs no cap — the interval and the life bound it at six by
+construction, and the guard that used to stand there could not fire at any value
+any of them could hold.
+
 **The two squirrels are told apart, and by one field.** `kind` is carried at
 creation exactly as `side` is. The clumsy one — `he` — is the one who goes up
 the wall and gets told off, and the one drawn a shade darker; `runRescue` used
 to roll `rng() < 0.5` for the climber, so it was the left squirrel one time and
-the right the next and there was no clumsy one to recognise. The coats read off
+the right the next and there was no clumsy one to recognise. `rescue.climber`
+names the **squirrel**, not its slot — identity rather than position, the same
+rule as `bird.perchedOn`. Held as an index it needed an `explorerIndex` to turn
+`kind` into a 0 or a 1, whose second branch nothing could reach. Each coat also
+carries its own `dark`: left shared when the bodies went per-kind, it sat at
+contrast 1.04 against the darker squirrel's own body — brighter than it, in
+light mode — so his ear, chest paws and both feet were invisible, on the one the
+whole change exists to make recognisable. The coats read off
 that same field on purpose: picked separately, the scolding and the colour would
 have disagreed half the time and it would have looked like two different pairs
 of squirrels. They sleep in the bed too — `squirrelAsleep` is derived from _his_
