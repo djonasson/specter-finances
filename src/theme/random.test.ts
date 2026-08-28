@@ -67,7 +67,7 @@ describe('the pool a stored set of exclusions leaves', () => {
 
 describe('turning a list of backgrounds to shuffle between into what to store', () => {
   it('stores everything the list left out', () => {
-    expect(excludedFor(['matrix', 'cello'])).toEqual(['none', 'gradient', 'squirrel']);
+    expect(excludedFor(['matrix', 'cello'])).toEqual(['none', 'gradient', 'squirrel', 'ciccio']);
   });
 
   it('stores every background when the list is empty, so nothing is shuffled', () => {

@@ -88,6 +88,14 @@ describe('how tall a band a background asks for', () => {
     expect(stageFloorHeight('squirrel', 360)).toBe(stageFloorHeight('squirrel', 1440));
   });
 
+  it('lets one scene ask for a shorter band than another, off its own scenery', () => {
+    // The room's tallest thing is its own wall; the cello's is a bird in a
+    // tree. Neither number is written down anywhere but in the scene it
+    // belongs to, which is the point.
+    expect(stageFloorHeight('ciccio', 1440)).toBeLessThan(stageFloorHeight('cello', 1440));
+    expect(stageFloorHeight('ciccio', 360)).toBeLessThan(stageFloorHeight('ciccio', 1440));
+  });
+
   it('asks for nothing at all from a background that draws behind the app', () => {
     for (const width of [360, 1440]) {
       expect(stageFloorHeight('matrix', width)).toBe(0);

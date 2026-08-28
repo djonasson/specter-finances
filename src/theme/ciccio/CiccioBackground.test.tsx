@@ -18,17 +18,19 @@ vi.mock('./draw', () => ({ drawScene: vi.fn() }));
 
 import { createScene, step, clickScene } from './scene';
 import { drawScene } from './draw';
-import { CelloBackground } from './CelloBackground';
+import { CiccioBackground } from './CiccioBackground';
 
 /**
- * Only what is the cello's.
+ * Only what is Ciccio's.
  *
- * This file used to hold the whole of the canvas wiring, because that is where
- * the wiring lived. It is `SceneCanvas` now, shared by every scene and covered
- * once in `sceneCanvas.test.tsx` against a scene that does nothing — which is
- * where those tests belong: left here, one background owned the contract of a
- * module three of them depend on, and retiring this theme would have taken the
- * coverage with it.
+ * The canvas, the frame loop, the buffer in device pixels, the two-decision
+ * resize, the click division and the teardown are `SceneCanvas`, and are
+ * covered once in `sceneCanvas.test.tsx` against a scene that does nothing.
+ * Asserting them again here would be the same shared function tested twice,
+ * once per background — which is the duplication the extraction removed.
+ *
+ * What is left is the one thing this file can get wrong on its own: handing the
+ * canvas somebody else's three modules.
  */
 
 let context2d: CanvasRenderingContext2D;
@@ -41,6 +43,9 @@ beforeEach(() => {
     vi.fn(() => 1),
   );
   vi.stubGlobal('cancelAnimationFrame', vi.fn());
+  // `restoreAllMocks` restores spies but not the `vi.fn`s a module mock is built
+  // from, so their calls accumulate across the file and `mock.calls[0]` becomes
+  // whatever the first test in the run happened to do.
   vi.mocked(createScene).mockClear();
   vi.mocked(step).mockClear();
   vi.mocked(clickScene).mockClear();
@@ -54,22 +59,22 @@ afterEach(() => {
   localStorage.clear();
 });
 
-describe('the street the component builds', () => {
-  it('drives its own scene and its own drawing, not another theme\u2019s', () => {
-    renderWithTheme(<CelloBackground />);
+describe('the room the component builds', () => {
+  it('drives its own scene and its own drawing, not another theme’s', () => {
+    renderWithTheme(<CiccioBackground />);
     act(() => vi.mocked(requestAnimationFrame).mock.calls[0][0](1000));
 
     expect(step).toHaveBeenCalled();
     expect(drawScene).toHaveBeenCalledWith(
       context2d,
-      expect.objectContaining({ girl: expect.anything(), bird: expect.anything() }),
+      expect.objectContaining({ ciccio: expect.anything(), squirrels: expect.anything() }),
       false,
       expect.any(Number),
     );
   });
 
   it('hands its clicks to its own scene', () => {
-    renderWithTheme(<CelloBackground />);
+    renderWithTheme(<CiccioBackground />);
     act(() => document.dispatchEvent(new MouseEvent('click', { clientX: 40, clientY: 90 })));
     expect(clickScene).toHaveBeenCalled();
   });

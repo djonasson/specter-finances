@@ -424,7 +424,7 @@ describe('shuffling between chosen backgrounds', () => {
     rolling(0);
     const { result } = render();
     act(() => result.current.setRandomPool(['cello']));
-    expect(stored().randomExcluded).toEqual(['none', 'matrix', 'gradient', 'squirrel']);
+    expect(stored().randomExcluded).toEqual(['none', 'matrix', 'gradient', 'squirrel', 'ciccio']);
 
     cleanup();
     const second = render();
