@@ -330,8 +330,8 @@ export const MUTATIONS = [
   {
     name: 'the oven puts a second gratin out on top of the first',
     file: 'src/theme/ciccio/scene.ts',
-    find: '  if (scene.gratin) return;\n  const { ovenX, wanderLeft, wanderRight } = scene.layout;',
-    replace: '  const { ovenX, wanderLeft, wanderRight } = scene.layout;',
+    find: '  if (scene.gratin || scene.baking) return;',
+    replace: '  if (false) return;',
     tests: ['src/theme/ciccio/scene.test.ts'],
   },
   {
@@ -393,8 +393,9 @@ export const MUTATIONS = [
   {
     name: 'a seat is settled after the wall rather than before it',
     file: 'src/theme/ciccio/scene.ts',
-    find: '  settleSquirrelSeats(scene);\n  runCat(scene, rng);\n  runRescue(scene, rng);',
-    replace: '  runCat(scene, rng);\n  runRescue(scene, rng);\n  settleSquirrelSeats(scene);',
+    find: '  settleSquirrelSeats(scene);\n  runOven(scene, rng);\n  runCat(scene, rng);\n  runRescue(scene, rng);',
+    replace:
+      '  runOven(scene, rng);\n  runCat(scene, rng);\n  runRescue(scene, rng);\n  settleSquirrelSeats(scene);',
     tests: ['src/theme/ciccio/scene.test.ts'],
   },
   {
@@ -438,5 +439,68 @@ export const MUTATIONS = [
     find: "  ciccio.goal = null;\n  if (ciccio.phase === 'wobbling') return;",
     replace: "  if (ciccio.phase === 'wobbling') return;\n  ciccio.goal = null;",
     tests: ['src/theme/ciccio/scene.test.ts'],
+  },
+  {
+    name: 'a tap on the cooker drops a finished gratin on the floor',
+    file: 'src/theme/ciccio/scene.ts',
+    find: '  scene.baking = { left: BAKE_FRAMES, scent: [] };',
+    replace: '  scene.gratin = { x: gratinSpot(scene), bites: GRATIN_BITES, steam: [] };',
+    tests: ['src/theme/ciccio/scene.test.ts'],
+  },
+  {
+    name: 'he waits for the gratin to be out rather than following the scent',
+    file: 'src/theme/ciccio/scene.ts',
+    find: '      return scene.gratin?.x ?? (scene.baking ? gratinSpot(scene) : undefined);',
+    replace: '      return scene.gratin?.x;',
+    tests: ['src/theme/ciccio/scene.test.ts'],
+  },
+  {
+    name: 'the scent drifts the same way whichever side of the oven he is on',
+    file: 'src/theme/ciccio/scene.ts',
+    find: '    const towards = scene.ciccio.x >= from ? 1 : -1;',
+    replace: '    const towards = 1;',
+    tests: ['src/theme/ciccio/scene.test.ts'],
+  },
+  {
+    name: 'food walks him off the sofa instead of bringing the programme to its end',
+    file: 'src/theme/ciccio/scene.ts',
+    find: '    if (!scene.tv.on && (ciccio.timer <= 0 || scene.gratin || scene.baking)) {',
+    replace: '    if (scene.gratin || scene.baking || (!scene.tv.on && ciccio.timer <= 0)) {',
+    tests: ['src/theme/ciccio/scene.test.ts'],
+  },
+  {
+    name: 'the closing zebra plays whether or not anybody is on the sofa',
+    file: 'src/theme/ciccio/scene.ts',
+    find: '  if (scene.tv.showLeft <= ZEBRA_FRAMES && !allWatching(scene)) return;',
+    replace: '',
+    tests: ['src/theme/ciccio/scene.test.ts'],
+  },
+  {
+    name: 'a bake does not bring the programme forward to its ending',
+    file: 'src/theme/ciccio/scene.ts',
+    find: '  if ((scene.gratin || scene.baking) && scene.tv.showLeft > ZEBRA_FRAMES) {',
+    replace: '  if (false) {',
+    tests: ['src/theme/ciccio/scene.test.ts'],
+  },
+  {
+    name: 'the clumsy one is rolled each time rather than being the same squirrel',
+    file: 'src/theme/ciccio/scene.ts',
+    find: "      scene.rescue = { climber: explorerIndex(scene), phase: 'climbing', timer: 0 };",
+    replace: "      scene.rescue = { climber: rng() < 0.5 ? 0 : 1, phase: 'climbing', timer: 0 };",
+    tests: ['src/theme/ciccio/scene.test.ts'],
+  },
+  {
+    name: 'they stay frozen until the cat is off the screen, not when it turns to go',
+    file: 'src/theme/ciccio/scene.ts',
+    find: "  if (scene.ciccio.phase === 'bristling') scene.ciccio.phase = 'wandering';",
+    replace: '',
+    tests: ['src/theme/ciccio/scene.test.ts'],
+  },
+  {
+    name: 'the squirrels lie awake in the bed he is asleep in',
+    file: 'src/theme/ciccio/scene.ts',
+    find: "  scene.ciccio.phase === 'sleeping' && squirrel.at === 'bed' && squirrel.lift >= 1;",
+    replace: '  false;',
+    tests: ['src/theme/ciccio/draw.test.ts', 'src/theme/ciccio/scene.test.ts'],
   },
 ];

@@ -13,7 +13,12 @@ import {
   MAX_CLIMB,
   CLIMB_FRAMES,
   dashingForFood,
-  serveGratin,
+  startBaking,
+  BAKE_FRAMES,
+  ovenBaking,
+  explorerIndex,
+  squirrelAsleep,
+  allWatching,
   tapCiccio,
   CAT_CALL,
   CLIMB_MAX,
@@ -99,6 +104,26 @@ function tapHimOnOpenFloor(s: ReturnType<typeof sceneAt>) {
  */
 const tapTelevision = (s: ReturnType<typeof sceneAt>) =>
   clickScene(s, s.layout.loungeX, s.ground - TV_HANGS_AT - 10);
+
+/** Taps the cooker, which starts a bake rather than putting a gratin out. */
+const tapOven = (s: ReturnType<typeof sceneAt>) => clickScene(s, s.layout.ovenX, s.ground - 30);
+
+/** Taps the cooker and runs on until the gratin actually comes out of it. */
+function bakeThrough(s: ReturnType<typeof sceneAt>, rng = steady) {
+  tapOven(s);
+  runUntil(s, (x) => x.gratin !== null, BAKE_FRAMES + 200, rng);
+  return s;
+}
+
+/** Sat in front of the television, with the programme held open. */
+function watchingAt(width = 1280, seed?: number) {
+  const s = seed === undefined ? sceneAt(width) : sceneAt(width, seeded(seed));
+  tapTelevision(s);
+  runUntil(s, (x) => x.ciccio.phase === 'sitting', 60000, steady);
+  runUntil(s, (x) => allWatching(x), 2000, steady);
+  s.tv.showLeft = Number.MAX_SAFE_INTEGER;
+  return s;
+}
 
 /** The same room with nothing on the rota and no cat due: an ordinary walk. */
 function quietScene(width: number) {
@@ -728,18 +753,37 @@ describe('a potato gratin', () => {
     expect(s.gratin!.x).toBeLessThanOrEqual(s.layout.wanderRight);
   });
 
-  it('serves one at once when the oven is clicked', () => {
+  // It goes *in the oven* when the cooker is tapped, and comes out later. The
+  // tap used to drop a finished gratin on the floor, which skipped the only
+  // part of the business there is anything to watch.
+  it('puts one in the oven when the cooker is tapped, not on the floor', () => {
     const s = sceneAt(900);
-    clickScene(s, s.layout.ovenX, s.ground - 30);
+    tapOven(s);
+    expect(s.baking).not.toBeNull();
+    expect(s.gratin).toBeNull();
+    expect(ovenBaking(s)).toBe(true);
+  });
+
+  it('brings it out onto the floor once it has baked', () => {
+    const s = bakeThrough(sceneAt(900));
     expect(s.gratin).not.toBeNull();
+    // And the oven is dark and empty again the moment it is out.
+    expect(s.baking).toBeNull();
+    expect(ovenBaking(s)).toBe(false);
+  });
+
+  it('has the oven dark and empty when nothing is being made', () => {
+    const s = quietScene(900);
+    expect(ovenBaking(s)).toBe(false);
+    run(s, 400, steady);
+    expect(ovenBaking(s)).toBe(false);
   });
 
   // One slot, by construction. The timer must also stop while one is out, or it
   // runs down during a long meal and a second appears the frame the first is
   // finished — one gratin per meal, for ever after.
   it('never puts a second one out, however fast the oven is clicked', () => {
-    const s = sceneAt(900);
-    clickScene(s, s.layout.ovenX, s.ground - 30);
+    const s = bakeThrough(sceneAt(900));
     const first = s.gratin;
     for (let i = 0; i < 6000; i++) {
       clickScene(s, s.layout.ovenX, s.ground - 30);
@@ -774,7 +818,7 @@ describe('a potato gratin', () => {
   it('says it once when he spots it, not all the way across the room', () => {
     const s = sceneAt(900);
     s.ciccio.x = s.layout.wanderLeft;
-    clickScene(s, s.layout.ovenX, s.ground - 30);
+    bakeThrough(s);
     s.gratin!.x = s.layout.wanderRight;
     runUntil(s, (x) => x.ciccio.phase === 'heading', 400);
 
@@ -786,7 +830,7 @@ describe('a potato gratin', () => {
 
   it('does a happy dance when he gets there, and then eats it', () => {
     const s = sceneAt(900);
-    clickScene(s, s.layout.ovenX, s.ground - 30);
+    bakeThrough(s);
     runUntil(s, (x) => x.ciccio.phase === 'wobbling', 6000);
     // The same wobble, told to hand off to eating rather than to wandering.
     expect(s.ciccio.after).toBe('eating');
@@ -798,10 +842,12 @@ describe('a potato gratin', () => {
   it('arrives on the spot rather than stepping over it and back', () => {
     const s = sceneAt(1440);
     s.ciccio.x = s.layout.wanderRight;
-    clickScene(s, s.layout.ovenX, s.ground - 30);
-    const where = s.gratin!.x;
-
+    // Tapped, not baked through: he sets off after the scent while it is still
+    // in the oven, so waiting for the gratin waits past the walk this is about.
+    tapOven(s);
     runUntil(s, (x) => x.ciccio.phase === 'heading', 400);
+    const where = s.ciccio.goal!.x;
+
     runUntil(s, (x) => x.ciccio.phase !== 'heading', 8000);
     expect(s.ciccio.x).toBe(where);
   });
@@ -818,7 +864,7 @@ describe('a potato gratin', () => {
 
   it('keeps it inside his walk when the window changes, so it stays reachable', () => {
     const s = sceneAt(1440);
-    clickScene(s, s.layout.ovenX, s.ground - 30);
+    bakeThrough(s);
     s.gratin!.x = s.layout.wanderRight;
     resizeScene(s, stageOf(320));
     expect(s.gratin).not.toBeNull();
@@ -838,7 +884,7 @@ describe('a potato gratin', () => {
     // Served rather than tapped: a tap sends him at the summoning pace, which
     // is faster again, and the gap then grows whatever the squirrels' own top
     // speed is. It is the ordinary dash this is about.
-    serveGratin(s);
+    startBaking(s);
     runUntil(s, (x) => x.ciccio.phase === 'heading', 200);
     expect(s.ciccio.goal!.urgent).toBe(false);
 
@@ -1418,6 +1464,222 @@ describe('the round they speak in', () => {
 
 // ---------------------------------------------------------------------------
 
+describe('all three asleep', () => {
+  it('has the squirrels sleeping too, once they are in the bed with him', () => {
+    const s = sceneAt(1280);
+    clickScene(s, s.layout.bedX, s.ground - 10);
+    settleOn(s, 'bed');
+    runUntil(s, (x) => x.squirrels.every((q) => q.at === 'bed' && q.lift >= 1), 400, sleepy);
+
+    expect(s.ciccio.phase).toBe('sleeping');
+    for (const squirrel of s.squirrels) expect(squirrelAsleep(s, squirrel)).toBe(true);
+  });
+
+  // Derived, like the bed being turned down: a squirrel dozing on the floor, or
+  // on the sofa, is not a state the scene can reach.
+  it('is nobody asleep while he is up and about', () => {
+    const s = quietScene(1280);
+    for (let i = 0; i < 2000; i++) {
+      step(s, steady);
+      if (s.ciccio.phase === 'sleeping') continue;
+      for (const squirrel of s.squirrels) expect(squirrelAsleep(s, squirrel)).toBe(false);
+    }
+  });
+
+  it('is nobody asleep on the sofa, however long the programme is', () => {
+    const s = watchingAt(1280);
+    run(s, 400, steady);
+    for (const squirrel of s.squirrels) expect(squirrelAsleep(s, squirrel)).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+
+describe('the smell of it coming out of the oven', () => {
+  it('sends the scent out towards him, whichever side of the oven he is on', () => {
+    for (const where of ['left', 'right'] as const) {
+      const s = quietScene(1280);
+      s.ciccio.x = where === 'left' ? s.layout.wanderLeft : s.layout.wanderRight;
+      startBaking(s);
+      runUntil(s, (x) => x.baking!.scent.length > 0, 200, steady);
+      const towards = where === 'left' ? -1 : 1;
+      expect(Math.sign(s.baking!.scent[0].drift)).toBe(towards);
+    }
+  });
+
+  it('gets him walking while it is still in the oven, not once it is out', () => {
+    const s = quietScene(1280);
+    s.ciccio.x = s.layout.wanderRight;
+    startBaking(s);
+    runUntil(s, (x) => x.ciccio.phase === 'heading', 400, steady);
+    // Still baking — that is the whole point of the scent.
+    expect(s.baking).not.toBeNull();
+    expect(s.gratin).toBeNull();
+    expect(s.ciccio.goal!.then).toBe('eat');
+  });
+
+  it('has him waiting at the oven rather than wandering off when he beats it', () => {
+    const s = quietScene(1280);
+    // Standing at the spot before it is anywhere near ready.
+    startBaking(s);
+    runUntil(s, (x) => x.ciccio.phase === 'wobbling', 4000, steady);
+    // He dances there until it comes out, and does not give up and walk away.
+    for (let i = 0; i < 200; i++) {
+      step(s, steady);
+      if (s.gratin) break;
+      expect(s.ciccio.phase).toBe('wobbling');
+    }
+    runUntil(s, (x) => x.gratin !== null, BAKE_FRAMES + 400, steady);
+    runUntil(s, (x) => x.ciccio.phase === 'eating', 2000, steady);
+  });
+
+  it('caps the scent rather than growing it for as long as it bakes', () => {
+    const s = quietScene(1280);
+    startBaking(s);
+    for (let i = 0; i < BAKE_FRAMES; i++) {
+      step(s, steady);
+      if (!s.baking) break;
+      expect(s.baking.scent.length).toBeLessThanOrEqual(14);
+    }
+  });
+
+  it('is not baking and not lit once it is out', () => {
+    const s = quietScene(1280);
+    startBaking(s);
+    runUntil(s, (x) => x.gratin !== null, BAKE_FRAMES + 400, steady);
+    expect(ovenBaking(s)).toBe(false);
+    expect(s.baking).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+
+describe('the closing zebra', () => {
+  // It is his favourite part.
+  it('has him making hearts over it', () => {
+    const s = watchingAt(1280);
+    s.tv.showLeft = 120;
+    expect(showingZebra(s)).toBe(true);
+    s.hearts = [];
+    runUntil(s, (x) => x.hearts.length > 0, 200, steady);
+  });
+
+  // A programme that ended while they were still walking over played its
+  // closing titles to an empty sofa.
+  it('never plays to a sofa they have not reached yet', () => {
+    const s = sceneAt(1280);
+    tapTelevision(s);
+    // The ending falls due while all three are still crossing the room, which
+    // is the case that used to play the closing titles to nobody. Left at its
+    // full length he simply arrives first and the zebra is watched by accident.
+    s.tv.showLeft = 1;
+    let sawZebra = false;
+    for (let i = 0; i < 20000; i++) {
+      step(s, steady);
+      if (showingZebra(s)) {
+        expect(allWatching(s)).toBe(true);
+        sawZebra = true;
+      }
+      if (!s.tv.on) break;
+    }
+    expect(sawZebra).toBe(true);
+  });
+
+  it('waits at the threshold for them rather than running on without them', () => {
+    const s = sceneAt(1280);
+    tapTelevision(s);
+    // One frame from the end, with all three still walking over.
+    s.tv.showLeft = 1;
+    let held = 0;
+    for (let i = 0; i < 20000; i++) {
+      if (allWatching(s)) break;
+      // Not a frame of it runs down while the sofa is short of anybody.
+      expect(s.tv.on).toBe(true);
+      expect(s.tv.showLeft).toBe(1);
+      held++;
+      step(s, steady);
+    }
+    // It really did have to wait — otherwise this pins nothing.
+    expect(held).toBeGreaterThan(30);
+    runUntil(s, (x) => !x.tv.on, 20000, steady);
+  });
+
+  // Food does not cut the picture off — it brings the programme forward to its
+  // ending, they watch that through, and only then does anybody move.
+  it('is what a gratin in the oven brings on, rather than a walk-out', () => {
+    const s = watchingAt(1280);
+    s.tv.showLeft = 30000;
+    startBaking(s);
+    step(s, steady);
+
+    expect(showingZebra(s)).toBe(true);
+    // All three watch it out, seated, for every frame of it.
+    let zebra = 0;
+    while (s.tv.on) {
+      expect(s.ciccio.phase).toBe('sitting');
+      expect(allWatching(s)).toBe(true);
+      zebra++;
+      step(s, steady);
+    }
+    expect(zebra).toBeGreaterThan(100);
+    // Only once it has finished does he get up, and then it is for the food.
+    runUntil(s, (x) => x.ciccio.at === 'floor', 2000, steady);
+    runUntil(s, (x) => x.ciccio.goal?.then === 'eat', 2000, steady);
+  });
+
+  it('does not leave the set on for ever when he is sent somewhere else', () => {
+    const s = watchingAt(1280);
+    s.tv.showLeft = 30000;
+    clickScene(s, s.layout.bedX, s.ground - 10);
+    expect(s.tv.on).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+
+describe('the two of them, told apart', () => {
+  // Rolled per rescue it was the left squirrel one time and the right the next,
+  // so there was no clumsy one to recognise — and with the coats reading off the
+  // same field, the darker squirrel would have been the one getting told off
+  // only half the time.
+  it('sends the same one up the wall every time', () => {
+    const climbers = new Set<string>();
+    for (const seed of [1, 3, 7]) {
+      const s = watchingAt(1280, seed);
+      // Rolled, not `eager`: a roll that always comes out 0 picks the same
+      // squirrel by accident and would agree with this whatever the rule is.
+      const rng = seeded(seed);
+      for (let round = 0; round < 6; round++) {
+        runUntil(s, (x) => x.rescue !== null, 60000, rng);
+        climbers.add(s.squirrels[s.rescue!.climber].kind);
+        s.rescue = null;
+        for (const squirrel of s.squirrels) {
+          squirrel.climb = 0;
+          squirrel.headDown = false;
+        }
+      }
+    }
+    expect([...climbers]).toEqual(['he']);
+  });
+
+  it('gives them one identity each, fixed when they are made', () => {
+    const s = sceneAt(1280);
+    expect(s.squirrels.map((q) => q.kind).sort()).toEqual(['he', 'she']);
+    expect(s.squirrels[explorerIndex(s)].kind).toBe('he');
+  });
+
+  // Carried, like `side`: recovered by measuring, the first thing that reorders
+  // them swaps who is clumsy and who is dark.
+  it('keeps each one its own through a resize', () => {
+    const s = sceneAt(1280);
+    const before = s.squirrels.map((q) => `${q.side}:${q.kind}`);
+    resizeScene(s, stageOf(360));
+    expect(s.squirrels.map((q) => `${q.side}:${q.kind}`)).toEqual(before);
+  });
+});
+
+// ---------------------------------------------------------------------------
+
 describe('the little blue cat', () => {
   // Measured, because "now and then" is exactly the sort of thing that is
   // quietly never: at 6400 frames between visits the first cat took nearly
@@ -1491,6 +1753,25 @@ describe('the little blue cat', () => {
     runUntil(s, (x) => x.cat!.phase === 'kissing', 6000, steady);
     expect(s.ciccio.bristle).toBeLessThan(0.4);
     runUntil(s, (x) => x.hearts.length > 0, 60, steady);
+  });
+
+  // The freeze used to hold until it walked off the edge of the screen, which
+  // is another couple of seconds of three animals standing still watching a
+  // cat's back. Nothing about the visit is unfinished by the time it turns.
+  it('lets them move again the moment it turns to go, not when it is gone', () => {
+    const s = withCat();
+    runUntil(s, (x) => x.cat!.phase === 'leaving', 20000, steady);
+
+    // Free on that very frame, with the cat still well inside the room — and
+    // his spines already on the way down rather than held up until it is gone.
+    expect(s.ciccio.phase).not.toBe('bristling');
+    expect(s.cat).not.toBeNull();
+    expect(s.cat!.x).toBeGreaterThan(0);
+    expect(s.cat!.x).toBeLessThan(s.width);
+
+    // And he is back to something he can move in, while it is still walking out.
+    runUntil(s, (x) => x.ciccio.phase === 'wandering' || x.ciccio.phase === 'wobbling', 60, eager);
+    expect(s.cat).not.toBeNull();
   });
 
   it('sees itself out, and gives him his afternoon back', () => {
@@ -1951,7 +2232,7 @@ describe('interrupting a climb, and the room afterwards', () => {
   // arm setting a goal without `heading` would have brought the deadlock back.
   it('drops the errand even when he is already mid-dance', () => {
     const s = sceneAt(1280);
-    serveGratin(s);
+    startBaking(s);
     runUntil(s, (x) => x.ciccio.phase === 'heading', 400, steady);
     // Put him in the dance with the errand still set, which is the state the
     // early return used to protect.
@@ -1967,7 +2248,7 @@ describe('interrupting a climb, and the room afterwards', () => {
   // one is already set, so an orphaned errand stops everything for ever.
   it('drops the errand it interrupts rather than orphaning it', () => {
     const s = sceneAt(1280);
-    serveGratin(s);
+    startBaking(s);
     runUntil(s, (x) => x.ciccio.phase === 'heading', 400, steady);
 
     tapCiccio(s);
@@ -2019,7 +2300,7 @@ describe('interrupting a climb, and the room afterwards', () => {
   ])('re-aims an errand to %s when the room is resized under it', (_name, then, where) => {
     const s = sceneAt(1280);
     // A gratin out at the same time, which is what used to capture every goal.
-    serveGratin(s);
+    startBaking(s);
     s.ciccio.goal = { x: where(s), then, urgent: true };
     s.ciccio.phase = 'heading';
 
@@ -2034,9 +2315,12 @@ describe('interrupting a climb, and the room afterwards', () => {
 
   it('lets an errand for a gratin that is gone go, rather than walking to nothing', () => {
     const s = sceneAt(1280);
-    serveGratin(s);
+    tapOven(s);
     runUntil(s, (x) => x.ciccio.phase === 'heading', 400, steady);
+    // Nothing on the floor *and* nothing in the oven: while one is still baking
+    // the errand has somewhere to go, which is the point of the scent.
     s.gratin = null;
+    s.baking = null;
 
     resizeScene(s, stageOf(900));
     expect(s.ciccio.goal).toBeNull();

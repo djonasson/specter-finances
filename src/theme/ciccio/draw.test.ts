@@ -1,6 +1,17 @@
 import { describe, it, expect } from 'vitest';
 import { drawScene } from './draw';
-import { createScene, say, step, CAT_CALL, CICCIO_CALL, SQUIRREL_CALL } from './scene';
+import {
+  createScene,
+  say,
+  step,
+  clickScene,
+  squirrelAsleep,
+  startBaking,
+  ovenBaking,
+  CAT_CALL,
+  CICCIO_CALL,
+  SQUIRREL_CALL,
+} from './scene';
 import { sceneScale } from '../stage';
 
 /**
@@ -84,6 +95,41 @@ describe('what reaches the canvas', () => {
     for (let i = 0; i < 4000 && s.cat?.say == null; i++) step(s, () => 0.5);
     expect(s.cat?.say?.line).toBe(CAT_CALL);
     expect(drawn(s)).toContain(CAT_CALL);
+  });
+
+  // Three sleepers, three sets of "z"s. The squirrels shared his bed and had
+  // none of their own.
+  it('draws a “z” for every one of them asleep in the bed, not just for him', () => {
+    const s = sceneAt(1280);
+    clickScene(s, s.layout.bedX, s.ground - 10);
+    for (let i = 0; i < 20000 && !s.squirrels.every((q) => squirrelAsleep(s, q)); i++) {
+      step(s, () => 0.0005);
+    }
+    expect(s.ciccio.phase).toBe('sleeping');
+    // Two "z"s per sleeper, and there are three of them.
+    expect(drawn(s).filter((line) => line === 'z')).toHaveLength(6);
+  });
+
+  it('draws no “z” at all while everybody is up', () => {
+    const s = sceneAt(1280);
+    expect(drawn(s).filter((line) => line === 'z')).toHaveLength(0);
+  });
+
+  // The oven's light and its dish are one fact, and a canvas is the only place
+  // to see that they agree: a lit oven with an empty shelf would draw the glow
+  // and nothing in it.
+  it('paints nothing behind the oven door while nothing is baking', () => {
+    const cold = recordingContext();
+    const s = sceneAt(1280);
+    expect(ovenBaking(s)).toBe(false);
+    drawScene(cold.ctx, s, false, sceneScale(1280));
+
+    const hot = recordingContext();
+    startBaking(s);
+    drawScene(hot.ctx, s, false, sceneScale(1280));
+
+    // A lit oven with a dish in it is strictly more drawing than a dark one.
+    expect(hot.calls.length).toBeGreaterThan(cold.calls.length);
   });
 
   it('draws a whole frame in both colour schemes without throwing', () => {
