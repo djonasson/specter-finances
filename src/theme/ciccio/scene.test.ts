@@ -1081,21 +1081,30 @@ describe('watching television', () => {
     // Answered by *them* means they talk. A phase change is not enough: the bed
     // answering a tap meant for him also changes his phase — it takes him out
     // of bed — which is the whole failure this is about.
-    const reaches = (who: 'ciccio' | 0 | 1) => {
+    // Only where the two boxes *overlap*: everywhere else the room was never in
+    // the running, so a point clear of the bed answers the same whichever order
+    // they are asked in and proves nothing about the order.
+    const reachedInsideTheBed = (who: 'ciccio' | 0 | 1) => {
+      let overlapping = 0;
+      let answered = 0;
       for (let x = 0; x <= s.width; x += 1) {
         for (let y = s.ground - 140; y <= s.ground; y += 1) {
-          if (!(who === 'ciccio' ? hitsCiccio(s, x, y) : hitsSquirrel(s, s.squirrels[who], x, y)))
-            continue;
+          const theirs =
+            who === 'ciccio' ? hitsCiccio(s, x, y) : hitsSquirrel(s, s.squirrels[who], x, y);
+          if (!theirs || !hitsBed(s, x, y)) continue;
+          overlapping++;
           s.chatter = null;
-          const at = s.ciccio.at;
+          s.ciccio.goal = null;
           clickScene(s, x, y);
-          if (s.chatter !== null && s.ciccio.at === at) return true;
+          // They answer by talking; the bed answers by sending him to bed.
+          if (s.chatter !== null && s.ciccio.goal === null) answered++;
         }
       }
-      return false;
+      expect(overlapping).toBeGreaterThan(0);
+      return answered === overlapping;
     };
-    expect(reaches(0)).toBe(true);
-    expect(reaches('ciccio')).toBe(true);
+    expect(reachedInsideTheBed(0)).toBe(true);
+    expect(reachedInsideTheBed('ciccio')).toBe(true);
   });
 
   it('leaves the bed entirely tappable once nobody is on it', () => {
@@ -1563,12 +1572,17 @@ describe('the little blue cat', () => {
   // the cat could be let in on that very frame and freeze him in front of a set
   // counting itself down. He would reach the sofa, if at all, to a dead screen.
   it('does not let itself in on the frame a programme starts', () => {
-    const s = sceneAt(1280);
-    for (let i = 0; i < 60000; i++) {
-      const hadCat = s.cat;
-      step(s, eager);
-      if (s.cat && !hadCat) expect(s.tv.on).toBe(false);
-    }
+    const s = quietScene(1280);
+    // The two counters aimed at the same frame. `runRoutine` runs first and
+    // turns the set on, then `runCat` runs four lines later with him still
+    // wandering on the floor — so this is the exact frame the gate is for, and
+    // waiting for it to come up on its own is waiting for a coincidence.
+    s.routine = { next: 1, wait: 1 };
+    s.catNextIn = 1;
+    step(s, steady);
+
+    expect(s.tv.on).toBe(true);
+    expect(s.cat).toBeNull();
   });
 
   it('calls only when he is free, and counts the time he has free', () => {
