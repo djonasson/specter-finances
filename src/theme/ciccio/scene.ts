@@ -213,10 +213,19 @@ export const GRATIN_BITES = 150;
  * everything else he does.
  */
 export const BAKE_FRAMES = 420;
-/** A puff of scent every this many frames, and how long each one lives. */
+/**
+ * A puff of scent every this many frames, and how long each one lives.
+ *
+ * There is deliberately no cap beside these: the interval and the life bound
+ * the trail at `ceil(SCENT_LIFE / SCENT_EVERY)` puffs by construction, and the
+ * `length < MAX_SCENT` guard that used to stand here could not fire at any
+ * value it or they could hold — the predicate this repo calls a trap. The
+ * steam's own `MAX_STEAM` is real, because a plate is nibbled at for far longer
+ * than a puff lives.
+ */
 const SCENT_EVERY = 26;
-const SCENT_LIFE = 150;
-const MAX_SCENT = 14;
+export const SCENT_LIFE = 150;
+export const MOST_SCENT = Math.ceil(SCENT_LIFE / SCENT_EVERY);
 /** How close he has to be to it to be eating it rather than near it. */
 const BITE_REACH = 26;
 /**
@@ -262,7 +271,7 @@ const LIFT_STEP = 1 / CLIMB_FRAMES;
  * window is: a zebra on a set that is not about to go off is not a state the
  * scene can reach, and there is nothing to keep in step.
  */
-const ZEBRA_FRAMES = 200;
+export const ZEBRA_FRAMES = 200;
 
 /** How long a programme lasts, and how long a nap does. */
 const SHOW_FRAMES = 3400;
@@ -334,8 +343,9 @@ const HEART_EVERY = 14;
  * The cap and the three tuned numbers live here rather than at each site: the
  * zebra's hearts were a verbatim copy of the cat's under a comment claiming
  * "one machinery for hearts, one place they are capped", which is exactly what
- * it was not. The cadence is the caller's, since only it knows what it is
- * counting.
+ * it was not. The *cadence* is shared too, in `HEART_EVERY` — the two sources
+ * cannot be tuned apart, and if one ever needs to be, that constant is what
+ * splits.
  */
 function addHeart(scene: Scene, x: number, y: number, rng: Rng): void {
   if (scene.hearts.length >= MAX_HEARTS) return;
@@ -802,8 +812,6 @@ export interface Gratin {
 export interface Baking {
   /** Frames until it comes out. */
   left: number;
-  /** The scent, drifting out of the oven and across the room towards him. */
-  scent: Puff[];
 }
 
 export interface Scene {
@@ -852,12 +860,14 @@ export interface Scene {
   /**
    * One of them has gone up the wall and cannot get down again.
    *
-   * `climber` is which of the two, carried rather than worked out from whoever
-   * happens to be highest — the same rule as `side` and `car.at`, and the first
-   * frame both of them are off the ground is the frame that would break it.
+   * `climber` names *which squirrel*, not which slot — identity rather than
+   * position, the same rule as `bird.perchedOn` and `car.at`. Held as an index
+   * it needed an `explorerIndex` to turn `kind` into a 0 or a 1, whose second
+   * branch nothing could ever reach: two immutable fields carrying one bit
+   * between them, with nothing asserting they agreed.
    */
   rescue: {
-    climber: 0 | 1;
+    climber: SquirrelKind;
     phase: 'climbing' | 'recalled' | 'stuck' | 'fetching' | 'descending' | 'scolding';
     timer: number;
   } | null;
@@ -877,6 +887,16 @@ export interface Scene {
    * never both set, because `startBaking` refuses while either is.
    */
   baking: Baking | null;
+  /**
+   * The smell of it, which **outlives the baking**.
+   *
+   * On the scene rather than on `Baking`, so ageing goes on after emitting
+   * stops: owned by the bake, the whole trail was destroyed on the frame the
+   * oven door opened — six puffs, four of them at full opacity, blinking out at
+   * the exact moment the eye is on the oven. The cello makes the same split for
+   * its chimneys, whose smoke has to outlast the fire.
+   */
+  scent: Puff[];
   frame: number;
 }
 
@@ -947,6 +967,7 @@ export function createScene(size: SceneSize, rng: Rng): Scene {
     squirrels: [],
     gratin: null,
     baking: null,
+    scent: [],
     tv: { on: false, showLeft: 0 },
     chatter: null,
     bed: { turned: 0 },
@@ -1003,6 +1024,15 @@ export function resizeScene(scene: Scene, size: SceneSize): void {
     const where = errandTarget(scene, goal.then);
     if (where === undefined) scene.ciccio.goal = null;
     else scene.ciccio.goal = { ...goal, x: where };
+  }
+
+  // The wait at the oven door is the one errand a resize could not re-aim,
+  // because arriving runs `startWobble` and that clears the goal — so there was
+  // nothing left to move. He went on dancing at the pre-resize oven, a third of
+  // a phone's width from the new one, for the rest of the bake.
+  if (waitingForTheOven(scene)) {
+    const spot = errandTarget(scene, 'eat');
+    if (spot !== undefined) scene.ciccio.x = spot;
   }
 
   for (const squirrel of scene.squirrels) squirrel.x = flankX(scene, squirrel.side);
@@ -1424,10 +1454,22 @@ function agePuffs(puffs: Puff[], grow: number): Puff[] {
 }
 
 /**
+ * Standing at the oven door, dancing, waiting for it to open.
+ *
+ * A real state with no phase of its own — `wobbling` with `after === 'eating'`
+ * and something still in the oven — so the two things that need to know it
+ * (a resize, which has to move him with the oven, and `settleTv`, which must
+ * not mistake it for watching television) ask here rather than each spelling
+ * out the conjunction.
+ */
+export const waitingForTheOven = (scene: Scene) =>
+  scene.ciccio.phase === 'wobbling' && scene.ciccio.after === 'eating' && scene.baking !== null;
+
+/**
  * Whether there is food in play at all: in the oven, or out on the floor.
  *
- * Named because it is asked eight times, and because writing it out is what
- * went wrong: `baking` gave food a second way to exist, six sites learned about
+ * Named because it is asked all over the file, and because writing it out is
+ * what went wrong: `baking` gave food a second way to exist, six sites learned about
  * it and **two did not** — `catMayCall` and the rota's own `free` gate, which
  * are precisely the two predicates that mean *do not interrupt him*. He waits
  * out a bake in `wobbling` with no goal and no gratin, so both of them opened,
@@ -1452,16 +1494,9 @@ const gratinSpot = (scene: Scene) => {
  */
 export function startBaking(scene: Scene): void {
   if (foodInPlay(scene)) return;
-  scene.baking = { left: BAKE_FRAMES, scent: [] };
+  scene.baking = { left: BAKE_FRAMES };
 
-  // Something in the oven does not cut a programme off — it brings it forward
-  // to its ending. The closing zebra plays now, all three watch it through, the
-  // set goes off by itself, and `wander` picks the errand up afterwards.
-  //
-  // Once, here, rather than clamped every frame while food is in play: as a
-  // standing clamp, turning the television on with a gratin already on the
-  // floor gave a programme that was at its closing titles by the next frame.
-  if (scene.tv.on && scene.tv.showLeft > ZEBRA_FRAMES) scene.tv.showLeft = ZEBRA_FRAMES;
+  bringProgrammeForward(scene);
 }
 
 /**
@@ -1481,16 +1516,23 @@ export const ovenBaking = (scene: Scene) => scene.baking !== null;
  * anticipate and nobody anything to watch.
  */
 function runOven(scene: Scene, rng: Rng): void {
+  // Aged first and unconditionally: what is already in the air goes on drifting
+  // and fading after the door opens.
+  scene.scent = agePuffs(scene.scent, 0.05);
+
   const baking = scene.baking;
   if (!baking) return;
 
-  baking.scent = agePuffs(baking.scent, 0.05);
-
-  if (scene.frame % SCENT_EVERY === 0 && baking.scent.length < MAX_SCENT) {
+  if (scene.frame % SCENT_EVERY === 0) {
     // Out of the door and off towards him, whichever side of the oven he is on.
-    const from = scene.layout.ovenX + OVEN_WIDTH / 2;
-    const towards = scene.ciccio.x >= from ? 1 : -1;
-    baking.scent.push({
+    // Which side he is on decides which door edge it comes out of, and the two
+    // are the same decision. Measured against the *right* edge, more than half
+    // his walk spawned the scent there and sent it left, straight across the
+    // face of the cooker it had just left — and `drawScent` paints after
+    // `drawKitchen`, so it crossed in front of the appliance at door height.
+    const towards = scene.ciccio.x >= scene.layout.ovenX ? 1 : -1;
+    const from = scene.layout.ovenX + (towards * OVEN_WIDTH) / 2;
+    scene.scent.push({
       x: from,
       y: -OVEN_TOP * 0.45,
       rise: 0.12 + rng() * 0.1,
@@ -1520,11 +1562,8 @@ function runTv(scene: Scene, rng: Rng): void {
   const ending = scene.tv.showLeft <= ZEBRA_FRAMES;
   if (ending && !allWatching(scene)) return;
 
-  // The zebra is his favourite part, and he says so. The cheap test first: the
-  // scan behind `showingZebra` is otherwise run on all fourteen frames out of
-  // fourteen to answer a question thirteen of them discard — the ordering
-  // `runRescue` already carries a comment about.
-  if (scene.frame % HEART_EVERY === 0 && ending) {
+  // The zebra is his favourite part, and he says so.
+  if (ending && scene.frame % HEART_EVERY === 0) {
     addHeart(scene, scene.ciccio.x, ciccioY(scene) - scene.ground - 22, rng);
   }
 
@@ -1538,6 +1577,33 @@ function runTv(scene: Scene, rng: Rng): void {
 function switchTvOff(scene: Scene): void {
   scene.tv.on = false;
   scene.tv.showLeft = 0;
+}
+
+/**
+ * On, with a full programme — unless there is food, in which case it comes on
+ * already at its ending.
+ *
+ * The bringing-forward has to be asked **whenever either fact changes**, not
+ * only when the food appears: done in `startBaking` alone, ordering it the
+ * other way round — tap the cooker, then the set — gave a full programme with a
+ * cooked gratin going cold on the floor for the whole of it. Measured: first
+ * bite 3802 frames after the tap, against 884 the documented way round.
+ */
+function switchTvOn(scene: Scene): void {
+  scene.tv.on = true;
+  scene.tv.showLeft = SHOW_FRAMES;
+  bringProgrammeForward(scene);
+}
+
+/**
+ * Food does not cut a programme off; it brings it forward to its ending. The
+ * closing zebra plays now, all three watch it through, and the set goes off by
+ * itself.
+ */
+function bringProgrammeForward(scene: Scene): void {
+  if (foodInPlay(scene) && scene.tv.on && scene.tv.showLeft > ZEBRA_FRAMES) {
+    scene.tv.showLeft = ZEBRA_FRAMES;
+  }
 }
 
 /**
@@ -1562,17 +1628,38 @@ function settleTv(scene: Scene): void {
   if (!scene.tv.on) return;
   const { ciccio } = scene;
   const watching =
-    ciccio.at === 'sofa' || ciccio.goal?.then === 'sit' || ciccio.phase === 'mounting';
+    // On it — but not climbing off it. Held through a dismount, the set stayed
+    // lit with `showingZebra` false, and `drawTv` has two arms only, so a tap
+    // during the closing titles flipped the screen back to the station letter
+    // for the whole climb down and then cut out.
+    (ciccio.at === 'sofa' && ciccio.phase !== 'dismounting') ||
+    // On his way to it, or climbing onto it. `at` is written before `mounting`
+    // is, so this needs the seat as well: without it, the one thing the clause
+    // could ever cover was a hedgehog getting into *bed* being declared to be
+    // watching television.
+    ciccio.goal?.then === 'sit' ||
+    (ciccio.phase === 'mounting' && ciccio.at === 'sofa') ||
+    // A dance is not giving up — `startWobble` clears the goal, so a tap on him
+    // half way to the sofa read as having stopped watching and cancelled the
+    // programme outright. He comes out of it and `wander` sends him on again.
+    // Except the one dance that is a wait for the oven, which is exactly what
+    // stopping watching looks like.
+    (ciccio.phase === 'wobbling' && !waitingForTheOven(scene));
   if (!watching) switchTvOff(scene);
 }
 
 /**
  * All three of them on the sofa and settled onto it.
  *
- * What the closing zebra waits for. Note this cannot deadlock the set on: the
- * only ways he leaves the sofa while it is on are a tap on him and an errand
- * somewhere else, and **both turn the set off** — see `tapCiccio` and `summon`.
- * The one thing that does not is a bake, which is the case this exists for.
+ * What the closing zebra waits for. It cannot wedge the set on, and the reason
+ * is **`settleTv`** and nothing else: that switches the set off the moment he is
+ * neither on the sofa, heading for it, climbing onto it nor mid-dance, so a
+ * programme nobody sits down for ends rather than waiting for ever. The
+ * argument used to be "`tapCiccio` and `summon` both turn it off", which was
+ * true of neither by the time it was written and covered only half the cases
+ * anyway — he can also simply never arrive. `scene.test.ts` measures the
+ * guarantee over seeded runs with taps at every target; without that one line
+ * the set is on for all 120,000 frames.
  */
 export const allWatching = (scene: Scene) =>
   scene.ciccio.phase === 'sitting' &&
@@ -1772,13 +1859,13 @@ function runRescue(scene: Scene, rng: Rng): void {
       ) &&
       rng() < RESCUE_CHANCE
     ) {
-      scene.rescue = { climber: explorerIndex(scene), phase: 'climbing', timer: 0 };
+      scene.rescue = { climber: THE_CLUMSY_ONE, phase: 'climbing', timer: 0 };
     }
     return;
   }
 
-  const climber = scene.squirrels[rescue.climber];
-  const other = scene.squirrels[rescue.climber === 0 ? 1 : 0];
+  const climber = squirrelOfKind(scene, rescue.climber);
+  const other = squirrelOfKind(scene, theOther(rescue.climber));
 
   if (rescue.phase === 'climbing') {
     climber.climb = Math.min(CLIMB_MAX, climber.climb + CLIMB_SPEED);
@@ -1871,8 +1958,13 @@ const SCOLD_SWING = 0.28;
  * On a named seat and all the way onto it.
  *
  * `at` names a seat from the moment a climb starts, so being *on* one is the
- * lift being finished — a distinction written out at each of eight sites, and
- * one that has already been got subtly wrong once.
+ * lift being finished — a distinction that had been written out at each site
+ * and got subtly wrong once.
+ *
+ * Deliberately says nothing about `climb`: a squirrel up the wall keeps its
+ * seat, and `allWatching` counts it as on the sofa on purpose. Tightening this
+ * to `&& climb === 0`, which its own name invites, would freeze the closing
+ * zebra for the length of every rescue.
  */
 export const settledOn = (animal: { at: Spot; lift: number }, spot: Spot) =>
   animal.at === spot && animal.lift >= 1;
@@ -1895,11 +1987,18 @@ export const squirrelAsleep = (scene: Scene, squirrel: Squirrel) =>
  * was no "clumsy one" to recognise — and with the colours reading off `kind`
  * the darker squirrel would have been the one being scolded only half the time.
  */
-export const explorerIndex = (scene: Scene): 0 | 1 => (scene.squirrels[0].kind === 'he' ? 0 : 1);
+const THE_CLUMSY_ONE: SquirrelKind = 'he';
+
+/** The one of the pair with this identity. */
+export const squirrelOfKind = (scene: Scene, kind: SquirrelKind) =>
+  scene.squirrels[0].kind === kind ? scene.squirrels[0] : scene.squirrels[1];
+
+/** The other one. */
+const theOther = (kind: SquirrelKind): SquirrelKind => (kind === 'he' ? 'she' : 'he');
 
 /** Which of them is doing the telling-off, if anybody is. */
 export const scolder = (scene: Scene) =>
-  scene.rescue?.phase === 'scolding' ? scene.squirrels[scene.rescue.climber === 0 ? 1 : 0] : null;
+  scene.rescue?.phase === 'scolding' ? squirrelOfKind(scene, theOther(scene.rescue.climber)) : null;
 
 /**
  * The rota, which is what happens when nobody is clicking anything.
@@ -1926,8 +2025,14 @@ function runRoutine(scene: Scene): void {
     startBaking(scene);
     headForGratin(scene, false);
   } else if (doing === 'watch') {
-    scene.tv.on = true;
-    scene.tv.showLeft = SHOW_FRAMES;
+    switchTvOn(scene);
+    // Sent, like the other two arms. Left for `wander` to notice, the turn was
+    // silently eaten whenever it came up mid-dance: `free` admits `wobbling`,
+    // `walkCiccio` returns before reaching `wander`, so no errand was issued
+    // and `settleTv` switched the set straight back off at the end of the same
+    // frame with the rota already advanced. It cost between a twelfth and a
+    // quarter of all television.
+    summon(scene, 'sit', false);
   } else {
     summon(scene, 'sleep', false);
   }
@@ -2168,12 +2273,17 @@ export function clickScene(scene: Scene, x: number, y: number): void {
     // (see `runTv`), they all watch the closing zebra through, and `wander`
     // picks the errand up the moment the set goes off. Summoning him here would
     // stand him up in the middle of it.
-    if (!scene.tv.on) headForGratin(scene, true);
+    // With a programme on, the bake brings it to its ending and `wander` picks
+    // the errand up when the set goes off; summoning here would stand him up in
+    // the middle of the zebra. Either way the tap is answered — it used to be
+    // wholly inert with a gratin already out and the set on, writing nothing,
+    // saying nothing and moving nobody.
+    if (scene.tv.on) bringProgrammeForward(scene);
+    else headForGratin(scene, true);
     return;
   }
   if (hitsTv(scene, x, y)) {
-    scene.tv.on = true;
-    scene.tv.showLeft = SHOW_FRAMES;
+    switchTvOn(scene);
     summon(scene, 'sit');
     return;
   }

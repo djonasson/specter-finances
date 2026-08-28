@@ -15,8 +15,12 @@ import {
   dashingForFood,
   startBaking,
   BAKE_FRAMES,
+  MOST_SCENT,
+  ZEBRA_FRAMES,
+  SCENT_LIFE,
+  settledOn,
+  waitingForTheOven,
   ovenBaking,
-  explorerIndex,
   squirrelAsleep,
   allWatching,
   tapCiccio,
@@ -25,6 +29,7 @@ import {
   SQUIRREL_SCOLD,
   SQUIRREL_REACH,
   scolder,
+  squirrelOfKind,
   scoldSwing,
   scoldingAt,
   hitsSquirrel,
@@ -1494,13 +1499,27 @@ describe('all three asleep', () => {
 
   // Derived, like the bed being turned down: a squirrel dozing on the floor, or
   // on the sofa, is not a state the scene can reach.
-  it('is nobody asleep while he is up and about', () => {
-    const s = quietScene(1280);
-    for (let i = 0; i < 2000; i++) {
-      step(s, steady);
-      if (s.ciccio.phase === 'sleeping') continue;
+  // The `continue` this used to carry skipped precisely the frames the phase
+  // conjunct could be true in, so it passed against `squirrelAsleep = () => false`
+  // and against dropping that conjunct — and under `quietScene` he never sleeps
+  // at all, so it never even fired. Driven to a real nap and asserted on the way
+  // in and out instead.
+  it('has nobody asleep until he is, and nobody still asleep once he is up', () => {
+    const s = sceneAt(1280);
+    tapBed(s);
+    // On the way there: in the bed already, but he is not asleep yet.
+    runUntil(s, (x) => x.squirrels.some((q) => settledOn(q, 'bed')), 20000, sleepy);
+    if (s.ciccio.phase !== 'sleeping') {
       for (const squirrel of s.squirrels) expect(squirrelAsleep(s, squirrel)).toBe(false);
     }
+
+    runUntil(s, (x) => x.ciccio.phase === 'sleeping', 20000, sleepy);
+    runUntil(s, (x) => x.squirrels.every((q) => settledOn(q, 'bed')), 400, sleepy);
+    for (const squirrel of s.squirrels) expect(squirrelAsleep(s, squirrel)).toBe(true);
+
+    // And up again: the moment he is, nobody is asleep.
+    runUntil(s, (x) => x.ciccio.phase !== 'sleeping', 40000, sleepy);
+    for (const squirrel of s.squirrels) expect(squirrelAsleep(s, squirrel)).toBe(false);
   });
 
   it('is nobody asleep on the sofa, however long the programme is', () => {
@@ -1518,9 +1537,9 @@ describe('the smell of it coming out of the oven', () => {
       const s = quietScene(1280);
       s.ciccio.x = where === 'left' ? s.layout.wanderLeft : s.layout.wanderRight;
       startBaking(s);
-      runUntil(s, (x) => x.baking!.scent.length > 0, 200, steady);
+      runUntil(s, (x) => x.scent.length > 0, 200, steady);
       const towards = where === 'left' ? -1 : 1;
-      expect(Math.sign(s.baking!.scent[0].drift)).toBe(towards);
+      expect(Math.sign(s.scent[0].drift)).toBe(towards);
     }
   });
 
@@ -1550,14 +1569,43 @@ describe('the smell of it coming out of the oven', () => {
     runUntil(s, (x) => x.ciccio.phase === 'eating', 2000, steady);
   });
 
-  it('caps the scent rather than growing it for as long as it bakes', () => {
+  // Against the bound the interval and the life actually give, not against a
+  // number well above it: asserted at 14 over a trail that tops out at six, it
+  // held with the cap removed, raised, or set to anything at all.
+  it('bounds the trail by how often it puffs and how long a puff lives', () => {
     const s = quietScene(1280);
     startBaking(s);
-    for (let i = 0; i < BAKE_FRAMES; i++) {
+    let most = 0;
+    for (let i = 0; i < BAKE_FRAMES + 400; i++) {
       step(s, steady);
-      if (!s.baking) break;
-      expect(s.baking.scent.length).toBeLessThanOrEqual(14);
+      most = Math.max(most, s.scent.length);
     }
+    expect(most).toBe(MOST_SCENT);
+  });
+
+  // Owned by the bake, the whole trail was destroyed on the frame the oven door
+  // opened — four of its six puffs still at full opacity, at the moment the eye
+  // is on the oven.
+  // Arriving runs `startWobble`, which clears the goal — so this is the one
+  // errand a resize had nothing left to re-aim, and he danced on at the old
+  // oven a third of a phone's width from the new one for the rest of the bake.
+  it('moves him with the oven when the window changes under the wait', () => {
+    const s = quietScene(1440);
+    startBaking(s);
+    runUntil(s, (x) => waitingForTheOven(x), 8000, steady);
+
+    resizeScene(s, stageOf(360));
+    expect(waitingForTheOven(s)).toBe(true);
+    expect(Math.abs(s.ciccio.x - s.layout.ovenX)).toBeLessThan(OVEN_WIDTH);
+  });
+
+  it('lets the smell hang in the air after the door has opened', () => {
+    const s = quietScene(1280);
+    startBaking(s);
+    runUntil(s, (x) => x.gratin !== null, BAKE_FRAMES + 400, steady);
+    expect(s.scent.length).toBeGreaterThan(0);
+    // And it fades out on its own rather than staying for ever.
+    runUntil(s, (x) => x.scent.length === 0, SCENT_LIFE + 100, steady);
   });
 });
 
@@ -1585,8 +1633,11 @@ describe('the closing zebra', () => {
     let sawZebra = false;
     for (let i = 0; i < 20000; i++) {
       step(s, steady);
+      // Asserted on the *seats*, not on `allWatching` — the same diff put that
+      // inside `showingZebra`, so asking it here restated the `if`.
       if (showingZebra(s)) {
-        expect(allWatching(s)).toBe(true);
+        expect(s.ciccio.phase).toBe('sitting');
+        for (const squirrel of s.squirrels) expect(settledOn(squirrel, 'sofa')).toBe(true);
         sawZebra = true;
       }
       if (!s.tv.on) break;
@@ -1663,6 +1714,75 @@ describe('the closing zebra', () => {
     }
   });
 
+  // The `watch` arm is the only rota turn that did not issue its own errand; it
+  // left that to `wander`, which `walkCiccio` never reaches while he is
+  // dancing. `settleTv` then switched the set straight back off at the end of
+  // the same frame, with the rota already advanced — a twelfth to a quarter of
+  // all television, silently eaten.
+  it('does not eat its own turn when it comes up while he is dancing', () => {
+    const s = quietScene(1280);
+    s.ciccio.phase = 'wobbling';
+    s.ciccio.spin = 0;
+    s.routine = { next: 1, wait: 1 };
+    step(s, steady);
+    expect(s.tv.on).toBe(true);
+    expect(s.tv.showLeft).toBeGreaterThan(ZEBRA_FRAMES);
+    // Sent on the same frame, like the other two rota arms — not left for
+    // `wander`, which `walkCiccio` does not reach while he is dancing.
+    expect(s.ciccio.goal?.then).toBe('sit');
+    runUntil(s, (x) => x.ciccio.at === 'sofa', 20000, steady);
+  });
+
+  // `startWobble` clears the goal, so a tap on him half way to the sofa read as
+  // having given up and cancelled the programme outright — where the rule it
+  // replaced only ever switched the set off from the sofa itself.
+  it('survives a tap on him on the way over', () => {
+    const s = sceneAt(1280);
+    tapTelevision(s);
+    runUntil(s, (x) => x.ciccio.phase === 'heading', 400, steady);
+    tapHimOnOpenFloor(s);
+    run(s, 2, steady);
+    expect(s.tv.on).toBe(true);
+    // And he goes back to it once the dance is done.
+    runUntil(s, (x) => x.ciccio.at === 'sofa', 20000, steady);
+  });
+
+  // The pull used to live only in `startBaking`, so it fired for oven-then-set
+  // and not for set-then-oven: a cooked gratin sat on the floor for a whole
+  // programme, first bite 3802 frames after the tap against 884 the other way.
+  it('brings the programme forward whichever came first, the food or the set', () => {
+    const s = quietScene(1280);
+    tapOven(s);
+    run(s, 2, steady);
+    tapTelevision(s);
+    expect(s.tv.showLeft).toBeLessThanOrEqual(ZEBRA_FRAMES);
+  });
+
+  // With a gratin out and a programme on, the tap wrote nothing, said nothing
+  // and moved nobody — on one of three clickable things in the room.
+  it('answers a tap on the cooker even when there is already a gratin out', () => {
+    const s = bakeThrough(quietScene(1280));
+    s.tv.on = true;
+    s.tv.showLeft = 30000;
+    tapOven(s);
+    expect(s.tv.showLeft).toBeLessThanOrEqual(ZEBRA_FRAMES);
+  });
+
+  // Held lit through the climb down, `showingZebra` goes false while `tv.on`
+  // stays true — and `drawTv` has two arms only, so the closing titles un-play
+  // and the screen flips back to the station letter for the whole descent.
+  it('goes off when he climbs down out of it, rather than un-playing the zebra', () => {
+    const s = watchingAt(1280);
+    s.tv.showLeft = 120;
+    expect(showingZebra(s)).toBe(true);
+
+    clickScene(s, s.ciccio.x, ciccioY(s) - 10);
+    step(s, steady);
+    expect(s.ciccio.phase).toBe('dismounting');
+    // Off already, so there is no lit set with no zebra on it to fall back to.
+    expect(s.tv.on).toBe(false);
+  });
+
   it('does not leave the set on for ever when he is sent somewhere else', () => {
     const s = watchingAt(1280);
     s.tv.showLeft = 30000;
@@ -1687,7 +1807,7 @@ describe('the two of them, told apart', () => {
       const rng = seeded(seed);
       for (let round = 0; round < 6; round++) {
         runUntil(s, (x) => x.rescue !== null, 60000, rng);
-        climbers.add(s.squirrels[s.rescue!.climber].kind);
+        climbers.add(squirrelOfKind(s, s.rescue!.climber).kind);
         s.rescue = null;
         for (const squirrel of s.squirrels) {
           squirrel.climb = 0;
@@ -1701,7 +1821,6 @@ describe('the two of them, told apart', () => {
   it('gives them one identity each, fixed when they are made', () => {
     const s = sceneAt(1280);
     expect(s.squirrels.map((q) => q.kind).sort()).toEqual(['he', 'she']);
-    expect(s.squirrels[explorerIndex(s)].kind).toBe('he');
   });
 
   // Carried, like `side`: recovered by measuring, the first thing that reorders
@@ -2062,7 +2181,7 @@ describe('one of them gets stuck up the wall', () => {
 
   it('goes straight up, and stops at the top', () => {
     const s = leftToClimb();
-    const climber = s.squirrels[s.rescue!.climber];
+    const climber = squirrelOfKind(s, s.rescue!.climber);
     const where = climber.x;
 
     runUntil(s, (x) => x.rescue!.phase === 'stuck', 4000, steady);
@@ -2089,8 +2208,8 @@ describe('one of them gets stuck up the wall', () => {
     const s = watchingAt();
     runUntil(s, (x) => x.rescue?.phase === 'recalled', 60000, eager);
     const rescue = s.rescue!;
-    const climber = s.squirrels[rescue.climber];
-    const other = s.squirrels[rescue.climber === 0 ? 1 : 0];
+    const climber = squirrelOfKind(s, rescue.climber);
+    const other = squirrelOfKind(s, s.rescue!.climber === 'he' ? 'she' : 'he');
 
     // Told off on the way up rather than after being fetched down.
     expect(other.say!.line).toBe(SQUIRREL_SCOLD);
@@ -2146,7 +2265,7 @@ describe('one of them gets stuck up the wall', () => {
       s.gratin = null;
       if (s.tv.on) s.tv.showLeft = 5000;
       if (s.rescue?.phase === 'recalled' && phase !== 'recalled') {
-        const up = s.squirrels[s.rescue.climber].climb / CLIMB_MAX;
+        const up = squirrelOfKind(s, s.rescue.climber).climb / CLIMB_MAX;
         expect(up).toBeGreaterThan(0.2);
         expect(up).toBeLessThan(0.85);
         seen++;
@@ -2159,7 +2278,7 @@ describe('one of them gets stuck up the wall', () => {
   it('turns head-down at the top and cannot get itself back', () => {
     const s = leftToClimb();
     runUntil(s, (x) => x.rescue?.phase === 'stuck', 12000, steady);
-    const climber = s.squirrels[s.rescue!.climber];
+    const climber = squirrelOfKind(s, s.rescue!.climber);
     expect(climber.headDown).toBe(true);
 
     // It stays up there a good while before help arrives.
@@ -2170,8 +2289,7 @@ describe('one of them gets stuck up the wall', () => {
   it('sends the other one up to fetch it', () => {
     const s = leftToClimb();
     runUntil(s, (x) => x.rescue?.phase === 'fetching', 20000, steady);
-    const rescue = s.rescue!;
-    const other = s.squirrels[rescue.climber === 0 ? 1 : 0];
+    const other = squirrelOfKind(s, s.rescue!.climber === 'he' ? 'she' : 'he');
     runUntil(s, (x) => x.rescue!.phase === 'descending', 4000, steady);
     expect(other.climb).toBeGreaterThan(0);
   });
@@ -2183,8 +2301,8 @@ describe('one of them gets stuck up the wall', () => {
     const s = leftToClimb();
     runUntil(s, (x) => x.rescue?.phase === 'descending', 30000, steady);
     const rescue = s.rescue!;
-    const climber = s.squirrels[rescue.climber];
-    const other = s.squirrels[rescue.climber === 0 ? 1 : 0];
+    const climber = squirrelOfKind(s, rescue.climber);
+    const other = squirrelOfKind(s, s.rescue!.climber === 'he' ? 'she' : 'he');
 
     while (s.rescue?.phase === 'descending') {
       step(s, steady);
@@ -2200,10 +2318,10 @@ describe('one of them gets stuck up the wall', () => {
     const s = leftToClimb();
     runUntil(s, (x) => x.rescue?.phase === 'scolding', 30000, steady);
     const rescue = s.rescue!;
-    const other = s.squirrels[rescue.climber === 0 ? 1 : 0];
+    const other = squirrelOfKind(s, s.rescue!.climber === 'he' ? 'she' : 'he');
 
     expect(s.squirrels.every((q) => q.climb === 0)).toBe(true);
-    expect(s.squirrels[rescue.climber].headDown).toBe(false);
+    expect(squirrelOfKind(s, rescue.climber).headDown).toBe(false);
     expect(other.say!.line).toBe(SQUIRREL_SCOLD);
     expect(scolder(s)).toBe(other);
     expect(scoldingAt(s)).toBeGreaterThanOrEqual(0);
@@ -2217,7 +2335,7 @@ describe('one of them gets stuck up the wall', () => {
   it('gets them down if he leaves the sofa half way through', () => {
     const s = leftToClimb();
     runUntil(s, (x) => x.rescue?.phase === 'stuck', 12000, steady);
-    expect(s.squirrels[s.rescue!.climber].climb).toBeGreaterThan(0);
+    expect(squirrelOfKind(s, s.rescue!.climber).climb).toBeGreaterThan(0);
 
     // He is called away — the one thing that must not leave a squirrel up a
     // wall for the life of the tab.

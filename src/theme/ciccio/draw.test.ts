@@ -149,6 +149,30 @@ describe('what reaches the canvas', () => {
     expect(hot.calls.length).toBeGreaterThan(cold.calls.length);
   });
 
+  // The trail's own loop was never once executed by the suite: every draw ran
+  // with nothing in the air, because the oven test starts a bake and draws
+  // without stepping, so no puff has been born yet.
+  it('draws the scent once there is any in the air', () => {
+    const s = sceneAt(1280);
+    startBaking(s);
+    runUntil(
+      s,
+      (x) => x.scent.length > 0,
+      200,
+      () => 0.5,
+    );
+
+    const bare = recordingContext();
+    const withScent = recordingContext();
+    const empty = sceneAt(1280);
+    drawScene(bare.ctx, empty, false, sceneScale(1280));
+    drawScene(withScent.ctx, s, false, sceneScale(1280));
+    // Against a room with nothing in the air, not against zero: the sofa and
+    // the cat draw curves of their own.
+    const curves = (r: typeof bare) => r.calls.filter((c) => c === 'quadraticCurveTo').length;
+    expect(curves(withScent)).toBe(curves(bare) + s.scent.length);
+  });
+
   it('draws a whole frame in both colour schemes without throwing', () => {
     for (const dark of [true, false]) {
       const { ctx, calls } = recordingContext();

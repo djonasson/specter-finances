@@ -330,8 +330,8 @@ export const MUTATIONS = [
   {
     name: 'the oven puts a second gratin out on top of the first',
     file: 'src/theme/ciccio/scene.ts',
-    find: '  if (foodInPlay(scene)) return;\n  scene.baking = { left: BAKE_FRAMES, scent: [] };',
-    replace: '  scene.baking = { left: BAKE_FRAMES, scent: [] };',
+    find: '  if (foodInPlay(scene)) return;\n  scene.baking = { left: BAKE_FRAMES };',
+    replace: '  scene.baking = { left: BAKE_FRAMES };',
     tests: ['src/theme/ciccio/scene.test.ts'],
   },
   {
@@ -443,7 +443,7 @@ export const MUTATIONS = [
   {
     name: 'a tap on the cooker drops a finished gratin on the floor',
     file: 'src/theme/ciccio/scene.ts',
-    find: '  scene.baking = { left: BAKE_FRAMES, scent: [] };',
+    find: '  scene.baking = { left: BAKE_FRAMES };',
     replace: '  scene.gratin = { x: gratinSpot(scene), bites: GRATIN_BITES, steam: [] };',
     tests: ['src/theme/ciccio/scene.test.ts'],
   },
@@ -457,7 +457,7 @@ export const MUTATIONS = [
   {
     name: 'the scent drifts the same way whichever side of the oven he is on',
     file: 'src/theme/ciccio/scene.ts',
-    find: '    const towards = scene.ciccio.x >= from ? 1 : -1;',
+    find: '    const towards = scene.ciccio.x >= scene.layout.ovenX ? 1 : -1;',
     replace: '    const towards = 1;',
     tests: ['src/theme/ciccio/scene.test.ts'],
   },
@@ -478,14 +478,14 @@ export const MUTATIONS = [
   {
     name: 'a bake does not bring the programme forward to its ending',
     file: 'src/theme/ciccio/scene.ts',
-    find: '  if (scene.tv.on && scene.tv.showLeft > ZEBRA_FRAMES) scene.tv.showLeft = ZEBRA_FRAMES;',
-    replace: '',
+    find: '  if (foodInPlay(scene) && scene.tv.on && scene.tv.showLeft > ZEBRA_FRAMES) {',
+    replace: '  if (false) {',
     tests: ['src/theme/ciccio/scene.test.ts'],
   },
   {
     name: 'the clumsy one is rolled each time rather than being the same squirrel',
     file: 'src/theme/ciccio/scene.ts',
-    find: "      scene.rescue = { climber: explorerIndex(scene), phase: 'climbing', timer: 0 };",
+    find: "      scene.rescue = { climber: THE_CLUMSY_ONE, phase: 'climbing', timer: 0 };",
     replace: "      scene.rescue = { climber: rng() < 0.5 ? 0 : 1, phase: 'climbing', timer: 0 };",
     tests: ['src/theme/ciccio/scene.test.ts'],
   },
@@ -508,6 +508,41 @@ export const MUTATIONS = [
     file: 'src/theme/ciccio/scene.ts',
     find: 'export const foodInPlay = (scene: Scene) => scene.gratin !== null || scene.baking !== null;',
     replace: 'export const foodInPlay = (scene: Scene) => scene.gratin !== null;',
+    tests: ['src/theme/ciccio/scene.test.ts'],
+  },
+  {
+    name: 'the rota turns the set on and leaves the errand to nobody',
+    file: 'src/theme/ciccio/scene.ts',
+    find: "    summon(scene, 'sit', false);\n  } else {",
+    replace: '  } else {',
+    tests: ['src/theme/ciccio/scene.test.ts'],
+  },
+  {
+    name: 'a dance counts as having stopped watching, so a tap cancels the programme',
+    file: 'src/theme/ciccio/scene.ts',
+    find: "    (ciccio.phase === 'wobbling' && !waitingForTheOven(scene));",
+    replace: '    false;',
+    tests: ['src/theme/ciccio/scene.test.ts'],
+  },
+  {
+    name: 'a tap on the cooker is inert while a programme is on',
+    file: 'src/theme/ciccio/scene.ts',
+    find: '    if (scene.tv.on) bringProgrammeForward(scene);',
+    replace: '    if (false) bringProgrammeForward(scene);',
+    tests: ['src/theme/ciccio/scene.test.ts'],
+  },
+  {
+    name: 'a resize leaves him dancing at the oven that used to be there',
+    file: 'src/theme/ciccio/scene.ts',
+    find: '  if (waitingForTheOven(scene)) {',
+    replace: '  if (false) {',
+    tests: ['src/theme/ciccio/scene.test.ts'],
+  },
+  {
+    name: 'the set stays lit while he climbs off the sofa, un-playing the zebra',
+    file: 'src/theme/ciccio/scene.ts',
+    find: "    (ciccio.at === 'sofa' && ciccio.phase !== 'dismounting') ||",
+    replace: "    ciccio.at === 'sofa' ||",
     tests: ['src/theme/ciccio/scene.test.ts'],
   },
 ];

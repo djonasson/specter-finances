@@ -105,7 +105,6 @@ const LIGHT = {
   nose: '#4f4f52',
   eye: '#2b2b2b',
 
-  squirrelDark: '#ab5f2b',
   squirrelBelly: '#f4ead9',
 
   dish: '#e4e0d8',
@@ -114,8 +113,8 @@ const LIGHT = {
   ovenDish: '#7d604a',
   scent: '#c9a06a',
   coats: {
-    he: { body: '#a85c26', tail: '#bd7038', tailLight: '#d68f57' },
-    she: { body: '#e0a06a', tail: '#eab98c', tailLight: '#f6d3ad' },
+    he: { body: '#a85c26', tail: '#bd7038', tailLight: '#d68f57', dark: '#6d3813' },
+    she: { body: '#e0a06a', tail: '#eab98c', tailLight: '#f6d3ad', dark: '#a86432' },
   },
   steam: '#ffffff',
 
@@ -192,7 +191,6 @@ const DARK: Palette = {
   nose: '#2a2a2c',
   eye: '#141414',
 
-  squirrelDark: '#83491f',
   squirrelBelly: '#cbbda6',
 
   dish: '#5a544b',
@@ -201,8 +199,8 @@ const DARK: Palette = {
   ovenDish: '#5d4636',
   scent: '#9c7c52',
   coats: {
-    he: { body: '#8a4c1e', tail: '#9c5e2c', tailLight: '#b0763f' },
-    she: { body: '#bd854e', tail: '#c99a6c', tailLight: '#dcb389' },
+    he: { body: '#8a4c1e', tail: '#9c5e2c', tailLight: '#b0763f', dark: '#4d2a0d' },
+    she: { body: '#bd854e', tail: '#c99a6c', tailLight: '#dcb389', dark: '#8a5a2c' },
   },
   steam: '#cfc8bd',
 
@@ -1116,7 +1114,7 @@ function drawCiccio(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette): vo
 
   ctx.restore();
 
-  if (asleep) sleepingZs(ctx, scene, p, ciccio.x + 16, y - 26);
+  if (asleep) sleepingZs(ctx, scene, p, ciccio.x + 16, y - 26, 0);
 }
 
 /**
@@ -1134,17 +1132,24 @@ function sleepingZs(
   p: Palette,
   x: number,
   top: number,
+  phase: number,
 ): void {
+  // Its own save: it is called from outside both sleepers' own `restore()`, and
+  // it sets `fillStyle`, `font`, `textAlign` and `globalAlpha` while putting
+  // only two of the four back.
+  ctx.save();
   ctx.fillStyle = p.eye;
   ctx.font = '600 9px system-ui, sans-serif';
   ctx.textAlign = 'center';
   for (let i = 0; i < 2; i++) {
-    const t = (scene.frame / 70 + i * 0.5) % 1;
+    // `phase` offsets each sleeper's own pair. Sharing one `frame / 70` put six
+    // letters in perfect lockstep above three animals, which reads as one
+    // effect drawn three times rather than three of them asleep.
+    const t = (scene.frame / 70 + i * 0.5 + phase) % 1;
     ctx.globalAlpha = 0.55 * (1 - t);
     ctx.fillText('z', x + t * 9, top - t * 20);
   }
-  ctx.globalAlpha = 1;
-  ctx.textAlign = 'start';
+  ctx.restore();
 }
 
 /**
@@ -1155,12 +1160,16 @@ function sleepingZs(
  * when each one is born.
  */
 function drawScent(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette): void {
-  const baking = scene.baking;
-  if (!baking) return;
+  if (scene.scent.length === 0) return;
 
+  // Saved rather than put back by hand: this sets `strokeStyle`, `lineCap` and
+  // a `lineWidth` of up to five against a default of one, and left them set. It
+  // is invisible only because everything drawn after it happens to set its own
+  // — the accident `drawSaying` in this file already records learning about.
+  ctx.save();
   ctx.strokeStyle = p.scent;
   ctx.lineCap = 'round';
-  for (const puff of baking.scent) {
+  for (const puff of scene.scent) {
     const fade = Math.min(1, puff.life / 60);
     ctx.globalAlpha = 0.5 * fade;
     ctx.lineWidth = puff.size * 0.5;
@@ -1172,7 +1181,7 @@ function drawScent(ctx: CanvasRenderingContext2D, scene: Scene, p: Palette): voi
     ctx.quadraticCurveTo(x + puff.size * puff.drift * 2, y, x + puff.size, y - puff.size);
     ctx.stroke();
   }
-  ctx.globalAlpha = 1;
+  ctx.restore();
 }
 
 /** A squirrel: upright, cream-bellied, mostly tail. */
@@ -1188,7 +1197,7 @@ function drawSquirrel(
   const coat = p.coats[squirrel.kind];
 
   if (watchingTelevision(scene) && squirrel.climb === 0) {
-    drawSquirrelFromBehind(ctx, squirrel.x, y, p, coat, swing);
+    drawSquirrelFromBehind(ctx, squirrel.x, y, coat, swing);
     return;
   }
 
@@ -1256,7 +1265,7 @@ function drawSquirrel(
   ctx.fill();
 
   // Ear.
-  ctx.fillStyle = p.squirrelDark;
+  ctx.fillStyle = coat.dark;
   ctx.beginPath();
   ctx.ellipse(1.5, -35, 2.8, 4, -0.2, 0, Math.PI * 2);
   ctx.fill();
@@ -1270,14 +1279,14 @@ function drawSquirrel(
   ctx.beginPath();
   ctx.arc(7.5, -30, 1.9, 0, Math.PI * 2);
   ctx.fill();
-  ctx.fillStyle = p.squirrelDark;
+  ctx.fillStyle = coat.dark;
   ctx.beginPath();
   ctx.ellipse(7.5, -15, 3.2, 2.5, 0, 0, Math.PI * 2);
   ctx.fill();
 
   // Feet, taking turns. Two of them rather than one, or there is nothing for a
   // stride to alternate between.
-  ctx.fillStyle = p.squirrelDark;
+  ctx.fillStyle = coat.dark;
   [0, 1].forEach((foot) => {
     const swing = gait(squirrel.x, foot, dashingForFood(scene));
     ctx.beginPath();
@@ -1290,7 +1299,14 @@ function drawSquirrel(
   // They are in the bed too, so they get the same "z"s he does — over the
   // outside shoulder, away from him, or all three sets pile up in the middle.
   if (squirrelAsleep(scene, squirrel)) {
-    sleepingZs(ctx, scene, p, squirrel.x + squirrel.side * 13, y - 22);
+    sleepingZs(
+      ctx,
+      scene,
+      p,
+      squirrel.x + squirrel.side * 13,
+      y - 22,
+      squirrel.side === -1 ? 0.33 : 0.66,
+    );
   }
 }
 
@@ -1312,7 +1328,6 @@ function drawSquirrelFromBehind(
   ctx: CanvasRenderingContext2D,
   x: number,
   y: number,
-  p: Palette,
   coat: Palette['coats'][SquirrelKind],
   swing: number,
 ): void {
@@ -1326,7 +1341,7 @@ function drawSquirrelFromBehind(
   turnAbout(ctx, SQUIRREL_MIDDLE, swing);
 
   // Feet either side, just showing past the tail.
-  ctx.fillStyle = p.squirrelDark;
+  ctx.fillStyle = coat.dark;
   for (const fx of [-6, 6]) {
     ctx.beginPath();
     ctx.ellipse(fx, -1.8, 4, 2.4, 0, 0, Math.PI * 2);
