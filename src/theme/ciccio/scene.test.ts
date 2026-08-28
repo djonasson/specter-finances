@@ -2029,11 +2029,14 @@ describe('the little blue cat', () => {
 
   it('does not let itself in on the frame a programme starts', () => {
     const s = quietScene(1280);
-    // The two counters aimed at the same frame. `runRoutine` runs first and
-    // turns the set on, then `runCat` runs four lines later with him still
-    // wandering on the floor — so this is the exact frame the gate is for, and
-    // waiting for it to come up on its own is waiting for a coincidence.
-    s.routine = { next: 1, wait: 1 };
+    // A programme on while he is mid-dance, which is the reachable shape of it:
+    // `runCat` runs before `walkCiccio`, so he is still on the floor in a
+    // pottering phase with the set already lit. Waiting for the two counters to
+    // line up on their own is waiting for a coincidence.
+    s.ciccio.phase = 'wobbling';
+    s.ciccio.spin = 0;
+    s.tv.on = true;
+    s.tv.showLeft = 3000;
     s.catNextIn = 1;
     step(s, steady);
 
