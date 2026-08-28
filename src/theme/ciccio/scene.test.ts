@@ -11,6 +11,7 @@ import {
   MAX_STEAM,
   SQUIRREL_SPEED,
   MAX_CLIMB,
+  CLIMB_FRAMES,
   dashingForFood,
   serveGratin,
   tapCiccio,
@@ -19,10 +20,12 @@ import {
   SQUIRREL_SCOLD,
   SQUIRREL_REACH,
   scolder,
+  scoldSwing,
   scoldingAt,
   hitsSquirrel,
   hitsTv,
   hitsBed,
+  hitsCiccio,
   showingZebra,
   CAT_NEAR,
   MAX_HEARTS,
@@ -210,25 +213,40 @@ describe('the band the room asks the app to reserve', () => {
     }
   });
 
-  // Named one at a time, deliberately. Written as `SCENE_REACH >=
-  // max(...SEAT_HEIGHT)` it restated the definition — true for any values any
-  // of these could hold, so raising the oven past the wall or hanging the
-  // television higher left it green while the top of both was painted over the
-  // user's own list.
+  // The number itself, written out. `SCENE_REACH` is a `Math.max` over exactly
+  // these terms, so *any* assertion of the form `SCENE_REACH >= <a term of it>`
+  // holds for every value every constant could take — six of them read as a
+  // table of what the band covers and not one could fail. Raising the oven past
+  // the wall, which the old comment named as the motivating failure, left them
+  // all green; so did setting the squirrels' tails to 200, which paints them
+  // 120px over the user's expense list.
+  //
+  // Pinned as a literal and each piece measured against *that*, the direction
+  // reverses: a piece that outgrows the band fails by name.
+  it('reserves a band of a known size, so a piece that outgrows it says so', () => {
+    expect(SCENE_REACH).toBe(136);
+  });
+
   it.each([
     ['the oven', OVEN_TOP],
     ['the television, at the height it hangs at', TV_HANGS_AT + TV_PANEL],
     ['the back of the sofa', SOFA_BACK],
     ['the head of the bed', BED_HEAD],
     ['the wall they all stand against', WALL_HEIGHT],
-  ])('reserves enough for %s', (_piece, height) => {
-    expect(SCENE_REACH).toBeGreaterThanOrEqual(height);
+    [
+      'whoever is sitting on the tallest thing they can sit on',
+      Math.max(...Object.values(SEAT_HEIGHT)) + Math.max(CICCIO_HEIGHT, SQUIRREL_REACH),
+    ],
+  ])('fits %s under it', (_piece, height) => {
+    expect(height).toBeLessThanOrEqual(136);
   });
 
-  it('counts whoever is sitting on the tallest thing they can sit on', () => {
-    expect(SCENE_REACH).toBeGreaterThanOrEqual(
-      Math.max(...Object.values(SEAT_HEIGHT)) + Math.max(CICCIO_HEIGHT, SQUIRREL_REACH),
-    );
+  // And what everybody may move in a frame is pinned against the table they
+  // move over, rather than derived from it: derived, it *was* the expression
+  // the movers step by, so raising the sofa to 60 moved everybody two and a
+  // half times the old bound with every max-step case still green.
+  it('bounds a frame of climbing by the tallest seat there is', () => {
+    expect(MAX_CLIMB).toBeCloseTo(Math.max(...Object.values(SEAT_HEIGHT)) / CLIMB_FRAMES, 10);
   });
 });
 
@@ -1046,6 +1064,57 @@ describe('watching television', () => {
     expect(s.ciccio.goal).toBeNull();
   });
 
+  // The price of the rule above, in both directions.
+  //
+  // While they are on a thing, the animals do take most of it — 84.8% of the
+  // bed — and that is right: what you tap a bed *for* is to send them to it, and
+  // tapping one they are already asleep in should reach them, not it. So what is
+  // pinned is the pair of properties that actually matter, and the second is the
+  // one that would catch a hit box quietly growing until the room stopped
+  // answering at all.
+  it('lets every one of them be tapped while they are on a thing together', () => {
+    const s = sceneAt(1280);
+    clickScene(s, s.layout.bedX, s.ground - 10);
+    settleOn(s, 'bed');
+    runUntil(s, (x) => x.squirrels.every((q) => q.at === 'bed' && q.lift >= 1), 400, sleepy);
+
+    const reaches = (who: 'ciccio' | 0 | 1) => {
+      for (let x = 0; x <= s.width; x += 1) {
+        for (let y = s.ground - 140; y <= s.ground; y += 1) {
+          s.chatter = null;
+          const before = s.ciccio.phase;
+          if (!(who === 'ciccio' ? hitsCiccio(s, x, y) : hitsSquirrel(s, s.squirrels[who], x, y)))
+            continue;
+          clickScene(s, x, y);
+          const answered = s.chatter !== null || s.ciccio.phase !== before;
+          if (answered) return true;
+        }
+      }
+      return false;
+    };
+    expect(reaches(0)).toBe(true);
+    expect(reaches('ciccio')).toBe(true);
+  });
+
+  it('leaves the bed entirely tappable once nobody is on it', () => {
+    const s = quietScene(1280);
+    // Him and both of them well away from it, on the floor.
+    s.ciccio.x = s.layout.wanderRight;
+    for (const squirrel of s.squirrels) squirrel.x = s.layout.wanderRight;
+
+    let room = 0;
+    let shadowed = 0;
+    for (let x = 0; x <= s.width; x += 2) {
+      for (let y = s.ground - 140; y <= s.ground; y += 2) {
+        if (!hitsBed(s, x, y)) continue;
+        room++;
+        if (s.squirrels.some((q) => hitsSquirrel(s, q, x, y)) || hitsCiccio(s, x, y)) shadowed++;
+      }
+    }
+    expect(room).toBeGreaterThan(0);
+    expect(shadowed).toBe(0);
+  });
+
   it('finds a squirrel where it is drawn, not where its feet started', () => {
     const s = sceneAt(1280);
     tapTelevision(s);
@@ -1093,24 +1162,37 @@ describe('getting on and off the furniture', () => {
   // 540,000 `expect` calls and 59% of this file's entire running time, for one
   // number.
   it.each([
-    ['a day of tapping the oven', 0, 30000, 400],
+    ['a day of taps landing mid-climb', 2, 30000, 300],
     ['a day left to itself', 1, 60000, 0],
     ['another day left to itself', 4, 60000, 0],
     ['a third day left to itself', 9, 60000, 0],
   ])(
     'never moves anybody vertically faster than they can climb, over %s',
     (_name, seed, frames, tapEvery) => {
-      const rng = seed === 0 ? eager : seeded(seed);
-      const s = createScene(stageOf(1280), rng);
+      const rng = seeded(seed);
+      const s = sceneAt(1280, rng);
+      // The three fixed things, in turn. Far enough apart that he reaches one
+      // and climbs onto it: tapped every 29 frames he was re-aimed before he
+      // ever arrived, and the row measured no vertical movement at all.
+      const targets = [
+        (x: typeof s) => clickScene(x, x.layout.ovenX, x.ground - 30),
+        (x: typeof s) => tapTelevision(x),
+        (x: typeof s) => clickScene(x, x.layout.bedX, x.ground - 10),
+      ];
       let previous = [ciccioY(s), ...s.squirrels.map((q) => squirrelY(s, q))];
       let worst = 0;
       for (let i = 0; i < frames; i++) {
         step(s, rng);
-        if (tapEvery && i % tapEvery === 0) clickScene(s, s.layout.ovenX, s.ground - 30);
+        if (tapEvery && i % tapEvery === 0) targets[(i / tapEvery) % targets.length](s);
         const now = [ciccioY(s), ...s.squirrels.map((q) => squirrelY(s, q))];
         now.forEach((y, j) => (worst = Math.max(worst, Math.abs(y - previous[j]))));
         previous = now;
       }
+      // A row that never gets anybody off the ground asserts `0 <= 1.714` and
+      // cannot fail — which the tapping row did for its whole life, because
+      // `eager` starts a wobble every frame `wander` runs and he therefore
+      // never mounted anything at all across 30,000 frames.
+      expect(worst).toBeGreaterThan(0);
       expect(worst).toBeLessThanOrEqual(MAX_CLIMB + 1e-9);
     },
   );
@@ -1165,7 +1247,7 @@ describe('how his day divides', () => {
   // sleeps any more" after somebody tunes the oven.
   function day(seed: number) {
     const rng = seeded(seed);
-    const s = createScene(stageOf(1280), rng);
+    const s = sceneAt(1280, rng);
     const tally = { about: 0, eating: 0, watching: 0, sleeping: 0 };
     const FRAMES = 90000;
     for (let i = 0; i < FRAMES; i++) {
@@ -1332,7 +1414,7 @@ describe('the little blue cat', () => {
   // scene. Nobody watches a background for three minutes on the off-chance.
   it('calls within the first minute, and keeps calling', () => {
     const rng = seeded(3);
-    const s = createScene(stageOf(1280), rng);
+    const s = sceneAt(1280, rng);
     let first = -1;
     let visits = 0;
     let had = false;
@@ -1359,7 +1441,7 @@ describe('the little blue cat', () => {
     const sides = new Set<number>();
     for (const seed of [1, 4, 7, 12, 30]) {
       const rng = seeded(seed);
-      const s = createScene(stageOf(1280), rng);
+      const s = sceneAt(1280, rng);
       for (let i = 0; i < 40000 && !s.cat; i++) step(s, rng);
       if (s.cat) sides.add(s.cat.from);
     }
@@ -1443,6 +1525,37 @@ describe('the little blue cat', () => {
   // walked in on the very frame he swallowed the last bite or stepped off the
   // sofa. It counts pottering, so it never goes below nought and there is
   // always a stretch of it between the last thing he did and the visit.
+  // The counter reaching nought is not enough to know it paced anything: at
+  // `CAT_INTERVAL === ROUTINE_GAP` the two ran down together, the rota fired
+  // first and sent him off, and the cat's froze at 1 for the whole errand — so
+  // it was let in on the first frame he was free again. 78.5% of visits arrived
+  // within a quarter of a second of that, with `least === 0` and every arrival
+  // check still green. What has to be true is that a visit usually follows a
+  // stretch of pottering, so that is what is measured.
+  it('drops by while he is pottering, rather than pouncing the moment he is free', () => {
+    let visits = 0;
+    let pounces = 0;
+    for (const seed of [1, 3, 7]) {
+      const rng = seeded(seed);
+      const s = sceneAt(1280, rng);
+      let freeFor = 0;
+      let had = false;
+      for (let i = 0; i < 120000; i++) {
+        const wasFree = s.ciccio.at === 'floor' && !s.gratin && !s.tv.on;
+        step(s, rng);
+        if (s.cat && !had) {
+          visits++;
+          if (freeFor <= 10) pounces++;
+        }
+        had = s.cat !== null;
+        freeFor = wasFree ? freeFor + 1 : 0;
+      }
+    }
+    expect(visits).toBeGreaterThan(20);
+    // Measured: 1.8% here, 4.3% at the old 2100, and 78.5% at 1500.
+    expect(pounces / visits).toBeLessThan(0.15);
+  });
+
   it('calls only when he is free, and counts the time he has free', () => {
     const s = sceneAt(1280);
     let least = Number.POSITIVE_INFINITY;
@@ -1513,6 +1626,42 @@ describe('one of them gets stuck up the wall', () => {
   // Rolled on a squirrel still settling onto the cushion it added the wall to
   // that same frame — 1.7 units of sofa and 0.55 of wall at once, past what
   // either alone is allowed.
+
+  // A fact about the scene, not about the drawing — it used to be a `Math.sin`
+  // inside a canvas call, which is the two-owners-of-one-fact the peel and the
+  // pizza cost once already, and which no test could hold.
+  it('is nobody swinging anything while there is no scolding', () => {
+    const s = sceneAt(1280);
+    for (const squirrel of s.squirrels) expect(scoldSwing(s, squirrel)).toBe(0);
+  });
+
+  it('swings the one doing the telling-off, and only that one', () => {
+    const s = leftToClimb();
+    runUntil(s, (x) => x.rescue?.phase === 'scolding', 60000, steady);
+
+    const telling = scolder(s)!;
+    const told = s.squirrels.find((q) => q !== telling)!;
+    expect(told).toBeDefined();
+    expect(scoldSwing(s, told)).toBe(0);
+
+    // It goes both ways round over the telling-off rather than leaning once.
+    let least = 0;
+    let most = 0;
+    runUntil(
+      s,
+      () => {
+        const swing = scoldSwing(s, telling);
+        least = Math.min(least, swing);
+        most = Math.max(most, swing);
+        return scoldingAt(s) === null;
+      },
+      2000,
+      steady,
+    );
+    expect(most).toBeGreaterThan(0.2);
+    expect(least).toBeLessThan(-0.2);
+  });
+
   it('waits until they are both sitting still before anybody climbs', () => {
     const s = leftToClimb();
     for (const squirrel of s.squirrels) expect(squirrel.lift).toBeGreaterThanOrEqual(1);
@@ -1584,7 +1733,7 @@ describe('one of them gets stuck up the wall', () => {
   // asserted from the chance, which states neither.
   it('splits between the two endings rather than always doing the same one', () => {
     const rng = seeded(5);
-    const s = createScene(stageOf(1280), rng);
+    const s = sceneAt(1280, rng);
     let recalled = 0;
     let stuck = 0;
     let seen: string | null = null;

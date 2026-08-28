@@ -263,9 +263,10 @@ BrowserRouter → AuthProvider → ExpensesProvider → ThemeProvider → App
 
 Mantine v8 component library with Tabler icons. Five routes: `/` (Dashboard with charts via chart.js), `/add` (tabbed Expense/Transfer/Gift/Recurring form), `/list` (`ExpensesPage`: Expenses | Recurring), `/transfers`, `/gifts`. Bottom nav bar for mobile. Theme system with customizable backgrounds in `theme/` (gradient, matrix, squirrel, cello, ciccio). Date filtering (`filterByDate`/`FilterMode` in `utils.ts`) is shared across the dashboard and lists.
 
-**The cello and Ciccio share one component.** `SceneCanvas` in
-`theme/sceneCanvas.tsx` is the canvas, the buffer, the frame loop, the
-two-decision resize and the clicks, once — a scene hands it
+**The cello and Ciccio share one component.** `useSceneCanvas` in
+`theme/sceneCanvas.ts` is the buffer, the frame loop, the two-decision resize
+and the clicks, once, and `SceneCanvas` in `sceneCanvas.tsx` is the twenty-odd
+lines that hold the `<canvas>` itself — a scene hands it
 `createScene`/`resizeScene`/`step`/`drawScene` and an optional `clickScene`, and
 owns nothing else about the browser, not even the `<canvas>` element. (Matrix and
 Squirrel predate it and still hand-roll their own; they would be the next two to
@@ -408,15 +409,28 @@ may not do is skip frames a change of height is owed. The room is hit-tested
 **before** the animals: his box is thirty-four units either side of an animal a
 few units across, so testing him first makes the oven unclickable exactly while
 he is standing in front of it, which is when somebody is most likely reaching
-past him for it. The **one** exception is a squirrel that is not standing on the
-floor, because whatever it is off the floor _on_ covers it: keyed on the climb
-alone it fixed only the case it was found in — a stuck climber sharing the wall
-with the set, whose box is the wider of the two, so the single interaction the
-whole wall-rescue has was answered by restarting the programme. Measured on a
-grid over a seated squirrel's own box, 13.7% of one on the sofa is inside the
-television's and **74.4%** of one in bed is inside the bed's, so three quarters
-of a squirrel in bed could not be tapped at all — the bed answered instead,
-taking him out of it to go back to it.
+past him for it. **Off the floor it inverts, for the same reason**: whatever
+somebody is off the floor _on_ is drawn over them, so the room would answer
+every tap aimed at them. That is one rule — whoever is off the floor before the
+room, everybody on the floor after it — and it took three goes to say it, each
+time fixed for exactly the case it was found in. First a stuck climber sharing
+the wall with the set, whose box is the wider; then, keyed on `climb`, it still
+missed everyone sitting down. Measured on a grid over each animal's own box:
+13.7% of a squirrel on the sofa and 21.4% of _him_ are inside the television's,
+where a tap restarted the programme, and **74.4%** of a squirrel in bed and
+45.1% of him asleep in it are inside the bed's — so three quarters of a squirrel
+in bed could not be tapped at all, and the bed answered by taking him out of it
+to go back to it.
+
+Two things follow that are worth keeping. **Getting him up off the sofa turns
+the set off with him**, because the programme is _why_ he would go back: `wander`
+re-issues the sit errand on the first frame he reaches the floor and the set is
+on for the whole of the only time he is ever up there, so the tap was a
+35-frame bob that read as a tap that did nothing. And while all three are on a
+thing they do take most of it — 84.8% of the bed — which is right, since what a
+bed is tapped _for_ is to send them to it. What is pinned is the pair either
+side of that: each of them is reachable while they are all on it, and the bed is
+_entirely_ tappable once nobody is.
 
 **What happens on its own is a rota, not three chances**: potter, eat, potter,
 watch something, potter, sleep. Rolled separately they came out in any order and
@@ -444,6 +458,18 @@ climb while either of them is still moving vertically, the seat rule again: roll
 on a squirrel still settling onto the cushion, it added the wall to that same
 frame.
 
+**A number that lands on another number is a bug with no line to blame.**
+`CAT_INTERVAL` was retuned to 1500 and that is exactly `ROUTINE_GAP` — and since
+`catMayCall` is a superset of the rota's own `free` gate, the two counters tick
+on the same frames from the same start. They ran down together, the rota fired
+first and sent him off, the cat's froze at 1 for the whole errand, and it was
+let in on the first frame he was free again: **78.5% of visits within a quarter
+of a second of that**, against 4.3% at the old 2100 and 1.8% at 1700. A shorter
+interval giving a lower rate is the tell that it is the coincidence and not the
+number. The test could not see it, because a counter reaching nought says
+nothing about whether it paced anything — what is measured now is that a visit
+usually follows a stretch of pottering.
+
 **A timer that counts frames counts the wrong thing.** What the cat's interval
 counts is _pottering_, so it runs down only while pottering is what he is doing.
 Ticked on every frame it went as far as −1500 across a busy day, which is a
@@ -463,10 +489,24 @@ test green. `scene.test.ts` measures the day over seeded runs, counts the cat's
 visits over fifty simulated minutes, and counts both endings of the climb.
 
 **The drawing owns no facts.** `spin`, the turn it means (`ciccioAngle`), the bob,
-`showingZebra`, `scoldingAt` and the seat heights all come off the scene, because
-two owners of one fact is what the cello's peel and pizza were. `draw.ts` owns
-only what needs a canvas: how wide a speech bubble has to be, and the stripes,
-which are **clipped** by the zebra's silhouette rather than laid over it. Two
+`showingZebra`, `scoldingAt`, `scoldSwing` and the seat heights all come off the
+scene, because two owners of one fact is what the cello's peel and pizza were.
+`draw.ts` owns only what needs a canvas: how wide a speech bubble has to be, and
+the stripes, which are **clipped** by the zebra's silhouette rather than laid
+over it. Anything the drawing turns, it turns **about the figure's own centre
+line** (`turnAbout`) and **before** the mirror: rotating at the translate turns
+an animal about its feet, which threw a scolding squirrel nine units sideways
+and read as tipping over, and rotating after `ctx.scale(facing)` mirrored the
+swing with the body, so a left-facing squirrel swung the other way and a scold
+that began from behind and ended side-on reversed direction half way through.
+
+**Whether something is drawn at all is behaviour, and it is tested.**
+`draw.test.ts` records the text that reaches a stubbed canvas. The exemption on
+this file covers what a scene _draws_ — there is no way to ask whether a
+hedgehog looks like a hedgehog — and not whether it draws it: the scene built,
+ticked and typed the cat's line all along while nothing here drew it, so the
+meow this code calls "the point of the visit" was silent for the whole of every
+visit, under a comment saying it was drawn. Two
 things the drawing did learn the hard way: a figure drawn about a horizontal
 scale passes through _nothing_ twice a turn and blinks out, so the turn's
 magnitude has a floor; and the gait comes from **how far somebody has walked**,

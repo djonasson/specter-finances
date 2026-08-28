@@ -284,7 +284,14 @@ describe('two decisions, not one', () => {
 
     const built = spec.createScene.mock.calls[0][0];
     const moved = spec.resizeScene.mock.calls[0][1];
-    expect(Object.keys(moved).sort()).toEqual(Object.keys(built).sort());
+    // Against a written-out list, not against the other object: both come out
+    // of the same zero-argument `stageFor()`, so comparing their keys compared
+    // a factory's output with itself and held whatever that factory returned.
+    // Add a field to a stage or drop `ground` from it and this stayed green
+    // both ways, while reading as though it pinned "the resize gets a whole
+    // stage, not a partial one" — the one thing it did not check.
+    expect(Object.keys(built).sort()).toEqual(['ground', 'height', 'scale', 'width']);
+    expect(Object.keys(moved).sort()).toEqual(['ground', 'height', 'scale', 'width']);
     expectStage(moved, 1200, 700);
   });
 

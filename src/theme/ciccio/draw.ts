@@ -34,8 +34,7 @@ import {
   watchingTelevision,
   showingZebra,
   dashingForFood,
-  scoldingAt,
-  scolder,
+  scoldSwing,
   ciccioBob,
   ciccioY,
   squirrelY,
@@ -314,6 +313,19 @@ const FRONT_OF_ROOM = 7;
  * at about −64. The pivot the head-down turn goes about.
  */
 const SQUIRREL_MIDDLE = -32;
+
+/**
+ * Turns what follows about a point on the figure's own centre line.
+ *
+ * Rotating at the translate turns about the feet, which drops or throws the
+ * whole animal sideways by however far the pivot is off centre.
+ */
+function turnAbout(ctx: CanvasRenderingContext2D, pivot: number, angle: number): void {
+  if (angle === 0) return;
+  ctx.translate(0, pivot);
+  ctx.rotate(angle);
+  ctx.translate(0, -pivot);
+}
 const gait = (x: number, foot: number, running = false) =>
   Math.sin((x / (running ? RUN_STRIDE : STRIDE)) * Math.PI + foot * Math.PI);
 
@@ -1103,8 +1115,7 @@ function drawSquirrel(
 ): void {
   const y = squirrelY(scene, squirrel) + FRONT_OF_ROOM;
 
-  const scolding = scolder(scene) === squirrel ? scoldingAt(scene) : null;
-  const swing = scolding === null ? 0 : Math.sin(scolding * Math.PI * 3) * 0.28;
+  const swing = scoldSwing(scene, squirrel);
 
   if (watchingTelevision(scene) && squirrel.climb === 0) {
     drawSquirrelFromBehind(ctx, squirrel.x, y, p, swing);
@@ -1113,6 +1124,16 @@ function drawSquirrel(
 
   ctx.save();
   ctx.translate(squirrel.x, y);
+  // The telling-off: a tail swung round at whoever needed fetching down.
+  //
+  // About the middle of the figure and *before* the mirror, which are two
+  // separate bugs it had. Applied at the translate it turned the whole animal
+  // about its own feet — 9.4 units of lateral travel at the top of a 34-unit
+  // squirrel, which reads as tipping over rather than as a tail swung round.
+  // And applied after `ctx.scale(facing)` it was mirrored with the body, so a
+  // left-facing squirrel swung the other way and a scold that began from behind
+  // and finished side-on reversed direction half way through.
+  turnAbout(ctx, SQUIRREL_MIDDLE, swing);
   // Head down is how a squirrel actually comes down a wall, and it is also the
   // moment it works out that it cannot.
   //
@@ -1120,15 +1141,8 @@ function drawSquirrel(
   // wall afterwards: turned about anything else it drops by however far the
   // pivot is off centre, which is exactly what it looked like — a squirrel that
   // reached the top and then slid down half its own height to think about it.
-  if (squirrel.headDown) {
-    ctx.translate(0, SQUIRREL_MIDDLE);
-    ctx.rotate(Math.PI);
-    ctx.translate(0, -SQUIRREL_MIDDLE);
-  }
+  if (squirrel.headDown) turnAbout(ctx, SQUIRREL_MIDDLE, Math.PI);
   ctx.scale(squirrel.facing || 0.001, 1);
-
-  // The telling-off: a tail swung round at whoever needed fetching down.
-  if (swing !== 0) ctx.rotate(swing);
 
   // The tail first, so it sits behind the body — a great question mark curling
   // up and over.
@@ -1230,8 +1244,9 @@ function drawSquirrelFromBehind(
   // The telling-off. It used to be drawn only in the side-on pose, which a
   // scolding never reaches: entering it puts both squirrels back on the sofa,
   // and the sofa is exactly what routes them through here — so the slap that
-  // the "Pfff!" is paired with was never once seen.
-  if (swing !== 0) ctx.rotate(swing);
+  // the "Pfff!" is paired with was never once seen. About the middle, as in the
+  // other pose — see there.
+  turnAbout(ctx, SQUIRREL_MIDDLE, swing);
 
   // Feet either side, just showing past the tail.
   ctx.fillStyle = p.squirrelDark;
@@ -1456,10 +1471,10 @@ function drawSaying(
   top: number,
   p: Palette,
 ): void {
-  // Saved rather than put back by hand: the reset was three of the four things
-  // this sets, re-spelling the canvas defaults as literals and leaving `font`
-  // behind. Left set, the alignment reached the next thing to draw text — the
-  // "z" over a sleeping hedgehog, which then sat off his head.
+  // Saved rather than put back by hand: the reset re-spelled the canvas defaults
+  // as literals, and covered three of the four things this sets — `font` was
+  // left behind, and happened not to matter only because everything else that
+  // draws text sets its own.
   ctx.save();
   ctx.font = '600 11px system-ui, -apple-system, "Segoe UI", sans-serif';
   ctx.textAlign = 'center';
@@ -1531,14 +1546,14 @@ export function drawScene(
   // was silent for the whole of every visit.
   for (const squirrel of scene.squirrels) {
     if (squirrel.say) {
-      drawSaying(ctx, squirrel.say, squirrel.x, squirrelY(scene, squirrel) - 46, p);
+      drawSaying(ctx, squirrel.say, squirrel.x, squirrelY(scene, squirrel) + FRONT_OF_ROOM - 46, p);
     }
   }
   // Off `ciccioY`, the same way a squirrel's is off `squirrelY`: the seat alone
   // ignores how far onto it he has got, so the bubble jumped a whole cushion on
   // the frame `at` changed while he was still half way up.
   if (scene.ciccio.say) {
-    drawSaying(ctx, scene.ciccio.say, scene.ciccio.x, ciccioY(scene) - 34, p);
+    drawSaying(ctx, scene.ciccio.say, scene.ciccio.x, ciccioY(scene) + FRONT_OF_ROOM - 34, p);
   }
   // Clear of its ears, which are the tallest part of it at −37.
   if (scene.cat?.say) {

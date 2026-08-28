@@ -231,7 +231,7 @@ export const MAX_STEAM = 14;
 const BED_TURN_SPEED = 0.045;
 
 /** Frames a climb on or off takes. */
-const CLIMB_FRAMES = 14;
+export const CLIMB_FRAMES = 14;
 /**
  * How much of a seat is covered in one frame, as a fraction of it.
  *
@@ -267,12 +267,22 @@ export const CAT_CALL = 'Meow!';
  * Roughly how much *pottering* there is between visits — measured in the frames
  * he is actually free, not in frames of the clock, since that is the only kind
  * this counts (see `runCat`). Retuned from 2100 when the counter stopped
- * running down through meals and programmes: over four seeded fifty-minute
- * days that put the first cat at 65 seconds and one every two and a half
- * minutes after, which is the "quietly never" the measurement below exists to
- * catch. At this it is ~50 seconds and one every two minutes.
+ * running down through meals and programmes: over four seeded fifty-minute days
+ * that put the first cat at 65 seconds and one every two and a half minutes
+ * after, which is the "quietly never" the measurement in `scene.test.ts` exists
+ * to catch.
+ *
+ * **Deliberately not `ROUTINE_GAP`.** At 1500 it was exactly the rota's period,
+ * and since `catMayCall` is a superset of the rota's own `free` gate the two
+ * counters tick on the same frames from the same start — so they run down
+ * together, the rota fires first and sends him off, the cat's freezes at 1 for
+ * the whole errand, and it is let in on the first frame he is free again. That
+ * is the pouncing the gating was written to stop, arrived at by resonance
+ * instead: 78.5% of visits within a quarter of a second of him becoming free,
+ * against 4.3% at the old 2100 and 1.8% here. A *shorter* interval giving a
+ * *lower* rate is the tell that it is the coincidence and not the number.
  */
-const CAT_INTERVAL = 1500;
+const CAT_INTERVAL = 1700;
 
 /** Frames of pottering between one thing on the rota and the next. */
 const ROUTINE_GAP = 1500;
@@ -346,6 +356,28 @@ export const SEAT_HEIGHT = {
 export type Spot = keyof typeof SEAT_HEIGHT;
 
 /**
+ * Where an errand leads, and the only place that knows.
+ *
+ * Written out at each site it was five copies of the same three-way choice, one
+ * of them a chain whose final `else` silently caught anything unlisted — so a
+ * fourth `Errand` would have compiled and quietly mis-aimed every resize. The
+ * `switch` is exhaustive over the union instead, which makes that a build
+ * error.
+ *
+ * `undefined` means the thing it was for is gone, which only a meal can be.
+ */
+export function errandTarget(scene: Scene, errand: Errand): number | undefined {
+  switch (errand) {
+    case 'eat':
+      return scene.gratin?.x;
+    case 'sit':
+      return scene.layout.loungeX;
+    case 'sleep':
+      return scene.layout.bedX;
+  }
+}
+
+/**
  * The most anybody's height may change in one frame.
  *
  * The tallest seat over the frames a climb takes, and the whole reason
@@ -353,14 +385,16 @@ export type Spot = keyof typeof SEAT_HEIGHT;
  * on the rug the frame after he was on a cushion, and all three of them snap at
  * once. It is asserted rather than described.
  *
- * Taken off the table rather than written out — it was the sofa's 24 copied by
- * hand, so a taller seat would have raised what everybody actually moves in a
- * frame while leaving the bound that is supposed to catch it where it was. The
- * same rule as `SQUIRREL_REACH` coming off the tallest tree rather than the
- * park's, and it is why this sits under the table instead of beside
- * `CLIMB_FRAMES`.
+ * **Written out, not derived**, and that is the point: it has no reader in the
+ * scene at all — it exists to be the bound the tests hold everybody to. Taken
+ * off `SEAT_HEIGHT` it became the very expression the movers step by, so
+ * raising the sofa to 60 moved everybody 4.29 units a frame, two and a half
+ * times the old bound, with all four max-step cases still green because the
+ * bound had grown with them. `scene.test.ts` pins this against the table
+ * instead, so a taller seat fails there, loudly and by name — the same shape as
+ * `MAX_PIXEL_RATIO`, which is asserted to be 2 beside a buffer pinned at 1600.
  */
-export const MAX_CLIMB = Math.max(...Object.values(SEAT_HEIGHT)) * LIFT_STEP;
+export const MAX_CLIMB = 24 / CLIMB_FRAMES;
 
 /**
  * The tallest thing that sits on a seat.
@@ -884,9 +918,9 @@ export function resizeScene(scene: Scene, size: SceneSize): void {
   // onto nothing.
   const goal = scene.ciccio.goal;
   if (goal) {
-    const where = goal.then === 'eat' ? scene.gratin?.x : goal.then === 'sit' ? loungeX : bedX;
+    const where = errandTarget(scene, goal.then);
     if (where === undefined) scene.ciccio.goal = null;
-    else scene.ciccio.goal = { ...goal, x: clamp(where, wanderLeft, wanderRight) };
+    else scene.ciccio.goal = { ...goal, x: where };
   }
 
   for (const squirrel of scene.squirrels) squirrel.x = flankX(scene, squirrel.side);
@@ -1027,8 +1061,7 @@ function wander(scene: Scene, rng: Rng): void {
   }
 
   if (scene.tv.on && !ciccio.goal) {
-    ciccio.goal = { x: scene.layout.loungeX, then: 'sit', urgent: false };
-    ciccio.phase = 'heading';
+    summon(scene, 'sit', false);
     return;
   }
 
@@ -1056,6 +1089,14 @@ function wander(scene: Scene, rng: Rng): void {
  * They go where he is, seat included, and take the same frames over it — so a
  * sofa does not gain two squirrels in one frame either.
  *
+ * A seat is never swapped for another seat: he goes to the floor between any
+ * two of them, at least 28 frames of it, so there is nothing here to guard
+ * against naming a new seat while a lift still stands on the old one. There was
+ * — `wants !== 'floor' && (at === wants || lift <= 0)`, whose extra arms were
+ * measured over eight seeded days at zero occurrences, which is the predicate
+ * this repo calls a trap and an unkillable mutant besides. The max-step
+ * assertion is what would catch a rota that ever did transfer him seat to seat.
+ *
  * **Only ever one change of height at a time**, and it runs *before* the
  * rescue rather than after. A squirrel coming off the wall and off the sofa on
  * the same frame moved 2.8 units, well past what either alone is allowed —
@@ -1068,15 +1109,12 @@ function settleSquirrelSeats(scene: Scene): void {
   const wants = squirrelWants(scene);
   for (const squirrel of scene.squirrels) {
     if (squirrel.climb > 0) continue;
-    // Up only onto the seat it is already standing on, or onto a new one it has
-    // come all the way off first: naming a seat while a lift is still standing
-    // on the old one is a step of the difference between the two.
-    if (wants !== 'floor' && (squirrel.at === wants || squirrel.lift <= 0)) {
+    if (wants === 'floor') {
+      squirrel.lift = toward(squirrel.lift, 0, LIFT_STEP);
+      if (squirrel.lift <= 0) squirrel.at = 'floor';
+    } else {
       squirrel.at = wants;
       squirrel.lift = toward(squirrel.lift, 1, LIFT_STEP);
-    } else {
-      squirrel.lift = toward(squirrel.lift, 0, LIFT_STEP);
-      if (squirrel.lift <= 0 && wants === 'floor') squirrel.at = 'floor';
     }
   }
 }
@@ -1160,7 +1198,7 @@ function startDismount(ciccio: Ciccio): void {
  */
 function headForGratin(scene: Scene, urgent: boolean): void {
   if (!scene.gratin) return;
-  summon(scene, scene.gratin.x, 'eat', urgent);
+  summon(scene, 'eat', urgent);
   // Said on the frame he spots it. Keyed on the goal *holding*, he would shout
   // it every frame of the run across the room.
   say(scene.ciccio, CICCIO_GRATIN);
@@ -1175,8 +1213,11 @@ function headForGratin(scene: Scene, urgent: boolean): void {
  * the one thing an interrupt may not do is skip the frames a change of height
  * is owed.
  */
-function summon(scene: Scene, x: number, then: Errand, urgent = true): void {
+function summon(scene: Scene, then: Errand, urgent = true): void {
   const { ciccio } = scene;
+  const x = errandTarget(scene, then);
+  // The thing it was for is gone, which only a meal can be.
+  if (x === undefined) return;
   ciccio.goal = { x, then, urgent };
   ciccio.spin = 0;
   ciccio.after = 'wandering';
@@ -1194,11 +1235,28 @@ function summon(scene: Scene, x: number, then: Errand, urgent = true): void {
  * anything while one does, so he potters for the life of the tab past a gratin
  * he was on his way to.
  */
+/**
+ * The dance, and the one place an errand is dropped.
+ *
+ * Dropping a `sleep` errand **loses the turn**, and that is a real asymmetry
+ * worth naming: `runRoutine` advances the rota at dispatch, and the other two
+ * turns leave something in the world that `wander` re-notices — `eat` leaves a
+ * gratin on the floor, `watch` leaves the set on. A nap exists only as the goal,
+ * so an interrupt routed through here drops it with nothing to re-issue it and
+ * the bed is not offered again until the rota comes round. That is deliberate
+ * and much the lesser evil: the alternative is the orphaned goal, which stops
+ * everything for the life of the tab rather than skipping one nap.
+ */
 function startWobble(ciccio: Ciccio): void {
+  // Dropped *before* the early return. Below it, "an interrupt drops the errand
+  // it interrupts" quietly stopped holding for a hedgehog who was already
+  // dancing — and `runRoutine`'s own `free` gate admits `wobbling`, so one rota
+  // arm that set a goal without also setting `heading` would have reintroduced
+  // the orphaned-goal deadlock this rule exists to prevent.
+  ciccio.goal = null;
   if (ciccio.phase === 'wobbling') return;
   ciccio.phase = 'wobbling';
   ciccio.spin = 0;
-  ciccio.goal = null;
 }
 
 /**
@@ -1215,6 +1273,16 @@ export function tapCiccio(scene: Scene): void {
   if (ciccio.at === 'floor') {
     startWobble(ciccio);
     return;
+  }
+  // Getting him up off the sofa turns the set off with him, because the
+  // programme is *why* he would go back: `wander` re-issues the sit errand on
+  // the first frame he reaches the floor, and the set is on for the whole of
+  // the only time he is ever up there — so the tap was a 35-frame bob that
+  // read as a tap that did nothing. Taking him off it is the decision to stop
+  // watching, the same way the set going off on its own is.
+  if (ciccio.at === 'sofa') {
+    scene.tv.on = false;
+    scene.tv.showLeft = 0;
   }
   ciccio.goal = null;
   startDismount(ciccio);
@@ -1309,7 +1377,13 @@ function runBed(scene: Scene): void {
 const catMayCall = (scene: Scene) =>
   scene.ciccio.at === 'floor' &&
   (scene.ciccio.phase === 'wandering' || scene.ciccio.phase === 'wobbling') &&
-  !scene.gratin;
+  !scene.gratin &&
+  // The rota turns the set on and returns, four lines before this runs, leaving
+  // him still `wandering` on the floor — so without this the cat could let
+  // itself in on the very frame a programme started and freeze him in front of
+  // a set counting itself down. He would reach the sofa, if at all, to a screen
+  // that had already gone off.
+  !scene.tv.on;
 
 /**
  * A small blue cat lets itself in, walks up to him, says something kind, gives
@@ -1454,7 +1528,14 @@ function runRescue(scene: Scene, rng: Rng): void {
     // the same either way.
     if (
       watching &&
-      scene.squirrels.every((squirrel) => squirrel.climb === 0 && squirrel.lift >= 1) &&
+      // Settled at *either* end, which is what "not moving vertically" means.
+      // Spelled `lift >= 1` it happened to work only because `watching` implies
+      // they are heading for the sofa: widen what counts as watching — letting
+      // them watch from the floor, say — and every climb stops happening, with
+      // a green suite and nothing to see but squirrels that never climb again.
+      scene.squirrels.every(
+        (squirrel) => squirrel.climb === 0 && (squirrel.lift <= 0 || squirrel.lift >= 1),
+      ) &&
       rng() < RESCUE_CHANCE
     ) {
       scene.rescue = { climber: rng() < 0.5 ? 0 : 1, phase: 'climbing', timer: 0 };
@@ -1535,6 +1616,23 @@ export function scoldingAt(scene: Scene): number | null {
   return 1 - rescue.timer / SCOLD_FRAMES;
 }
 
+/**
+ * How far round the scolder's tail is swung, in radians, this frame.
+ *
+ * A fact about the scene, so it lives here: `draw.ts` was deriving it from
+ * `scoldingAt` itself, which is the two-owners-of-one-fact the peel and the
+ * pizza already cost once — and it is the sort of fact a test can hold, where
+ * a `Math.sin` inside a canvas call is not.
+ */
+export function scoldSwing(scene: Scene, squirrel: Squirrel): number {
+  if (scolder(scene) !== squirrel) return 0;
+  const at = scoldingAt(scene);
+  return at === null ? 0 : Math.sin(at * Math.PI * 3) * SCOLD_SWING;
+}
+
+/** How far round the tail goes at the top of the swing. */
+const SCOLD_SWING = 0.28;
+
 /** Which of them is doing the telling-off, if anybody is. */
 export const scolder = (scene: Scene) =>
   scene.rescue?.phase === 'scolding' ? scene.squirrels[scene.rescue.climber === 0 ? 1 : 0] : null;
@@ -1567,8 +1665,7 @@ function runRoutine(scene: Scene): void {
     scene.tv.on = true;
     scene.tv.showLeft = SHOW_FRAMES;
   } else {
-    ciccio.goal = { x: scene.layout.bedX, then: 'sleep', urgent: false };
-    ciccio.phase = 'heading';
+    summon(scene, 'sleep', false);
   }
 }
 
@@ -1672,7 +1769,16 @@ export function ciccioAngle(scene: Scene): number {
 export const showingZebra = (scene: Scene) => scene.tv.on && scene.tv.showLeft <= ZEBRA_FRAMES;
 
 /** Whether the three of them have their backs to the room, watching the set. */
-export const watchingTelevision = (scene: Scene) => scene.ciccio.phase === 'sitting';
+/**
+ * Sitting in front of a set that is actually on.
+ *
+ * The `tv.on` half is load-bearing rather than tidy: he stays `sitting` after a
+ * programme ends until his own dwell runs out, and `runRescue` owns the whole
+ * wall climb off this predicate — so on `phase` alone a squirrel would set off
+ * up the wall, get stuck, be fetched down and told off, all three of them drawn
+ * from behind facing a switched-off screen.
+ */
+export const watchingTelevision = (scene: Scene) => scene.ciccio.phase === 'sitting' && scene.tv.on;
 
 /** Whether we are looking at his front half, and so whether his nose is in front. */
 export const ciccioNoseInFront = (scene: Scene) => Math.sin(ciccioAngle(scene)) >= 0;
@@ -1739,12 +1845,24 @@ export const hitsOven = (scene: Scene, x: number, y: number) =>
 /**
  * A click, in the scene's own units.
  *
- * Order matters where the boxes overlap, and it is the room *first*. The oven
- * never moves and is what somebody aims at; his box is deliberately enormous —
- * forty units either side of an animal a few units across — so testing him
- * first makes the oven unclickable for as long as he happens to be standing in
- * front of it, which is exactly when somebody is most likely to be reaching
- * past him for it.
+ * Order matters where the boxes overlap, and there is one rule for it:
+ * **whoever is off the floor is asked before the room, and everybody on the
+ * floor after it.**
+ *
+ * On the floor the room wins because his box is deliberately enormous —
+ * thirty-four units either side of an animal a few units across — so testing
+ * him first makes the oven unclickable for as long as he happens to be
+ * standing in front of it, which is exactly when somebody is most likely to be
+ * reaching past him for it.
+ *
+ * Off the floor it inverts, for the same reason: whatever somebody is off the
+ * floor *on* is drawn over them, so the room would answer every tap aimed at
+ * them. Measured on a grid over each animal's own hit box — 74.4% of a squirrel
+ * in bed and 45.1% of *him* asleep in it are inside the bed's, and a tap there
+ * was answered by taking him out of bed to go back to bed; 13.7% of a squirrel
+ * on the sofa and 21.4% of him are inside the television's, where a tap
+ * restarted the programme. It was found first as a squirrel stuck up the wall,
+ * and keying the exception on `climb` fixed it for exactly that one case.
  */
 export function clickScene(scene: Scene, x: number, y: number): void {
   // What a tap on a squirrel does, said once: the two loops below differ only
@@ -1757,22 +1875,14 @@ export function clickScene(scene: Scene, x: number, y: number): void {
     return hit;
   };
 
-  // A squirrel that is not standing on the floor is asked *before* the room,
-  // and it is the only thing that is: whatever it is off the floor *on* covers
-  // it, so the room would answer every tap aimed at it.
-  //
-  // Measured, on a grid over a seated squirrel's own box: 13.7% of one on the
-  // sofa is inside the television's, and 74.4% of one in bed is inside the
-  // bed's. So three quarters of a squirrel in bed could not be tapped at all —
-  // the bed answered instead, taking him out of it to go back to it — and a tap
-  // on one watching television restarted the programme. That is the same
-  // failure the stuck climber had, and keying the exception on `climb` fixed it
-  // for exactly the one case it was found in.
-  //
-  // Everywhere else the room still comes first, because *his* box is thirty-four
-  // units either side of an animal a few units across and the furniture never
-  // moves.
+  // Off the floor first — see above. The squirrels before him, because they sit
+  // either side of him and his box is the wider.
   if (tappedSquirrel((squirrel) => squirrel.climb > 0 || squirrel.at !== 'floor')) return;
+  if (scene.ciccio.at !== 'floor' && hitsCiccio(scene, x, y)) {
+    tapCiccio(scene);
+    startChatter(scene);
+    return;
+  }
 
   if (hitsOven(scene, x, y)) {
     serveGratin(scene);
@@ -1784,11 +1894,11 @@ export function clickScene(scene: Scene, x: number, y: number): void {
   if (hitsTv(scene, x, y)) {
     scene.tv.on = true;
     scene.tv.showLeft = SHOW_FRAMES;
-    summon(scene, scene.layout.loungeX, 'sit');
+    summon(scene, 'sit');
     return;
   }
   if (hitsBed(scene, x, y)) {
-    summon(scene, scene.layout.bedX, 'sleep');
+    summon(scene, 'sleep');
     return;
   }
   if (tappedSquirrel(() => true)) return;
